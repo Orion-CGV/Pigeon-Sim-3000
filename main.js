@@ -377,6 +377,7 @@ function animate() {
     spaceLocked = true; // must release space to jump again
     grounded = false;
   }
+  
 
   // Camera follow using yaw/pitch (mouse look)
   const cosPitch = Math.cos(pitch);
