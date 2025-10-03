@@ -1,404 +1,576 @@
+// Import the Three.js library for 3D graphics
 import * as THREE from 'three';
+// Import CSS2D renderer for HTML labels that stay facing the camera
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 // ---------- Scene / Camera / Renderer ----------
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(
-  75,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000
-);
+// Global variables to store our 3D environment components
+let scene,     // The 3D scene that contains all objects
+    camera,    // The virtual camera that defines our view
+    renderer,  // The WebGL renderer that draws the 3D scene
+    labelRenderer; // Special renderer for HTML text labels
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setAnimationLoop(animate);
-document.body.appendChild(renderer.domElement);
+// ---------- Game State ----------
+// Tracks which level we're currently in
+let currentLevel = 'main'; // Can be 'main', 'level1', 'level2', 'level3'
 
-// ---------- CSS2D Renderer for text labels ----------
-const labelRenderer = new CSS2DRenderer();
-labelRenderer.setSize(window.innerWidth, window.innerHeight);
-labelRenderer.domElement.style.position = 'absolute';
-labelRenderer.domElement.style.top = '0px';
-labelRenderer.domElement.style.pointerEvents = 'none';
-document.body.appendChild(labelRenderer.domElement);
+// Initializes the main menu/hub world where player selects levels
+function initMainMenu() {
+    // If returning from a level, the scene/renderer might be null, so recreate them
+    // Check if WebGL renderer doesn't exist yet
+    if (!renderer) {
+        // Create WebGL renderer with antialiasing for smoother edges
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        // Set renderer size to match browser window
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        // Add the renderer's canvas element to the webpage
+        document.body.appendChild(renderer.domElement);
+    }
+    // Check if CSS label renderer doesn't exist yet
+    if (!labelRenderer) {
+        // Create renderer for HTML-based text labels
+        labelRenderer = new CSS2DRenderer();
+        // Set label renderer size to match window
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        // Style the label container to overlay on top of 3D scene
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        // Prevent labels from blocking mouse events
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        // Add label container to webpage
+        document.body.appendChild(labelRenderer.domElement);
+    }
 
-// ---------- Resize ----------
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  labelRenderer.setSize(window.innerWidth, window.innerHeight);
-});
+    // Create a new 3D scene (container for all 3D objects)
+    scene = new THREE.Scene();
+    // Create perspective camera (mimics human vision with perspective distortion)
+    camera = new THREE.PerspectiveCamera(
+        75, // Field of view in degrees (wider = more visible)
+        window.innerWidth / window.innerHeight, // Aspect ratio (width/height)
+        0.1, // Near clipping plane (objects closer than this are invisible)
+        1000 // Far clipping plane (objects farther than this are invisible)
+    );
 
-// ---------- Player ----------
-const PLAYER_SIZE = { x: 1, y: 1, z: 1 };
-const playerGeometry = new THREE.BoxGeometry(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z);
-const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-const player = new THREE.Mesh(playerGeometry, playerMaterial);
-player.position.y = PLAYER_SIZE.y / 2; // sit on ground
-scene.add(player);
+    // Start the animation loop that updates and renders the scene continuously
+    renderer.setAnimationLoop(animate);
 
-// ---------- Ground ----------
-const groundGeom = new THREE.PlaneGeometry(80, 80);
-const groundMat = new THREE.MeshBasicMaterial({ color: 0x808080, side: THREE.DoubleSide });
-const ground = new THREE.Mesh(groundGeom, groundMat);
-ground.rotation.x = -Math.PI / 2;
-ground.position.y = 0;
-scene.add(ground);
+    // ---------- Resize ----------
+    // Add event listener to handle browser window resizing
+    window.addEventListener("resize", onWindowResize);
 
-// ---------- Arcade placeholders ----------
-const arcades = [];
-const arcadeLabels = [];
-const arcadeColors = [0xff0000, 0x0000ff, 0xffff00];
-const arcadeNames = ["Level 1", "Level 2", "Level 3"];
-const arcadeColorNames = ["Red", "Blue", "Yellow"];
+    // ---------- Player ----------
+    // Define player dimensions
+    const PLAYER_SIZE = { x: 1, y: 1, z: 1 };
+    // Create box geometry for player (width, height, depth)
+    const playerGeometry = new THREE.BoxGeometry(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z);
+    // Create green material for player
+    const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    // Combine geometry and material into a mesh (visible 3D object)
+    const player = new THREE.Mesh(playerGeometry, playerMaterial);
+    // Position player so its bottom sits on ground (y = height/2)
+    player.position.y = PLAYER_SIZE.y / 2;
+    // Give player a name for easy reference later
+    player.name = 'player';
+    // Add player to the scene
+    scene.add(player);
 
-for (let i = 0; i < 3; i++) {
-  const g = new THREE.BoxGeometry(1, 2, 1); // taller machine
-  const m = new THREE.MeshBasicMaterial({ color: arcadeColors[i] });
-  const arcade = new THREE.Mesh(g, m);
-  arcade.position.set(i * 3 - 3, 1, -10); // spread in front
-  arcade.userData.level = i + 1; // Store level number
-  arcade.userData.colorName = arcadeColorNames[i]; // Store color name
-  scene.add(arcade);
-  arcades.push(arcade);
+    // ---------- Ground ----------
+    // Create flat plane geometry for ground (width, height)
+    const groundGeom = new THREE.PlaneGeometry(80, 80);
+    // Create gray material that renders both sides of the plane
+    const groundMat = new THREE.MeshBasicMaterial({ color: 0x808080, side: THREE.DoubleSide });
+    // Create ground mesh
+    const ground = new THREE.Mesh(groundGeom, groundMat);
+    // Rotate plane 90 degrees to make it horizontal (default is vertical)
+    ground.rotation.x = -Math.PI / 2;
+    // Position ground at y=0
+    ground.position.y = 0;
+    // Add ground to scene
+    scene.add(ground);
 
-  // Create text label
-  const textDiv = document.createElement('div');
-  textDiv.className = 'arcade-label';
-  textDiv.textContent = arcadeNames[i];
-  textDiv.style.color = 'white';
-  textDiv.style.fontFamily = 'Arial, sans-serif';
-  textDiv.style.fontSize = '16px';
-  textDiv.style.fontWeight = 'bold';
-  textDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
-  textDiv.style.pointerEvents = 'none';
-  textDiv.style.textAlign = 'center';
-  textDiv.style.whiteSpace = 'nowrap';
-  
-  const label = new CSS2DObject(textDiv);
-  label.position.set(0, 1.5, 0); // Position above the arcade
-  arcade.add(label);
-  arcadeLabels.push(label);
+    // ---------- Arcade placeholders ----------
+    // Arrays to store arcade machines and their labels
+    const arcades = [];
+    const arcadeLabels = [];
+    // Colors for the three arcade machines (red, blue, yellow)
+    const arcadeColors = [0xff0000, 0x0000ff, 0xffff00];
+    // Names to display on each machine
+    const arcadeNames = ["Level 1", "Level 2", "Level 3"];
+    // Color names for interaction prompts
+    const arcadeColorNames = ["Red", "Blue", "Yellow"];
+
+    // Create three arcade machines
+    for (let i = 0; i < 3; i++) {
+        // Create taller box geometry for arcade machine (1x2x1 units)
+        const g = new THREE.BoxGeometry(1, 2, 1);
+        // Create colored material using current arcade color
+        const m = new THREE.MeshBasicMaterial({ color: arcadeColors[i] });
+        // Create arcade machine mesh
+        const arcade = new THREE.Mesh(g, m);
+        // Position arcades in a row: (-3,0,-10), (0,0,-10), (3,0,-10)
+        arcade.position.set(i * 3 - 3, 1, -10);
+        // Store level number (1, 2, or 3) in userData for easy access
+        arcade.userData.level = i + 1;
+        // Store color name for interaction prompts
+        arcade.userData.colorName = arcadeColorNames[i];
+        // Give each arcade a unique name
+        arcade.name = `arcade-${i + 1}`;
+        // Add arcade to scene
+        scene.add(arcade);
+        // Store arcade in array
+        arcades.push(arcade);
+
+        // Create text label for arcade machine
+        const textDiv = document.createElement('div');
+        // Add class for easy cleanup later
+        textDiv.className = 'arcade-label';
+        // Set text content to level name
+        textDiv.textContent = arcadeNames[i];
+        // Style the text label
+        textDiv.style.color = 'white';
+        textDiv.style.fontFamily = 'Arial, sans-serif';
+        textDiv.style.fontSize = '16px';
+        textDiv.style.fontWeight = 'bold';
+        textDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)'; // Add shadow for readability
+        textDiv.style.pointerEvents = 'none'; // Don't block mouse events
+        textDiv.style.textAlign = 'center';
+        textDiv.style.whiteSpace = 'nowrap'; // Prevent text wrapping
+        
+        // Create CSS2D object from the div (will always face camera)
+        const label = new CSS2DObject(textDiv);
+        // Position label above the arcade machine
+        label.position.set(0, 1.5, 0);
+        // Attach label to arcade machine (moves with it)
+        arcade.add(label);
+        // Store label in array
+        arcadeLabels.push(label);
+    }
+
+    // Store arcades in scene for easy access from other functions
+    scene.userData.arcades = arcades;
+    // Precompute collision boxes for all arcades (optimization)
+    scene.userData.arcadeBoxes = arcades.map(a => new THREE.Box3().setFromObject(a));
+
+    // ---------- Interaction System ----------
+    // Set up system for detecting when player looks at arcade machines
+    setupInteractionSystem();
+
+    // ---------- Input System ----------
+    // Set up keyboard and mouse input handling
+    setupInputSystem();
+
+    // ---------- Camera ----------
+    // Position camera above and behind player
+    camera.position.set(0, 5, 10);
+    // Point camera at center of scene
+    camera.lookAt(0, 0, 0);
 }
 
-// Precompute arcade boxes (they're static)
-const arcadeBoxes = arcades.map(a => new THREE.Box3().setFromObject(a));
+// ---------- Level Management ----------
+let currentLevelModule = null; // Store reference to the level module for cleanup
+
+// Loads a specific level by number (1, 2, or 3)
+function loadLevel(levelNumber) {
+    // 1. Clean up current scene before loading new one
+    cleanupCurrentLevel(); 
+    
+    // 2. Update game state to track current level
+    currentLevel = `level${levelNumber}`;
+    
+    // 3. Dynamically import the level module (separate JavaScript file)
+    import(`./level${levelNumber}.js`)
+        .then(levelModule => {
+            // Store the module reference for later cleanup
+            currentLevelModule = levelModule;
+            // Initialize the level, passing scene, camera, and callback function
+            levelModule.initLevel(scene, camera, renderer, labelRenderer, () => {
+                // Callback for returning to main menu (called when level completes)
+                returnToMainMenu();
+            });
+        })
+        .catch(err => {
+            // Handle errors if level fails to load
+            console.error(`Failed to load level ${levelNumber}:`, err);
+            alert(`Level ${levelNumber} failed to load. Check console for details.`);
+        });
+}
+
+// Returns player from level back to main menu
+function returnToMainMenu() {
+    // Clean up the current level
+    cleanupCurrentLevel();
+    // Update game state
+    currentLevel = 'main';
+    // Reinitialize main menu
+    initMainMenu();
+}
+
+// Cleans up resources when leaving a level or the game
+function cleanupCurrentLevel() {
+    // 1. Call level-specific cleanup (if it exists)
+    // Some levels might have custom cleanup logic
+    if (currentLevelModule && currentLevelModule.cleanupLevel) {
+        currentLevelModule.cleanupLevel();
+        currentLevelModule = null; // Clear reference
+    }
+
+    // 2. Stop the current animation loop
+    // Prevents multiple animation loops running simultaneously
+    if (renderer) {
+        renderer.setAnimationLoop(null);
+    }
+    
+    // 3. Remove all event listeners (should be removed by the level's cleanup, but good to ensure)
+    // Clean up any lingering input listeners
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keyup", handleKeyUp);
+    document.removeEventListener("pointerlockchange", onPointerLockChange);
+    document.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("resize", onWindowResize); // Remove global listener
+
+    // 4. Clear the CSS2D Renderer's DOM (Fix for persistent labels)
+    // Remove any HTML labels left over from previous level
+    if (labelRenderer) {
+        const domElement = labelRenderer.domElement;
+        // Remove all child elements from label container
+        while (domElement.firstChild) {
+            domElement.removeChild(domElement.firstChild);
+        }
+    }
+    
+    // 5. Clear the THREE.js scene
+    // Remove all 3D objects from the scene
+    if (scene) {
+        while(scene.children.length > 0) { 
+            scene.remove(scene.children[0]); 
+        }
+    }
+    
+    // 6. Clear any UI elements with class 'game-ui'
+    const uiElements = document.querySelectorAll('.game-ui');
+    uiElements.forEach(el => el.remove());
+}
 
 // ---------- Interaction System ----------
-const INTERACTION_DISTANCE = 3; // How close player needs to be
-let currentInteractable = null;
-let interactionCooldown = false;
+// Sets up system for detecting when player looks at interactive objects
+function setupInteractionSystem() {
+    const INTERACTION_DISTANCE = 3; // How close player needs to be to interact
+    let currentInteractable = null; // Currently targeted interactive object
+    const raycaster = new THREE.Raycaster(); // Casts rays to detect what player is looking at
+    const mouse = new THREE.Vector2(0, 0); // Screen coordinates (center of screen)
 
-// Create interaction prompt element
-const interactionPrompt = document.createElement("div");
-interactionPrompt.style.position = "absolute";
-interactionPrompt.style.top = "60%";
-interactionPrompt.style.left = "50%";
-interactionPrompt.style.transform = "translate(-50%, -50%)";
-interactionPrompt.style.color = "white";
-interactionPrompt.style.fontFamily = "Arial, sans-serif";
-interactionPrompt.style.fontSize = "20px";
-interactionPrompt.style.fontWeight = "bold";
-interactionPrompt.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
-interactionPrompt.style.pointerEvents = "none";
-interactionPrompt.style.zIndex = "10";
-interactionPrompt.style.textAlign = "center";
-interactionPrompt.style.opacity = "0";
-interactionPrompt.style.transition = "opacity 0.3s ease";
-interactionPrompt.textContent = "E to interact";
-document.body.appendChild(interactionPrompt);
+    // Create interaction prompt (className 'game-ui' for easy cleanup)
+    const interactionPrompt = document.createElement("div");
+    interactionPrompt.className = "game-ui";
+    // Style the prompt with CSS text for better performance
+    interactionPrompt.style.cssText = `
+        position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); 
+        color: white; font-family: Arial, sans-serif; font-size: 20px; font-weight: bold; 
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; z-index: 10; 
+        text-align: center; opacity: 0; transition: opacity 0.3s ease;
+    `;
+    interactionPrompt.textContent = "E to interact";
+    document.body.appendChild(interactionPrompt);
 
-// ---------- Crosshair ----------
-const crosshair = document.createElement("div");
-crosshair.style.position = "absolute";
-crosshair.style.top = "50%";
-crosshair.style.left = "50%";
-crosshair.style.width = "20px";
-crosshair.style.height = "20px";
-crosshair.style.marginLeft = "-10px";
-crosshair.style.marginTop = "-10px";
-crosshair.style.pointerEvents = "none";
-crosshair.style.zIndex = "10";
-crosshair.innerHTML = `
-  <div style="position:absolute;top:9px;left:0;width:20px;height:2px;background:white"></div>
-  <div style="position:absolute;top:0;left:9px;width:2px;height:20px;background:white"></div>
-`;
-document.body.appendChild(crosshair);
+    // Crosshair (className 'game-ui' for easy cleanup)
+    const crosshair = document.createElement("div");
+    crosshair.className = "game-ui";
+    crosshair.style.cssText = `
+        position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; 
+        margin-left: -10px; margin-top: -10px; pointer-events: none; z-index: 10;
+    `;
+    // Create crosshair using HTML elements (horizontal and vertical lines)
+    crosshair.innerHTML = `
+        <div style="position:absolute;top:9px;left:0;width:20px;height:2px;background:white"></div>
+        <div style="position:absolute;top:0;left:9px;width:2px;height:20px;background:white"></div>
+    `;
+    document.body.appendChild(crosshair);
 
-// ---------- Input ----------
-const keys = {}; // letter/arrow keys tracked by name
-let spaceHeld = false;
-let spaceLocked = false; // prevents auto-repeat while holding space
-let eKeyPressed = false;
-let eKeyLocked = false; // prevents auto-repeat while holding E
-
-window.addEventListener("keydown", (e) => {
-  // prefer e.code for space to be robust
-  if (e.code === "Space") {
-    spaceHeld = true;
-  } else if (e.code === "KeyE") {
-    eKeyPressed = true;
-  } else {
-    keys[e.key.toLowerCase()] = true;
-  }
-});
-window.addEventListener("keyup", (e) => {
-  if (e.code === "Space") {
-    spaceHeld = false;
-    spaceLocked = false;
-  } else if (e.code === "KeyE") {
-    eKeyPressed = false;
-    eKeyLocked = false;
-  } else {
-    keys[e.key.toLowerCase()] = false;
-  }
-});
-
-// ---------- Pointer lock / Mouse look ----------
-let yaw = 0;   // horizontal rotation (radians)
-let pitch = 0; // vertical rotation (radians)
-const PI_2 = Math.PI / 2;
-const MOUSE_SENS = 0.0025;
-
-document.body.addEventListener("click", () => {
-  // request pointer lock on click so mouse look works
-  document.body.requestPointerLock?.();
-});
-
-function onPointerLockChange() {
-  if (document.pointerLockElement === document.body) {
-    document.addEventListener("mousemove", onMouseMove);
-  } else {
-    document.removeEventListener("mousemove", onMouseMove);
-  }
-}
-document.addEventListener("pointerlockchange", onPointerLockChange);
-
-function onMouseMove(e) {
-  yaw -= e.movementX * MOUSE_SENS;
-  pitch += e.movementY * MOUSE_SENS;
-  // clamp pitch so camera doesn't flip
-  const maxPitch = PI_2 - 0.1;
-  const minPitch = -maxPitch;
-  pitch = Math.max(minPitch, Math.min(maxPitch, pitch));
+    // Store interaction system data in scene for easy access
+    scene.userData.interactionPrompt = interactionPrompt;
+    scene.userData.currentInteractable = currentInteractable;
+    scene.userData.raycaster = raycaster;
+    scene.userData.mouse = mouse;
 }
 
-// ---------- Physics / Movement parameters ----------
-const speed = 0.15; // horizontal move speed (units per frame)
-const gravity = -0.03; // gravity acceleration per frame
-const jumpStrength = 0.45; // initial upward velocity when jumping
-let velocityY = 0;
-const groundY = 0;
-const playerHalfHeight = PLAYER_SIZE.y / 2;
-
-// Camera follow parameters
-const cameraDistance = 8;
-const cameraHeightOffset = 1.8; // camera slightly above player center
-
-// small vector scratch objects to avoid allocations every frame
-const _forward = new THREE.Vector3();
-const _right = new THREE.Vector3();
-const _moveDir = new THREE.Vector3();
-const _desired = new THREE.Vector3();
-const _prevPos = new THREE.Vector3();
-const playerBox = new THREE.Box3();
-
-// Raycasting for interaction
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2(0, 0); // center of screen
-
-// ---------- Utility collision test ----------
-function intersectsAnyPlayerBox(box) {
-  for (let b of arcadeBoxes) {
-    if (box.intersectsBox(b)) return true;
-  }
-  return false;
-}
-
-// ---------- Interaction Functions ----------
+// Checks if player is looking at an interactive object and close enough to interact
 function checkInteractions() {
-  // Set raycaster from camera center (crosshair position)
-  raycaster.setFromCamera(mouse, camera);
-  
-  const intersects = raycaster.intersectObjects(arcades);
-  
-  if (intersects.length > 0) {
-    const closestArcade = intersects[0].object;
-    const distance = player.position.distanceTo(closestArcade.position);
+    // Only check interactions in main menu, not during levels
+    if (currentLevel !== 'main') return;
     
-    if (distance <= INTERACTION_DISTANCE) {
-      // Show interaction prompt
-      interactionPrompt.textContent = `E to interact with ${closestArcade.userData.colorName} machine`;
-      interactionPrompt.style.opacity = "1";
-      currentInteractable = closestArcade;
-      return;
+    // Get interaction system components from scene
+    const { raycaster, mouse, interactionPrompt, arcades } = scene.userData;
+    
+    // Raycast from the center of the screen (where crosshair is)
+    raycaster.setFromCamera(mouse, camera); 
+    // Find all arcade machines that the ray intersects
+    const intersects = raycaster.intersectObjects(arcades);
+    
+    // Get player object from scene
+    const player = scene.getObjectByName('player');
+    
+    // Check if ray hit something and player exists
+    if (intersects.length > 0 && player) {
+        const closestArcade = intersects[0].object;
+        // Check both raycast hit and proximity (player must be close enough)
+        const distance = player.position.distanceTo(closestArcade.position);
+        
+        // If player is within interaction distance
+        if (distance <= 3) {
+            // Update prompt to show which machine player can interact with
+            interactionPrompt.textContent = `E to interact with ${closestArcade.userData.colorName} machine`;
+            // Make prompt visible
+            interactionPrompt.style.opacity = "1";
+            // Store current interactable for handling E key press
+            scene.userData.currentInteractable = closestArcade;
+            return;
+        }
     }
-  }
-  
-  // No valid interactable found
-  interactionPrompt.style.opacity = "0";
-  currentInteractable = null;
+    
+    // No valid interactable found, hide prompt and clear current interactable
+    interactionPrompt.style.opacity = "0";
+    scene.userData.currentInteractable = null;
 }
 
+// Handles interaction when player presses E key while looking at interactable object
 function handleInteraction() {
-  if (currentInteractable && eKeyPressed && !eKeyLocked && !interactionCooldown) {
-    eKeyLocked = true;
-    interactionCooldown = true;
+    // Only handle interactions in main menu
+    if (currentLevel !== 'main') return;
     
-    const level = currentInteractable.userData.level;
-    const colorName = currentInteractable.userData.colorName;
+    // Get current interactable from scene
+    const { currentInteractable } = scene.userData;
     
-    console.log(`Starting Level ${level} on ${colorName} machine!`);
-    
-    // Here you would typically load the level
-    // For now, we'll just show an alert and reset after a moment
-    alert(`Loading Level ${level} - ${colorName} Machine!`);
-    
-    // Reset cooldown after a short delay
-    setTimeout(() => {
-      interactionCooldown = false;
-    }, 1000);
-    
-    // You can replace the alert with actual level loading code:
-    // loadLevel(level);
-  }
-}
-
-// Level loading function (placeholder - implement your level loading here)
-function loadLevel(levelNumber) {
-  switch(levelNumber) {
-    case 1:
-      // Load level 1 content
-      console.log("Loading Level 1...");
-      break;
-    case 2:
-      // Load level 2 content
-      console.log("Loading Level 2...");
-      break;
-    case 3:
-      // Load level 3 content
-      console.log("Loading Level 3...");
-      break;
-  }
-}
-
-// ---------- Animation loop ----------
-function animate() {
-  // --- Calculate camera-relative forward/right (movement relative to crosshair) ---
-  // Forward based on yaw (horizontal), ignore pitch so movement stays horizontal
-  _forward.set(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
-  _right.crossVectors(_forward, new THREE.Vector3(0, 1, 0)).normalize();
-
-  // Build move direction from inputs
-  _moveDir.set(0, 0, 0);
-  if (keys["w"] || keys["arrowup"]) _moveDir.add(_forward);
-  if (keys["s"] || keys["arrowdown"]) _moveDir.sub(_forward);
-  if (keys["d"] || keys["arrowright"]) _moveDir.add(_right);
-  if (keys["a"] || keys["arrowleft"]) _moveDir.sub(_right);
-
-  if (_moveDir.lengthSq() > 0) _moveDir.normalize();
-
-  // Save previous position for collision reasoning
-  _prevPos.copy(player.position);
-
-  // --- Horizontal movement per-axis with collision rollback (solid collision + sliding) ---
-  _desired.copy(_moveDir).multiplyScalar(speed);
-
-  // X (world) movement
-  player.position.x += _desired.x;
-  // recompute player's AABB and test
-  playerBox.setFromObject(player);
-  if (intersectsAnyPlayerBox(playerBox)) {
-    // rollback X movement
-    player.position.x = _prevPos.x;
-  } else {
-    _prevPos.x = player.position.x; // commit X
-  }
-
-  // Z (world) movement
-  player.position.z += _desired.z;
-  playerBox.setFromObject(player);
-  if (intersectsAnyPlayerBox(playerBox)) {
-    // rollback Z movement
-    player.position.z = _prevPos.z;
-  } else {
-    _prevPos.z = player.position.z; // commit Z
-  }
-
-  // --- Vertical (gravity + jumping) ---
-  // Determine grounded status by checking if player's bottom is at ground or on top of an arcade
-  // Apply gravity
-  velocityY += gravity;
-  player.position.y += velocityY;
-
-  // Recompute player box and resolve vertical collisions
-  playerBox.setFromObject(player);
-  let grounded = false;
-
-  // Ground collision
-  if (player.position.y < groundY + playerHalfHeight) {
-    player.position.y = groundY + playerHalfHeight;
-    velocityY = 0;
-    grounded = true;
-  }
-
-  // Arcade vertical collisions
-  for (let i = 0; i < arcadeBoxes.length; i++) {
-    const box = arcadeBoxes[i];
-    if (playerBox.intersectsBox(box)) {
-      // If player came from above onto the arcade top
-      if (_prevPos.y >= box.max.y + playerHalfHeight - 0.01) {
-        player.position.y = box.max.y + playerHalfHeight;
-        velocityY = 0;
-        grounded = true;
-        playerBox.setFromObject(player);
-      }
-      // If player hit bottom side of arcade while moving up (head hit)
-      else if (_prevPos.y + playerHalfHeight <= box.min.y + 0.01 && velocityY > 0) {
-        player.position.y = box.min.y - playerHalfHeight;
-        velocityY = 0;
-        playerBox.setFromObject(player);
-      }
-      // Otherwise we overlapped horizontally (player moved into the arcade from side),
-      // rollback horizontal movement so the player can't enter the arcade.
-      else {
-        player.position.x = _prevPos.x;
-        player.position.z = _prevPos.z;
-        playerBox.setFromObject(player);
-      }
+    // Check if there's an interactable, E key is pressed, and not locked (anti-spam)
+    if (currentInteractable && keys["e"] && !eKeyLocked) {
+        // Lock E key to prevent rapid repeated interactions
+        eKeyLocked = true;
+        // Get level number from the arcade machine's userData
+        const level = currentInteractable.userData.level;
+        // Load the selected level
+        loadLevel(level);
+        
+        // Reset key lock after a delay (1 second)
+        setTimeout(() => {
+            eKeyLocked = false;
+        }, 1000);
     }
-  }
-
-  // --- Jump: only if grounded. Use a "lock" so holding space doesn't spam jumps ---
-  if (spaceHeld && grounded && !spaceLocked) {
-    velocityY = jumpStrength;
-    spaceLocked = true; // must release space to jump again
-    grounded = false;
-  }
-  
-
-  // Camera follow using yaw/pitch (mouse look)
-  const cosPitch = Math.cos(pitch);
-
-  // Position camera behind player
-  camera.position.x = player.position.x - Math.sin(yaw) * cameraDistance * cosPitch;
-  camera.position.z = player.position.z - Math.cos(yaw) * cameraDistance * cosPitch;
-  camera.position.y = player.position.y + Math.sin(pitch) * cameraDistance + cameraHeightOffset;
-
-  // Instead of looking exactly at player center, look slightly above
-  const aimHeightOffset = 1.5; // 👈 increase this for higher crosshair aim
-  camera.lookAt(
-    player.position.x,
-    player.position.y + aimHeightOffset,
-    player.position.z
-  );
-
-  // --- Check for interactions ---
-  checkInteractions();
-  handleInteraction();
-
-  renderer.render(scene, camera);
-  labelRenderer.render(scene, camera);
 }
+
+// ---------- Input System ----------
+// Object to track which keys are currently pressed
+let keys = {};
+// Jumping variables
+let spaceHeld = false;    // Is space bar currently held down?
+let spaceLocked = false;  // Prevent auto-repeat jumping while holding space
+// Interaction variables
+let eKeyLocked = false;   // Prevent rapid E key presses
+// Camera rotation variables
+let yaw = 0;   // Horizontal rotation (left/right) in radians
+let pitch = 0; // Vertical rotation (up/down) in radians
+const PI_2 = Math.PI / 2; // 90 degrees in radians (used for pitch limits)
+const MOUSE_SENS = 0.0025; // Mouse sensitivity multiplier
+
+// Sets up keyboard and mouse input listeners
+function setupInputSystem() {
+    // Add event listeners for keyboard input
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
+    // Listen for pointer lock changes (when mouse is captured for looking around)
+    document.addEventListener("pointerlockchange", onPointerLockChange);
+    
+    // Pointer lock on click - when user clicks canvas, capture mouse for looking
+    renderer.domElement.addEventListener("click", () => {
+        // Only request lock if not already locked
+        if (document.pointerLockElement !== renderer.domElement) {
+            renderer.domElement.requestPointerLock();
+        }
+    });
+}
+
+// Handles key press events
+function handleKeyDown(e) {
+    // Check for space bar specifically (for jumping)
+    if (e.code === "Space") {
+        spaceHeld = true;
+    } else {
+        // Store any other key in keys object using lowercase key name
+        keys[e.key.toLowerCase()] = true;
+    }
+}
+
+// Handles key release events
+function handleKeyUp(e) {
+    // Check for space bar release
+    if (e.code === "Space") {
+        spaceHeld = false;
+        spaceLocked = false; // Reset jump lock when space is released
+    } else {
+        // Remove key from keys object when released
+        keys[e.key.toLowerCase()] = false;
+    }
+}
+
+// Handles pointer lock state changes (when mouse is captured/released)
+function onPointerLockChange() {
+    // Check if pointer is now locked to our canvas
+    if (document.pointerLockElement === renderer.domElement) {
+        // Add mouse movement listener for camera control
+        document.addEventListener("mousemove", onMouseMove);
+    } else {
+        // Remove mouse movement listener when pointer is unlocked
+        document.removeEventListener("mousemove", onMouseMove);
+    }
+}
+
+// Handles mouse movement for camera control (only when pointer is locked)
+function onMouseMove(e) {
+    // Update yaw (horizontal rotation) based on mouse X movement
+    yaw -= e.movementX * MOUSE_SENS;
+    // Update pitch (vertical rotation) based on mouse Y movement
+    pitch += e.movementY * MOUSE_SENS;
+    // Define pitch limits to prevent camera from flipping over
+    const maxPitch = PI_2 - 0.1; // Almost 90 degrees up
+    const minPitch = -maxPitch;  // Almost 90 degrees down
+    // Clamp pitch to prevent camera from going too far up or down
+    pitch = Math.max(minPitch, Math.min(maxPitch, pitch));
+}
+
+// ---------- Physics ----------
+// Movement and physics constants
+const speed = 0.15;        // Horizontal movement speed (units per frame)
+const gravity = -0.03;     // Gravity acceleration (units per frame squared)
+const jumpStrength = 0.45; // Initial upward velocity when jumping
+let velocityY = 0;         // Current vertical velocity
+
+// Updates player position and physics
+function updatePlayer() {
+    // Only update player in main menu, not during levels
+    if (currentLevel !== 'main') return;
+    
+    // Get player object from scene
+    const player = scene.getObjectByName('player');
+    if (!player) return;
+
+    // Movement vectors (reused to avoid creating new objects every frame)
+    const _forward = new THREE.Vector3();
+    const _right = new THREE.Vector3();
+    const _moveDir = new THREE.Vector3();
+
+    // Calculate forward direction based on current yaw (horizontal rotation)
+    _forward.set(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
+    // Calculate right direction (perpendicular to forward)
+    _right.crossVectors(_forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+    // Reset movement direction
+    _moveDir.set(0, 0, 0);
+    // Add movement based on key presses
+    if (keys["w"] || keys["arrowup"]) _moveDir.add(_forward);    // Move forward
+    if (keys["s"] || keys["arrowdown"]) _moveDir.sub(_forward);  // Move backward
+    if (keys["d"] || keys["arrowright"]) _moveDir.add(_right);   // Strafe right
+    if (keys["a"] || keys["arrowleft"]) _moveDir.sub(_right);    // Strafe left
+
+    // Normalize movement vector if moving (prevents faster diagonal movement)
+    if (_moveDir.lengthSq() > 0) _moveDir.normalize();
+
+    // Store previous position for collision detection
+    const prevPos = player.position.clone();
+    // Apply horizontal movement
+    player.position.x += _moveDir.x * speed;
+    player.position.z += _moveDir.z * speed;
+
+    // Simple collision detection
+    // Create bounding box around player for collision testing
+    const playerBox = new THREE.Box3().setFromObject(player);
+    // Get arcade collision boxes from scene
+    const { arcadeBoxes } = scene.userData;
+    
+    // Check collision with arcade machines if they exist
+    if (arcadeBoxes) {
+        for (let box of arcadeBoxes) {
+            if (playerBox.intersectsBox(box)) {
+                // Collision detected - revert horizontal movement
+                player.position.x = prevPos.x;
+                player.position.z = prevPos.z;
+                break; // Only need to handle first collision
+            }
+        }
+    }
+
+    // Apply gravity to vertical velocity
+    velocityY += gravity;
+    // Apply vertical movement
+    player.position.y += velocityY;
+
+    // Ground collision detection
+    if (player.position.y <= 0.5) {
+        // Snap player to ground level
+        player.position.y = 0.5;
+        // Stop vertical movement
+        velocityY = 0;
+        
+        // Handle jumping if space is pressed and not locked
+        if (spaceHeld && !spaceLocked) {
+            // Apply upward velocity for jump
+            velocityY = jumpStrength;
+            // Lock jumping to prevent auto-repeat
+            spaceLocked = true;
+        }
+    }
+
+    // Update camera to follow player
+    updateCamera(player);
+}
+
+// Updates camera position to follow player with third-person view
+function updateCamera(player) {
+    const cameraDistance = 8;        // How far behind player the camera stays
+    const cameraHeightOffset = 1.8;  // How high above player the camera is
+    const cosPitch = Math.cos(pitch); // Used for vertical camera positioning
+
+    // Calculate camera position behind player based on yaw and pitch
+    camera.position.x = player.position.x - Math.sin(yaw) * cameraDistance * cosPitch;
+    camera.position.z = player.position.z - Math.cos(yaw) * cameraDistance * cosPitch;
+    camera.position.y = player.position.y + Math.sin(pitch) * cameraDistance + cameraHeightOffset;
+
+    // Point camera slightly above player center for better view
+    const aimHeightOffset = 1.5;
+    camera.lookAt(
+        player.position.x,
+        player.position.y + aimHeightOffset,
+        player.position.z
+    );
+}
+
+// ---------- Window Resize ----------
+// Handles browser window resizing to maintain proper aspect ratio
+function onWindowResize() {
+    // Update camera aspect ratio to match new window dimensions
+    camera.aspect = window.innerWidth / window.innerHeight;
+    // Apply the new aspect ratio to camera
+    camera.updateProjectionMatrix();
+    // Resize both renderers to match new window size
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    labelRenderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// ---------- Animation Loop ----------
+// Main game loop that runs continuously (called ~60 times per second)
+function animate() {
+    // Only update player and interactions in main menu
+    if (currentLevel === 'main') {
+        updatePlayer();        // Update player position and physics
+        checkInteractions();   // Check if player can interact with anything
+        handleInteraction();   // Handle interaction if E key is pressed
+    }
+    
+    // Render the 3D scene using WebGL
+    renderer.render(scene, camera);
+    // Render HTML labels on top of 3D scene
+    if (labelRenderer) {
+        labelRenderer.render(scene, camera);
+    }
+}
+
+// ---------- Initialize Game ----------
+// Start the game by initializing the main menu
+initMainMenu();
