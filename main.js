@@ -13,9 +13,14 @@ let scene,     // The 3D scene that contains all objects
 // ---------- Game State ----------
 // Tracks which level we're currently in
 let currentLevel = 'main'; // Can be 'main', 'level1', 'level2', 'level3'
+// Tracks whether we're in Story Mode (3D hub world)
+let isInStoryMode = false;
 
 // Initializes the main menu/hub world where player selects levels
 function initMainMenu() {
+    // Set Story Mode flag
+    isInStoryMode = true;
+    
     // Clean up any existing scene first
     if (scene) {
         // Clear all objects from the scene
@@ -207,10 +212,41 @@ function loadLevel(levelNumber) {
     // 1. Clean up current scene before loading new one
     cleanupCurrentLevel(); 
     
-    // 2. Update game state to track current level
+    // 2. Ensure scene, camera, and renderers are properly initialized
+    if (!scene) {
+        scene = new THREE.Scene();
+    }
+    if (!camera) {
+        camera = new THREE.PerspectiveCamera(
+            75, // Field of view in degrees
+            window.innerWidth / window.innerHeight, // Aspect ratio
+            0.1, // Near clipping plane
+            1000 // Far clipping plane
+        );
+    }
+    if (!renderer) {
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+    }
+    if (!labelRenderer) {
+        labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+    }
+    
+    // 3. Update game state to track current level
     currentLevel = `level${levelNumber}`;
     
-    // 3. Show the canvas elements
+    // 4. Hide HTML menu screens when loading a level (so level UI is visible)
+    if (window.hideAllMenuScreens) {
+        window.hideAllMenuScreens();
+    }
+    
+    // 5. Show the canvas elements
     if (renderer && renderer.domElement) {
         renderer.domElement.style.display = 'block';
     }
@@ -218,16 +254,25 @@ function loadLevel(levelNumber) {
         labelRenderer.domElement.style.display = 'block';
     }
     
-    // 4. Dynamically import the level module (separate JavaScript file)
+    // 6. Dynamically import the level module (separate JavaScript file)
     import(`./level${levelNumber}.js`)
         .then(levelModule => {
             // Store the module reference for later cleanup
             currentLevelModule = levelModule;
+            
             // Initialize the level, passing scene, camera, and callback function
-            levelModule.initLevel(scene, camera, renderer, labelRenderer, () => {
-                // Callback for returning to main menu (called when level completes)
-                returnToMainMenu();
-            });
+            // Use different callback based on whether we're in Story Mode or direct level selection
+            const returnCallback = () => {
+                if (isInStoryMode) {
+                    // We're in Story Mode (3D hub world), use Story Mode return
+                    returnToMainMenuFromStory();
+                } else {
+                    // We're in direct level selection, use normal return
+                    returnToMainMenu();
+                }
+            };
+            
+            levelModule.initLevel(scene, camera, renderer, labelRenderer, returnCallback);
         })
         .catch(err => {
             // Handle errors if level fails to load
@@ -244,6 +289,8 @@ function returnToMainMenu() {
     cleanupCurrentLevel();
     // Update game state
     currentLevel = 'main';
+    // Reset Story Mode flag (we're going back to HTML menu)
+    isInStoryMode = false;
     
     // Hide the canvas elements
     if (renderer && renderer.domElement) {
@@ -253,6 +300,9 @@ function returnToMainMenu() {
         labelRenderer.domElement.style.display = 'none';
     }
     
+    // Check if main menu elements exist
+    const mainMenu = document.getElementById('main-menu');
+    
     // Show main menu
     if (window.showMainMenu) {
         window.showMainMenu();
@@ -261,13 +311,14 @@ function returnToMainMenu() {
 
 // Returns player from Story Mode back to main menu (without hiding canvas)
 function returnToMainMenuFromStory() {
+    // Clean up the current level
+    cleanupCurrentLevel();
     // Update game state
     currentLevel = 'main';
+    // Keep Story Mode flag set (we're staying in 3D hub world)
     
-    // Show main menu (keep canvas visible for potential return to Story Mode)
-    if (window.showMainMenu) {
-        window.showMainMenu();
-    }
+    // Don't call showMainMenu() - we want to stay in the 3D hub world
+    // The 3D scene should already be visible and the hub world should be active
 }
 
 // Cleans up resources when leaving a level or the game
@@ -311,9 +362,16 @@ function cleanupCurrentLevel() {
         }
     }
     
-    // 6. Clear any UI elements with class 'game-ui'
+    // 6. Clear any level-specific UI elements with class 'game-ui'
+    // Only remove UI elements that are not part of the main menu system
     const uiElements = document.querySelectorAll('.game-ui');
-    uiElements.forEach(el => el.remove());
+    uiElements.forEach(el => {
+        // Only remove elements that are not part of the main menu screens
+        const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
+        if (!isMainMenuElement) {
+            el.remove();
+        }
+    });
 }
 
 // ---------- Interaction System ----------

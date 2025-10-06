@@ -79,34 +79,26 @@ window.showInstructions = function() {
 
 // Function to start story mode
 window.startStoryMode = function() {
-    console.log('Starting Story Mode...');
     hideAllMenuScreens();
     
     // Wait for main.js to be ready, then start the story mode
     const waitForMain = () => {
         if (window.initMainMenu) {
-            console.log('Calling initMainMenu...');
             window.initMainMenu();
             
             // Ensure the canvas is visible after initialization
             setTimeout(() => {
-                console.log('Making canvas visible...');
-                console.log('window.renderer:', window.renderer);
-                console.log('window.labelRenderer:', window.labelRenderer);
                 
                 // Try to find the renderer in the DOM if not available globally
                 let canvas = null;
                 if (window.renderer && window.renderer.domElement) {
                     canvas = window.renderer.domElement;
-                    console.log('Using global renderer');
                 } else {
                     // Try to find canvas in DOM
                     canvas = document.querySelector('canvas[data-engine*="three"]');
-                    console.log('Found canvas in DOM:', canvas);
                 }
                 
                 if (canvas) {
-                    console.log('Canvas found, making visible...');
                     canvas.style.display = 'block';
                     canvas.style.visibility = 'visible';
                     canvas.style.zIndex = '1';
@@ -116,11 +108,6 @@ window.startStoryMode = function() {
                     canvas.style.width = '100%';
                     canvas.style.height = '100%';
                     
-                    console.log('Canvas should be visible now');
-                    console.log('Canvas final display:', canvas.style.display);
-                    console.log('Canvas final visibility:', canvas.style.visibility);
-                } else {
-                    console.error('No canvas found!');
                 }
                 
                 // Try to find label renderer
@@ -135,13 +122,9 @@ window.startStoryMode = function() {
                 if (labelCanvas) {
                     labelCanvas.style.display = 'block';
                     labelCanvas.style.zIndex = '2';
-                    console.log('Label renderer made visible');
-                } else {
-                    console.log('Label renderer not found');
                 }
             }, 100);
         } else {
-            console.log('Waiting for main.js to load...');
             setTimeout(waitForMain, 100);
         }
     };
@@ -159,6 +142,9 @@ function hideAllMenuScreens() {
         }
     });
 }
+
+// Make hideAllMenuScreens available globally
+window.hideAllMenuScreens = hideAllMenuScreens;
 
 // ---------- Pause Menu Functions ----------
 let isGamePaused = false;

@@ -661,6 +661,7 @@ function createUI() {
     titleDiv.style.cssText = `
         color: white; font-size: 24px; font-weight: bold; position: absolute; 
         top: 20px; left: 50%; transform: translateX(-50%); text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(titleDiv);
 
@@ -670,6 +671,7 @@ function createUI() {
     instructionsDiv.style.cssText = `
         color: white; font-size: 16px; position: absolute; top: 60px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(instructionsDiv);
 
@@ -680,6 +682,7 @@ function createUI() {
     floorDiv.style.cssText = `
         color: white; font-size: 18px; position: absolute; top: 100px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(floorDiv);
     updateFloorIndicator();
@@ -1050,8 +1053,15 @@ function animate() {
 
 // Cleanup
 export function cleanupLevel() {
+    // Remove level-specific UI elements
     const uiElements = document.querySelectorAll('.game-ui');
-    uiElements.forEach(el => el.remove());
+    uiElements.forEach(el => {
+        // Only remove elements that are not part of the main menu system
+        const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
+        if (!isMainMenuElement) {
+            el.remove();
+        }
+    });
     
     document.removeEventListener("keydown", handleKeyDown);
     document.removeEventListener("keyup", handleKeyUp);

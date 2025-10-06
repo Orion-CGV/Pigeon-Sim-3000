@@ -66,7 +66,7 @@ const availableCars = [
         name: 'Classic Sedan', 
         obj: 'car01.obj', 
         mtl: 'car01.mtl',
-        textures: ['car.png', 'car_blue.png', 'car_gray.png', 'car_red.png']
+        textures: ['car.png', 'car_blue.png', 'car_gray.png', 'car_red.png', 'car_snow.png', 'car_snow_blue.png', 'car_snow_gray.png', 'car_snow_red.png', 'car_snowcovered.png', 'car_snowcovered_blue.png', 'car_snowcovered_gray.png', 'car_snowcovered_red.png']
     },
     { 
         id: 'car02', 
@@ -81,10 +81,69 @@ const availableCars = [
         obj: 'car03.obj', 
         mtl: 'car03.mtl',
         textures: ['car3.png', 'car3_red.png', 'car3_yellow.png']
+    },
+    { 
+        id: 'car04', 
+        name: 'Modern Sedan', 
+        obj: 'car04.obj', 
+        mtl: 'car04.mtl',
+        textures: ['car4.png', 'car4_grey.png', 'car4_lightgrey.png', 'car4_lightorange.png']
+    },
+    { 
+        id: 'car05', 
+        name: 'Police/Taxi Car', 
+        obj: 'car05.obj', 
+        mtl: 'car05.mtl',
+        textures: ['car5.png', 'car5_green.png', 'car5_grey.png', 'car5_police.png', 'car5_police_la.png', 'car5_taxi.png']
+    },
+    { 
+        id: 'car06', 
+        name: 'Utility Vehicle', 
+        obj: 'car06.obj', 
+        mtl: 'car06.mtl',
+        textures: ['car6.png']
+    },
+    { 
+        id: 'car07', 
+        name: 'Luxury Car', 
+        obj: 'car07.obj', 
+        mtl: 'car07.mtl',
+        textures: ['car7.png', 'car7_black.png', 'car7_brown.png', 'car7_green.png', 'car7_grey.png', 'car7_red.png']
+    },
+    { 
+        id: 'car08', 
+        name: 'Delivery Van', 
+        obj: 'car08.obj', 
+        mtl: 'car08.mtl',
+        textures: ['Car8.png', 'Car8_grey.png', 'Car8_mail.png', 'Car8_purple.png']
     }
 ];
 
 export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, callback) {
+    // Debug: Check if parameters are valid
+    console.log('Level2 initLevel called with:');
+    console.log('sceneRef:', sceneRef);
+    console.log('cameraRef:', cameraRef);
+    console.log('rendererRef:', rendererRef);
+    console.log('labelRendererRef:', labelRendererRef);
+    
+    if (!sceneRef) {
+        console.error('sceneRef is undefined!');
+        return;
+    }
+    if (!cameraRef) {
+        console.error('cameraRef is undefined!');
+        return;
+    }
+    if (!rendererRef) {
+        console.error('rendererRef is undefined!');
+        return;
+    }
+    if (!labelRendererRef) {
+        console.error('labelRendererRef is undefined!');
+        return;
+    }
+    
     scene = sceneRef;
     camera = cameraRef;
     renderer = rendererRef;
@@ -169,6 +228,11 @@ function setupLevel2() {
 }
 
 function setupRealisticLighting() {
+    if (!renderer) {
+        console.error('Renderer is undefined in setupRealisticLighting!');
+        return;
+    }
+    
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     
@@ -386,6 +450,7 @@ function createUI() {
     titleDiv.style.cssText = `
         color: white; font-size: 24px; font-weight: bold; position: absolute; 
         top: 20px; left: 50%; transform: translateX(-50%); text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(titleDiv);
 
@@ -396,6 +461,7 @@ function createUI() {
     carInfoDiv.style.cssText = `
         color: white; font-size: 16px; position: absolute; top: 60px; left: 20px; 
         text-shadow: 2px 2px 4px black; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(carInfoDiv);
 
@@ -406,6 +472,7 @@ function createUI() {
     textureInfoDiv.style.cssText = `
         color: white; font-size: 16px; position: absolute; top: 120px; left: 20px; 
         text-shadow: 2px 2px 4px black; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(textureInfoDiv);
 
@@ -421,6 +488,7 @@ function createUI() {
         color: white; font-size: 16px; position: absolute; bottom: 20px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
         background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(instructionsDiv);
 
@@ -432,6 +500,7 @@ function createUI() {
     driveStatusDiv.style.cssText = `
         color: #00ff00; font-size: 18px; position: absolute; top: 60px; right: 20px; 
         text-shadow: 2px 2px 4px black; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(driveStatusDiv);
 
@@ -443,6 +512,7 @@ function createUI() {
     speedDiv.style.cssText = `
         color: white; font-size: 18px; position: absolute; top: 100px; right: 20px; 
         text-shadow: 2px 2px 4px black; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(speedDiv);
 }
@@ -847,9 +917,15 @@ function animate() {
 
 // Cleanup function
 export function cleanupLevel() {
-    // Remove UI elements
+    // Remove level-specific UI elements
     const uiElements = document.querySelectorAll('.game-ui');
-    uiElements.forEach(el => el.remove());
+    uiElements.forEach(el => {
+        // Only remove elements that are not part of the main menu system
+        const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
+        if (!isMainMenuElement) {
+            el.remove();
+        }
+    });
     
     // Remove event listeners
     document.removeEventListener("keydown", handleKeyDown);
