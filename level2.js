@@ -120,12 +120,6 @@ const availableCars = [
 ];
 
 export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, callback) {
-    // Debug: Check if parameters are valid
-    console.log('Level2 initLevel called with:');
-    console.log('sceneRef:', sceneRef);
-    console.log('cameraRef:', cameraRef);
-    console.log('rendererRef:', rendererRef);
-    console.log('labelRendererRef:', labelRendererRef);
     
     if (!sceneRef) {
         console.error('sceneRef is undefined!');
@@ -173,9 +167,6 @@ export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, ca
     setupLevel2();
     setupLevelInput();
     setupAudio();
-    
-    // Start animation loop
-    renderer.setAnimationLoop(animate);
 }
 
 function setupLevel2() {
@@ -674,12 +665,20 @@ function stopEngine() {
 }
 
 // Input system
-function setupLevelInput() {
+export function setupLevelInput() {
+    // Remove existing listeners first to prevent duplicates
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keyup", handleKeyUp);
+    document.removeEventListener("pointerlockchange", onPointerLockChange);
+    document.removeEventListener("mousemove", onMouseMove);
+    
+    // Add event listeners
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("pointerlockchange", onPointerLockChange);
     
-    // Pointer lock on click
+    // Pointer lock on click - remove existing listener first
+    renderer.domElement.removeEventListener("click", requestLock);
     renderer.domElement.addEventListener("click", requestLock);
     
     // If already pointer locked, attach the mousemove listener immediately
@@ -694,6 +693,7 @@ function setupLevelInput() {
     scene.userData.mouseMoveHandler = onMouseMove;
     scene.userData.lockClickHandler = requestLock;
 }
+
 
 function requestLock() {
     if (document.pointerLockElement !== renderer.domElement) {
@@ -901,18 +901,10 @@ function checkGoal() {
     }
 }
 
-// Animation loop
-function animate() {
-    // Only update if game is not paused
-    if (!window.isGamePaused || !window.isGamePaused()) {
-        updatePlayer();
-        checkGoal();
-    }
-    
-    renderer.render(scene, camera);
-    if (labelRenderer) {
-        labelRenderer.render(scene, camera);
-    }
+// Level update function called by main.js animation loop
+export function updateLevel() {
+    updatePlayer();
+    checkGoal();
 }
 
 // Cleanup function

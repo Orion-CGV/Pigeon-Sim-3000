@@ -273,6 +273,10 @@ function loadLevel(levelNumber) {
             };
             
             levelModule.initLevel(scene, camera, renderer, labelRenderer, returnCallback);
+            
+            // Start the animation loop for the level
+            gameLoopActive = true;
+            renderer.setAnimationLoop(animate);
         })
         .catch(err => {
             // Handle errors if level fails to load

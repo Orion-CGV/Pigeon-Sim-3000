@@ -121,9 +121,6 @@ export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, ca
 
     setupLevel3();
     setupLevelInput();
-    
-    // Start animation loop
-    renderer.setAnimationLoop(animate);
 }
 
 function setupLevel3() {
@@ -735,11 +732,20 @@ function updateFloorIndicator() {
 }
 
 // Input system
-function setupLevelInput() {
+export function setupLevelInput() {
+    // Remove existing listeners first to prevent duplicates
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keyup", handleKeyUp);
+    document.removeEventListener("pointerlockchange", onPointerLockChange);
+    document.removeEventListener("mousemove", onMouseMove);
+    
+    // Add event listeners
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("pointerlockchange", onPointerLockChange);
     
+    // Pointer lock on click - remove existing listener first
+    renderer.domElement.removeEventListener("click", requestLock);
     renderer.domElement.addEventListener("click", requestLock);
     
     if (document.pointerLockElement === renderer.domElement) {
@@ -752,6 +758,7 @@ function setupLevelInput() {
     scene.userData.mouseMoveHandler = onMouseMove;
     scene.userData.lockClickHandler = requestLock;
 }
+
 
 function requestLock() {
     if (document.pointerLockElement !== renderer.domElement) {
@@ -1035,20 +1042,12 @@ function checkGoal() {
     }
 }
 
-// Animation loop
-function animate() {
-    // Only update if game is not paused
-    if (!window.isGamePaused || !window.isGamePaused()) {
-        updatePlayer();
-        updateBullets();        // Add this line
-        updateBoxPhysics();     // Add this line - CRITICAL!
-        checkGoal();
-    }
-    
-    renderer.render(scene, camera);
-    if (labelRenderer) {
-        labelRenderer.render(scene, camera);
-    }
+// Level update function called by main.js animation loop
+export function updateLevel() {
+    updatePlayer();
+    updateBullets();
+    updateBoxPhysics();
+    checkGoal();
 }
 
 // Cleanup

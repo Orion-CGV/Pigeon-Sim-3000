@@ -58,9 +58,6 @@ export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, ca
 
     setupLevel1();
     setupLevelInput();
-    
-    // Start animation loop for this level (main.js loop was stopped by cleanupCurrentLevel)
-    renderer.setAnimationLoop(animate);
 }
 
 function setupLevel1() {
@@ -216,13 +213,20 @@ function updateFlyStatus() {
 }
 
 // Input system
-function setupLevelInput() {
-    // Handlers defined below
+export function setupLevelInput() {
+    // Remove existing listeners first to prevent duplicates
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keyup", handleKeyUp);
+    document.removeEventListener("pointerlockchange", onPointerLockChange);
+    document.removeEventListener("mousemove", onMouseMove);
+    
+    // Add event listeners
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("pointerlockchange", onPointerLockChange);
     
-    // Pointer lock on click
+    // Pointer lock on click - remove existing listener first
+    renderer.domElement.removeEventListener("click", requestLock);
     renderer.domElement.addEventListener("click", requestLock);
     
     // If already pointer locked, attach the mousemove listener immediately
@@ -237,6 +241,7 @@ function setupLevelInput() {
     scene.userData.mouseMoveHandler = onMouseMove;
     scene.userData.lockClickHandler = requestLock;
 }
+
 
 // Helper to request lock
 function requestLock() {
@@ -471,18 +476,10 @@ function checkGoal() {
     }
 }
 
-// Animation loop
-function animate() {
-    // Only update if game is not paused
-    if (!window.isGamePaused || !window.isGamePaused()) {
-        updatePlayer();
-        checkGoal();
-    }
-    
-    renderer.render(scene, camera);
-    if (labelRenderer) {
-        labelRenderer.render(scene, camera);
-    }
+// Level update function called by main.js animation loop
+export function updateLevel() {
+    updatePlayer();
+    checkGoal();
 }
 
 // Cleanup function to be called by main.js
