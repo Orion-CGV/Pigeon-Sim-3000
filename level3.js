@@ -121,9 +121,6 @@ export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, ca
 
     setupLevel3();
     setupLevelInput();
-    
-    // Start animation loop
-    renderer.setAnimationLoop(animate);
 }
 
 function setupLevel3() {
@@ -661,15 +658,17 @@ function createUI() {
     titleDiv.style.cssText = `
         color: white; font-size: 24px; font-weight: bold; position: absolute; 
         top: 20px; left: 50%; transform: translateX(-50%); text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(titleDiv);
 
     const instructionsDiv = document.createElement('div');
     instructionsDiv.className = "game-ui";
-    instructionsDiv.innerHTML = 'Escape to the rooftop!<br>Find the stairs to go up, reach the green door on the roof.<br>WASD: Move, Mouse: Look, Space: Jump, F: Shoot Bullets, ESC: Main Menu<br>Shoot boxes to reverse their gravity!<br>Building is now 5x larger - explore the massive space!';
+    instructionsDiv.innerHTML = 'Escape to the rooftop!<br>Find the stairs to go up, reach the green door on the roof.<br>WASD: Move, Mouse: Look, Space: Jump, F: Shoot Bullets, ESC: Pause Menu<br>Shoot boxes to reverse their gravity!<br>Building is now 5x larger - explore the massive space!';
     instructionsDiv.style.cssText = `
         color: white; font-size: 16px; position: absolute; top: 60px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(instructionsDiv);
 
@@ -680,6 +679,7 @@ function createUI() {
     floorDiv.style.cssText = `
         color: white; font-size: 18px; position: absolute; top: 100px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(floorDiv);
     updateFloorIndicator();
@@ -732,11 +732,20 @@ function updateFloorIndicator() {
 }
 
 // Input system
-function setupLevelInput() {
+export function setupLevelInput() {
+    // Remove existing listeners first to prevent duplicates
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keyup", handleKeyUp);
+    document.removeEventListener("pointerlockchange", onPointerLockChange);
+    document.removeEventListener("mousemove", onMouseMove);
+    
+    // Add event listeners
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("pointerlockchange", onPointerLockChange);
     
+    // Pointer lock on click - remove existing listener first
+    renderer.domElement.removeEventListener("click", requestLock);
     renderer.domElement.addEventListener("click", requestLock);
     
     if (document.pointerLockElement === renderer.domElement) {
@@ -750,6 +759,7 @@ function setupLevelInput() {
     scene.userData.lockClickHandler = requestLock;
 }
 
+
 function requestLock() {
     if (document.pointerLockElement !== renderer.domElement) {
         renderer.domElement.requestPointerLock();
@@ -760,7 +770,13 @@ function handleKeyDown(e) {
     if (e.code === "Space") {
         spaceHeld = true;
     } else if (e.code === "Escape") {
-        returnToMainCallback();
+        // Show pause menu using ESC key
+        if (window.showPauseMenu) {
+            window.showPauseMenu(3);
+        } else {
+            // Fallback to direct return if pause menu not available
+            returnToMainCallback();
+        }
     } else if (e.code === "KeyF") { // Shoot with F key
         shootBullet();
     } else {
@@ -1026,23 +1042,25 @@ function checkGoal() {
     }
 }
 
-// Animation loop
-function animate() {
+// Level update function called by main.js animation loop
+export function updateLevel() {
     updatePlayer();
-    updateBullets();        // Add this line
-    updateBoxPhysics();     // Add this line - CRITICAL!
+    updateBullets();
+    updateBoxPhysics();
     checkGoal();
-    
-    renderer.render(scene, camera);
-    if (labelRenderer) {
-        labelRenderer.render(scene, camera);
-    }
 }
 
 // Cleanup
 export function cleanupLevel() {
+    // Remove level-specific UI elements
     const uiElements = document.querySelectorAll('.game-ui');
-    uiElements.forEach(el => el.remove());
+    uiElements.forEach(el => {
+        // Only remove elements that are not part of the main menu system
+        const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
+        if (!isMainMenuElement) {
+            el.remove();
+        }
+    });
     
     document.removeEventListener("keydown", handleKeyDown);
     document.removeEventListener("keyup", handleKeyUp);

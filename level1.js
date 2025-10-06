@@ -58,9 +58,6 @@ export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, ca
 
     setupLevel1();
     setupLevelInput();
-    
-    // Start animation loop for this level (main.js loop was stopped by cleanupCurrentLevel)
-    renderer.setAnimationLoop(animate);
 }
 
 function setupLevel1() {
@@ -180,15 +177,17 @@ function createUI() {
     titleDiv.style.cssText = `
         color: white; font-size: 24px; font-weight: bold; position: absolute; 
         top: 20px; left: 50%; transform: translateX(-50%); text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(titleDiv);
 
     const instructionsDiv = document.createElement('div');
     instructionsDiv.className = "game-ui";
-    instructionsDiv.innerHTML = 'Find the green goal building!<br>WASD: Move, Mouse: Look, Space: Jump, F: Toggle Fly, ESC: Main Menu';
+    instructionsDiv.innerHTML = 'Find the green goal building!<br>WASD: Move, Mouse: Look, Space: Jump, F: Toggle Fly, ESC: Pause Menu';
     instructionsDiv.style.cssText = `
         color: white; font-size: 16px; position: absolute; top: 60px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(instructionsDiv);
 
@@ -200,6 +199,7 @@ function createUI() {
     flyStatusDiv.style.cssText = `
         color: white; font-size: 16px; position: absolute; top: 100px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
     `;
     document.body.appendChild(flyStatusDiv);
 }
@@ -213,13 +213,20 @@ function updateFlyStatus() {
 }
 
 // Input system
-function setupLevelInput() {
-    // Handlers defined below
+export function setupLevelInput() {
+    // Remove existing listeners first to prevent duplicates
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keyup", handleKeyUp);
+    document.removeEventListener("pointerlockchange", onPointerLockChange);
+    document.removeEventListener("mousemove", onMouseMove);
+    
+    // Add event listeners
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("pointerlockchange", onPointerLockChange);
     
-    // Pointer lock on click
+    // Pointer lock on click - remove existing listener first
+    renderer.domElement.removeEventListener("click", requestLock);
     renderer.domElement.addEventListener("click", requestLock);
     
     // If already pointer locked, attach the mousemove listener immediately
@@ -235,6 +242,7 @@ function setupLevelInput() {
     scene.userData.lockClickHandler = requestLock;
 }
 
+
 // Helper to request lock
 function requestLock() {
     if (document.pointerLockElement !== renderer.domElement) {
@@ -246,8 +254,13 @@ function handleKeyDown(e) {
     if (e.code === "Space") {
         spaceHeld = true;
     } else if (e.code === "Escape") {
-        // Exit level using ESC key
-        returnToMainCallback(); 
+        // Show pause menu using ESC key
+        if (window.showPauseMenu) {
+            window.showPauseMenu(1);
+        } else {
+            // Fallback to direct return if pause menu not available
+            returnToMainCallback();
+        } 
     } else if (e.code === "KeyF" && !flyKeyLocked) {
         // Toggle flying mode
         toggleFlying();
@@ -463,24 +476,25 @@ function checkGoal() {
     }
 }
 
-// Animation loop
-function animate() {
+// Level update function called by main.js animation loop
+export function updateLevel() {
     updatePlayer();
     checkGoal();
-    
-    renderer.render(scene, camera);
-    if (labelRenderer) {
-        labelRenderer.render(scene, camera);
-    }
 }
 
 // Cleanup function to be called by main.js
 export function cleanupLevel() {
     // Remove all event listeners and DOM elements
     
-    // Remove UI elements (using the global 'game-ui' class is safer)
+    // Remove level-specific UI elements
     const uiElements = document.querySelectorAll('.game-ui');
-    uiElements.forEach(el => el.remove());
+    uiElements.forEach(el => {
+        // Only remove elements that are not part of the main menu system
+        const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
+        if (!isMainMenuElement) {
+            el.remove();
+        }
+    });
     
     // Remove event listeners
     document.removeEventListener("keydown", handleKeyDown);

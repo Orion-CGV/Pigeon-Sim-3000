@@ -13,9 +13,22 @@ let scene,     // The 3D scene that contains all objects
 // ---------- Game State ----------
 // Tracks which level we're currently in
 let currentLevel = 'main'; // Can be 'main', 'level1', 'level2', 'level3'
+// Tracks whether we're in Story Mode (3D hub world)
+let isInStoryMode = false;
 
 // Initializes the main menu/hub world where player selects levels
 function initMainMenu() {
+    // Set Story Mode flag
+    isInStoryMode = true;
+    
+    // Clean up any existing scene first
+    if (scene) {
+        // Clear all objects from the scene
+        while(scene.children.length > 0) {
+            scene.remove(scene.children[0]);
+        }
+    }
+    
     // If returning from a level, the scene/renderer might be null, so recreate them
     // Check if WebGL renderer doesn't exist yet
     if (!renderer) {
@@ -52,55 +65,76 @@ function initMainMenu() {
     );
 
     // Start the animation loop that updates and renders the scene continuously
+    gameLoopActive = true;
     renderer.setAnimationLoop(animate);
+    
+    console.log('initMainMenu completed');
+    console.log('Scene children count:', scene.children.length);
+    console.log('Scene children:', scene.children.map(child => child.name || child.type));
+    console.log('Renderer canvas:', renderer.domElement);
+    console.log('Game loop active:', gameLoopActive);
 
     // ---------- Resize ----------
     // Add event listener to handle browser window resizing
     window.addEventListener("resize", onWindowResize);
 
     // ---------- Player ----------
-    // Define player dimensions
-    const PLAYER_SIZE = { x: 1, y: 1, z: 1 };
-    // Create box geometry for player (width, height, depth)
-    const playerGeometry = new THREE.BoxGeometry(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z);
-    // Create green material for player
-    const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    // Combine geometry and material into a mesh (visible 3D object)
-    const player = new THREE.Mesh(playerGeometry, playerMaterial);
-    // Position player so its bottom sits on ground (y = height/2)
-    player.position.y = PLAYER_SIZE.y / 2;
-    // Give player a name for easy reference later
-    player.name = 'player';
-    // Add player to the scene
-    scene.add(player);
+    console.log('Creating player...');
+    try {
+        // Define player dimensions
+        const PLAYER_SIZE = { x: 1, y: 1, z: 1 };
+        // Create box geometry for player (width, height, depth)
+        const playerGeometry = new THREE.BoxGeometry(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z);
+        // Create green material for player
+        const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        // Combine geometry and material into a mesh (visible 3D object)
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        // Position player so its bottom sits on ground (y = height/2)
+        player.position.y = PLAYER_SIZE.y / 2;
+        // Give player a name for easy reference later
+        player.name = 'player';
+        // Add player to the scene
+        scene.add(player);
+        console.log('Player created and added to scene');
+    } catch (error) {
+        console.error('Error creating player:', error);
+    }
 
     // ---------- Ground ----------
-    // Create flat plane geometry for ground (width, height)
-    const groundGeom = new THREE.PlaneGeometry(80, 80);
-    // Create gray material that renders both sides of the plane
-    const groundMat = new THREE.MeshBasicMaterial({ color: 0x808080, side: THREE.DoubleSide });
-    // Create ground mesh
-    const ground = new THREE.Mesh(groundGeom, groundMat);
-    // Rotate plane 90 degrees to make it horizontal (default is vertical)
-    ground.rotation.x = -Math.PI / 2;
-    // Position ground at y=0
-    ground.position.y = 0;
-    // Add ground to scene
-    scene.add(ground);
+    console.log('Creating ground...');
+    try {
+        // Create flat plane geometry for ground (width, height)
+        const groundGeom = new THREE.PlaneGeometry(80, 80);
+        // Create gray material that renders both sides of the plane
+        const groundMat = new THREE.MeshBasicMaterial({ color: 0x808080, side: THREE.DoubleSide });
+        // Create ground mesh
+        const ground = new THREE.Mesh(groundGeom, groundMat);
+        // Rotate plane 90 degrees to make it horizontal (default is vertical)
+        ground.rotation.x = -Math.PI / 2;
+        // Position ground at y=0
+        ground.position.y = 0;
+        // Add ground to scene
+        scene.add(ground);
+        console.log('Ground created and added to scene');
+    } catch (error) {
+        console.error('Error creating ground:', error);
+    }
 
     // ---------- Arcade placeholders ----------
-    // Arrays to store arcade machines and their labels
-    const arcades = [];
-    const arcadeLabels = [];
-    // Colors for the three arcade machines (red, blue, yellow)
-    const arcadeColors = [0xff0000, 0x0000ff, 0xffff00];
-    // Names to display on each machine
-    const arcadeNames = ["Level 1", "Level 2", "Level 3"];
-    // Color names for interaction prompts
-    const arcadeColorNames = ["Red", "Blue", "Yellow"];
+    console.log('Creating arcade machines...');
+    try {
+        // Arrays to store arcade machines and their labels
+        const arcades = [];
+        const arcadeLabels = [];
+        // Colors for the three arcade machines (red, blue, yellow)
+        const arcadeColors = [0xff0000, 0x0000ff, 0xffff00];
+        // Names to display on each machine
+        const arcadeNames = ["Level 1", "Level 2", "Level 3"];
+        // Color names for interaction prompts
+        const arcadeColorNames = ["Red", "Blue", "Yellow"];
 
-    // Create three arcade machines
-    for (let i = 0; i < 3; i++) {
+        // Create three arcade machines
+        for (let i = 0; i < 3; i++) {
         // Create taller box geometry for arcade machine (1x2x1 units)
         const g = new THREE.BoxGeometry(1, 2, 1);
         // Create colored material using current arcade color
@@ -146,10 +180,14 @@ function initMainMenu() {
         arcadeLabels.push(label);
     }
 
-    // Store arcades in scene for easy access from other functions
-    scene.userData.arcades = arcades;
-    // Precompute collision boxes for all arcades (optimization)
-    scene.userData.arcadeBoxes = arcades.map(a => new THREE.Box3().setFromObject(a));
+        // Store arcades in scene for easy access from other functions
+        scene.userData.arcades = arcades;
+        // Precompute collision boxes for all arcades (optimization)
+        scene.userData.arcadeBoxes = arcades.map(a => new THREE.Box3().setFromObject(a));
+        console.log('Arcade machines created and added to scene');
+    } catch (error) {
+        console.error('Error creating arcade machines:', error);
+    }
 
     // ---------- Interaction System ----------
     // Set up system for detecting when player looks at arcade machines
@@ -174,24 +212,78 @@ function loadLevel(levelNumber) {
     // 1. Clean up current scene before loading new one
     cleanupCurrentLevel(); 
     
-    // 2. Update game state to track current level
+    // 2. Ensure scene, camera, and renderers are properly initialized
+    if (!scene) {
+        scene = new THREE.Scene();
+    }
+    if (!camera) {
+        camera = new THREE.PerspectiveCamera(
+            75, // Field of view in degrees
+            window.innerWidth / window.innerHeight, // Aspect ratio
+            0.1, // Near clipping plane
+            1000 // Far clipping plane
+        );
+    }
+    if (!renderer) {
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+    }
+    if (!labelRenderer) {
+        labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+    }
+    
+    // 3. Update game state to track current level
     currentLevel = `level${levelNumber}`;
     
-    // 3. Dynamically import the level module (separate JavaScript file)
+    // 4. Hide HTML menu screens when loading a level (so level UI is visible)
+    if (window.hideAllMenuScreens) {
+        window.hideAllMenuScreens();
+    }
+    
+    // 5. Show the canvas elements
+    if (renderer && renderer.domElement) {
+        renderer.domElement.style.display = 'block';
+    }
+    if (labelRenderer && labelRenderer.domElement) {
+        labelRenderer.domElement.style.display = 'block';
+    }
+    
+    // 6. Dynamically import the level module (separate JavaScript file)
     import(`./level${levelNumber}.js`)
         .then(levelModule => {
             // Store the module reference for later cleanup
             currentLevelModule = levelModule;
+            
             // Initialize the level, passing scene, camera, and callback function
-            levelModule.initLevel(scene, camera, renderer, labelRenderer, () => {
-                // Callback for returning to main menu (called when level completes)
-                returnToMainMenu();
-            });
+            // Use different callback based on whether we're in Story Mode or direct level selection
+            const returnCallback = () => {
+                if (isInStoryMode) {
+                    // We're in Story Mode (3D hub world), use Story Mode return
+                    returnToMainMenuFromStory();
+                } else {
+                    // We're in direct level selection, use normal return
+                    returnToMainMenu();
+                }
+            };
+            
+            levelModule.initLevel(scene, camera, renderer, labelRenderer, returnCallback);
+            
+            // Start the animation loop for the level
+            gameLoopActive = true;
+            renderer.setAnimationLoop(animate);
         })
         .catch(err => {
             // Handle errors if level fails to load
             console.error(`Failed to load level ${levelNumber}:`, err);
             alert(`Level ${levelNumber} failed to load. Check console for details.`);
+            // Return to main menu on error
+            returnToMainMenu();
         });
 }
 
@@ -201,8 +293,36 @@ function returnToMainMenu() {
     cleanupCurrentLevel();
     // Update game state
     currentLevel = 'main';
-    // Reinitialize main menu
-    initMainMenu();
+    // Reset Story Mode flag (we're going back to HTML menu)
+    isInStoryMode = false;
+    
+    // Hide the canvas elements
+    if (renderer && renderer.domElement) {
+        renderer.domElement.style.display = 'none';
+    }
+    if (labelRenderer && labelRenderer.domElement) {
+        labelRenderer.domElement.style.display = 'none';
+    }
+    
+    // Check if main menu elements exist
+    const mainMenu = document.getElementById('main-menu');
+    
+    // Show main menu
+    if (window.showMainMenu) {
+        window.showMainMenu();
+    }
+}
+
+// Returns player from Story Mode back to main menu (without hiding canvas)
+function returnToMainMenuFromStory() {
+    // Clean up the current level
+    cleanupCurrentLevel();
+    // Update game state
+    currentLevel = 'main';
+    // Keep Story Mode flag set (we're staying in 3D hub world)
+    
+    // Don't call showMainMenu() - we want to stay in the 3D hub world
+    // The 3D scene should already be visible and the hub world should be active
 }
 
 // Cleans up resources when leaving a level or the game
@@ -246,9 +366,16 @@ function cleanupCurrentLevel() {
         }
     }
     
-    // 6. Clear any UI elements with class 'game-ui'
+    // 6. Clear any level-specific UI elements with class 'game-ui'
+    // Only remove UI elements that are not part of the main menu system
     const uiElements = document.querySelectorAll('.game-ui');
-    uiElements.forEach(el => el.remove());
+    uiElements.forEach(el => {
+        // Only remove elements that are not part of the main menu screens
+        const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
+        if (!isMainMenuElement) {
+            el.remove();
+        }
+    });
 }
 
 // ---------- Interaction System ----------
@@ -389,6 +516,36 @@ function setupInputSystem() {
 
 // Handles key press events
 function handleKeyDown(e) {
+    // Check for ESC key to show pause menu
+    if (e.code === "Escape") {
+        e.preventDefault();
+        console.log('ESC key pressed, currentLevel:', currentLevel);
+        console.log('isGamePaused function available:', !!window.isGamePaused);
+        console.log('showPauseMenu function available:', !!window.showPauseMenu);
+        
+        if (window.isGamePaused && window.isGamePaused()) {
+            // If already paused, resume
+            console.log('Resuming game...');
+            window.resumeGame();
+        } else {
+            // Show pause menu
+            console.log('Showing pause menu...');
+            if (currentLevel === 'main') {
+                console.log('Pausing main menu');
+                window.showPauseMenu('main');
+            } else if (currentLevelModule) {
+                // Extract level number from currentLevel (e.g., 'level1' -> 1)
+                const levelNumber = currentLevel.replace('level', '');
+                console.log('Pausing level:', levelNumber);
+                window.showPauseMenu(parseInt(levelNumber));
+            } else {
+                console.log('No current level module, pausing anyway');
+                window.showPauseMenu();
+            }
+        }
+        return;
+    }
+    
     // Check for space bar specifically (for jumping)
     if (e.code === "Space") {
         spaceHeld = true;
@@ -556,21 +713,63 @@ function onWindowResize() {
 // ---------- Animation Loop ----------
 // Main game loop that runs continuously (called ~60 times per second)
 function animate() {
-    // Only update player and interactions in main menu
-    if (currentLevel === 'main') {
-        updatePlayer();        // Update player position and physics
-        checkInteractions();   // Check if player can interact with anything
-        handleInteraction();   // Handle interaction if E key is pressed
-    }
-    
-    // Render the 3D scene using WebGL
-    renderer.render(scene, camera);
-    // Render HTML labels on top of 3D scene
-    if (labelRenderer) {
-        labelRenderer.render(scene, camera);
+    // Only continue if game is not paused
+    if (gameLoopActive && !window.isGamePaused()) {
+        // Only update player and interactions in main menu
+        if (currentLevel === 'main') {
+            updatePlayer();        // Update player position and physics
+            checkInteractions();   // Check if player can interact with anything
+            handleInteraction();   // Handle interaction if E key is pressed
+        }
+        
+        // Update the current level (if it has an update function)
+        if (currentLevelModule && currentLevelModule.updateLevel) {
+            currentLevelModule.updateLevel();
+        }
+        
+        // Render the 3D scene using WebGL
+        renderer.render(scene, camera);
+        // Render HTML labels on top of 3D scene
+        if (labelRenderer) {
+            labelRenderer.render(scene, camera);
+        }
+    } else {
+        // Still render even when paused to maintain visual state
+        renderer.render(scene, camera);
+        if (labelRenderer) {
+            labelRenderer.render(scene, camera);
+        }
     }
 }
 
+
+// ---------- Pause System ----------
+let gameLoopActive = false;
+
+// Function to pause the game loop
+window.pauseGameLoop = function() {
+    gameLoopActive = false;
+    if (renderer) {
+        renderer.setAnimationLoop(null);
+    }
+};
+
+// Function to resume the game loop
+window.resumeGameLoop = function() {
+    gameLoopActive = true;
+    if (renderer) {
+        renderer.setAnimationLoop(animate);
+    }
+};
+
+// Make functions available globally for menu.js
+window.loadLevel = loadLevel;
+window.initMainMenu = initMainMenu;
+window.returnToMainMenu = returnToMainMenu;
+window.returnToMainMenuFromStory = returnToMainMenuFromStory;
+window.renderer = renderer;
+window.labelRenderer = labelRenderer;
+
 // ---------- Initialize Game ----------
-// Start the game by initializing the main menu
-initMainMenu();
+// The menu.js will handle the intro screen and main menu
+// This file focuses on the 3D game logic
