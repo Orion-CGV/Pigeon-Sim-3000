@@ -416,7 +416,7 @@ function createUI() {
     // Instructions
     const instructionsDiv = document.createElement('div');
     instructionsDiv.className = "game-ui";
-    instructionsDiv.innerHTML = 'Drive to the green goal!<br>W/S: Accelerate/Brake, A/D: Steer, Space: Handbrake<br>Q/R: Switch Car, T/Y: Switch Color, E: Engine Sound, C: Reset Camera, ESC: Menu';
+    instructionsDiv.innerHTML = 'Drive to the green goal!<br>W/S: Accelerate/Brake, A/D: Steer, Space: Handbrake<br>Q/R: Switch Car, T/Y: Switch Color, E: Engine Sound, C: Reset Camera, ESC: Pause Menu';
     instructionsDiv.style.cssText = `
         color: white; font-size: 16px; position: absolute; bottom: 20px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
@@ -635,7 +635,13 @@ function handleKeyDown(e) {
     if (e.code === "Space") {
         spaceHeld = true;
     } else if (e.code === "Escape") {
-        returnToMainCallback(); 
+        // Show pause menu using ESC key
+        if (window.showPauseMenu) {
+            window.showPauseMenu(2);
+        } else {
+            // Fallback to direct return if pause menu not available
+            returnToMainCallback();
+        } 
     // F key toggle removed - always in driving mode
     } else if (e.code === "KeyE") {
         if (isEngineRunning) {
@@ -827,8 +833,11 @@ function checkGoal() {
 
 // Animation loop
 function animate() {
-    updatePlayer();
-    checkGoal();
+    // Only update if game is not paused
+    if (!window.isGamePaused || !window.isGamePaused()) {
+        updatePlayer();
+        checkGoal();
+    }
     
     renderer.render(scene, camera);
     if (labelRenderer) {

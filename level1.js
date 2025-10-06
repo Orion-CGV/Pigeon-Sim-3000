@@ -185,7 +185,7 @@ function createUI() {
 
     const instructionsDiv = document.createElement('div');
     instructionsDiv.className = "game-ui";
-    instructionsDiv.innerHTML = 'Find the green goal building!<br>WASD: Move, Mouse: Look, Space: Jump, F: Toggle Fly, ESC: Main Menu';
+    instructionsDiv.innerHTML = 'Find the green goal building!<br>WASD: Move, Mouse: Look, Space: Jump, F: Toggle Fly, ESC: Pause Menu';
     instructionsDiv.style.cssText = `
         color: white; font-size: 16px; position: absolute; top: 60px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
@@ -246,8 +246,13 @@ function handleKeyDown(e) {
     if (e.code === "Space") {
         spaceHeld = true;
     } else if (e.code === "Escape") {
-        // Exit level using ESC key
-        returnToMainCallback(); 
+        // Show pause menu using ESC key
+        if (window.showPauseMenu) {
+            window.showPauseMenu(1);
+        } else {
+            // Fallback to direct return if pause menu not available
+            returnToMainCallback();
+        } 
     } else if (e.code === "KeyF" && !flyKeyLocked) {
         // Toggle flying mode
         toggleFlying();
@@ -465,8 +470,11 @@ function checkGoal() {
 
 // Animation loop
 function animate() {
-    updatePlayer();
-    checkGoal();
+    // Only update if game is not paused
+    if (!window.isGamePaused || !window.isGamePaused()) {
+        updatePlayer();
+        checkGoal();
+    }
     
     renderer.render(scene, camera);
     if (labelRenderer) {

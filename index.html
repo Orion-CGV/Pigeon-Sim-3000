@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arcade Game</title>
+    <title>Legacy Arcade</title>
     <script type="importmap">
     {
       "imports": {
@@ -12,19 +12,326 @@
       }
     }
     </script>
-    <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
-            overflow: hidden; 
-            background: #000;
-        }
-        canvas { 
-            display: block; 
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Intro Screen -->
+    <div id="intro-screen">
+        <div class="arcade-icon">🕹️</div>
+        <div class="company-logo">ORION STUDIOS</div>
+        <div class="company-subtitle">Presents</div>
+        <div class="game-title">LEGACY ARCADE</div>
+        <div class="game-subtitle">A child's journey through magical arcade worlds</div>
+        <div class="loading-bar">
+            <div class="loading-progress"></div>
+        </div>
+        <div style="color: #888; font-size: 14px; opacity: 0; animation: fadeIn 0.5s ease-out 5.2s forwards;">Loading arcade magic...</div>
+        <button class="skip-button" onclick="skipIntro()">Skip Intro</button>
+    </div>
+
+    <!-- Main Menu Screen -->
+    <div id="main-menu" class="menu-screen hidden">
+        <div class="menu-background">
+            <div class="menu-particles"></div>
+        </div>
+        <div class="menu-content">
+            <div class="menu-logo">
+                <div class="arcade-icon-large">🕹️</div>
+                <h1 class="menu-title">LEGACY ARCADE</h1>
+                <p class="menu-subtitle">A child's journey through magical arcade worlds</p>
+            </div>
+            
+            <nav class="menu-navigation">
+                <button class="menu-button" onclick="showPlaySubmenu()">
+                    <span class="button-icon">🎮</span>
+                    <span class="button-text">PLAY</span>
+                </button>
+                <button class="menu-button" onclick="showSettings()">
+                    <span class="button-icon">⚙️</span>
+                    <span class="button-text">SETTINGS</span>
+                </button>
+                <button class="menu-button" onclick="showCredits()">
+                    <span class="button-icon">📋</span>
+                    <span class="button-text">CREDITS</span>
+                </button>
+                <button class="menu-button" onclick="showInstructions()">
+                    <span class="button-icon">❓</span>
+                    <span class="button-text">HOW TO PLAY</span>
+                </button>
+            </nav>
+            
+            <div class="menu-footer">
+                <p class="version-info">Version 1.0.0 | Made with ❤️ by Orion Studios</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Play Submenu Screen -->
+    <div id="play-submenu" class="menu-screen hidden">
+        <div class="menu-background">
+            <div class="menu-particles"></div>
+        </div>
+        <div class="menu-content">
+            <div class="menu-header">
+                <h2 class="screen-title">PLAY</h2>
+                <button class="back-button" onclick="showMainMenu()">← Back</button>
+            </div>
+            
+            <div class="play-options">
+                <div class="play-option-card" onclick="startStoryMode()">
+                    <div class="play-icon">🏠</div>
+                    <h3 class="play-title">Story Mode</h3>
+                    <p class="play-description">Enter the 3D arcade hub world and explore the arcade machines to discover the story. Walk around and interact with the arcade cabinets to start your journey.</p>
+                    <div class="play-features">
+                        <span class="feature-tag">3D Hub World</span>
+                        <span class="feature-tag">Exploration</span>
+                        <span class="feature-tag">Interactive</span>
+                    </div>
+                </div>
+                
+                <div class="play-option-card" onclick="showLevelSelect()">
+                    <div class="play-icon">🎮</div>
+                    <h3 class="play-title">Arcade Games</h3>
+                    <p class="play-description">Jump directly into the arcade games and experience each world as a different character</p>
+                    <div class="play-features">
+                        <span class="feature-tag">Direct Play</span>
+                        <span class="feature-tag">Level Select</span>
+                        <span class="feature-tag">Quick Access</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Level Select Screen -->
+    <div id="level-select" class="menu-screen hidden">
+        <div class="menu-background">
+            <div class="menu-particles"></div>
+        </div>
+        <div class="menu-content">
+            <div class="menu-header">
+                <h2 class="screen-title">SELECT LEVEL</h2>
+                <button class="back-button" onclick="showMainMenu()">← Back</button>
+            </div>
+            
+            <div class="level-grid">
+                <div class="level-card" onclick="startLevel(1)">
+                    <div class="level-icon">🕊️</div>
+                    <h3 class="level-title">Flight Frenzy</h3>
+                    <p class="level-description">City exploration with flying mechanics. Navigate through skyscrapers, use F to toggle flying mode, and find the green goal building.</p>
+                    <div class="level-difficulty">Difficulty: Easy</div>
+                </div>
+                
+                <div class="level-card" onclick="startLevel(2)">
+                    <div class="level-icon">🏎️</div>
+                    <h3 class="level-title">City Racing</h3>
+                    <p class="level-description">Drive through the city in your custom car. Switch cars with Q/R, change colors with T/Y, and race to the goal.</p>
+                    <div class="level-difficulty">Difficulty: Medium</div>
+                </div>
+                
+                <div class="level-card" onclick="startLevel(3)">
+                    <div class="level-icon">🔫</div>
+                    <h3 class="level-title">Mystic Trial</h3>
+                    <p class="level-description">Advanced combat level with bullet mechanics. Defeat enemies and navigate through challenging obstacles.</p>
+                    <div class="level-difficulty">Difficulty: Hard</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Screen -->
+    <div id="settings" class="menu-screen hidden">
+        <div class="menu-background">
+            <div class="menu-particles"></div>
+        </div>
+        <div class="menu-content">
+            <div class="menu-header">
+                <h2 class="screen-title">SETTINGS</h2>
+                <button class="back-button" onclick="returnFromSettings()">← Back</button>
+            </div>
+            
+            <div class="settings-content">
+                <div class="setting-group">
+                    <h3>Graphics</h3>
+                    <div class="setting-item">
+                        <label>Quality</label>
+                        <select id="quality-select">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label>Fullscreen</label>
+                        <button class="toggle-button" onclick="toggleFullscreen()">OFF</button>
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>Audio</h3>
+                    <div class="setting-item">
+                        <label>Master Volume</label>
+                        <input type="range" id="master-volume" min="0" max="100" value="70">
+                        <span id="volume-display">70%</span>
+                    </div>
+                    <div class="setting-item">
+                        <label>Sound Effects</label>
+                        <button class="toggle-button" onclick="toggleSoundEffects()">ON</button>
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>Controls</h3>
+                    <div class="setting-item">
+                        <label>Mouse Sensitivity</label>
+                        <input type="range" id="mouse-sensitivity" min="0.1" max="0.5" step="0.05" value="0.25">
+                        <span id="sensitivity-display">0.25</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credits Screen -->
+    <div id="credits" class="menu-screen hidden">
+        <div class="menu-background">
+            <div class="menu-particles"></div>
+        </div>
+        <div class="menu-content">
+            <div class="menu-header">
+                <h2 class="screen-title">CREDITS</h2>
+                <button class="back-button" onclick="showMainMenu()">← Back</button>
+            </div>
+            
+            <div class="credits-content">
+                <div class="credits-section">
+                    <h3>Development</h3>
+                    <p><strong>Orion Studios</strong></p>
+                    <p>Lead Developer: Arcade Master</p>
+                    <p>Game Design: Legacy Team</p>
+                    <p>3D Art: Retro Artists</p>
+                </div>
+                
+                <div class="credits-section">
+                    <h3>Technology</h3>
+                    <p>Built with Three.js</p>
+                    <p>WebGL Graphics Engine</p>
+                    <p>Modern Web Technologies</p>
+                    <p>Retro Arcade Shaders</p>
+                </div>
+                
+                <div class="credits-section">
+                    <h3>Special Thanks</h3>
+                    <p>All the arcade legends who inspired this game</p>
+                    <p>The grandfather's legacy that lives on</p>
+                    <p>Players who believe in the magic of arcades</p>
+                </div>
+                
+                <div class="credits-section">
+                    <h3>Copyright</h3>
+                    <p>© 2024 Orion Studios</p>
+                    <p>All rights reserved</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instructions Screen -->
+    <div id="instructions" class="menu-screen hidden">
+        <div class="menu-background">
+            <div class="menu-particles"></div>
+        </div>
+        <div class="menu-content">
+            <div class="menu-header">
+                <h2 class="screen-title">HOW TO PLAY</h2>
+                <button class="back-button" onclick="showMainMenu()">← Back</button>
+            </div>
+            
+            <div class="instructions-content">
+                <div class="instruction-section">
+                    <h3>🎮 Basic Controls</h3>
+                    <div class="control-list">
+                        <div class="control-item">
+                            <span class="key">WASD</span>
+                            <span class="action">Move around</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="key">Mouse</span>
+                            <span class="action">Look around</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="key">Space</span>
+                            <span class="action">Jump</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="key">E</span>
+                            <span class="action">Interact</span>
+                        </div>
+                        <div class="control-item">
+                            <span class="key">ESC</span>
+                            <span class="action">Return to menu</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="instruction-section">
+                    <h3>🕊️ Level 1 - Flight Frenzy</h3>
+                    <p>City exploration with flying mechanics. Navigate through skyscrapers and find the green goal building. Use F to toggle flying mode for easier navigation, WASD to move, and mouse to look around.</p>
+                </div>
+                
+                <div class="instruction-section">
+                    <h3>🏎️ Level 2 - City Racing</h3>
+                    <p>Drive through the city in your custom car. Use W/S to accelerate/brake, A/D to steer, Q/R to switch cars, T/Y to change colors, E to toggle engine sound, and Space for handbrake.</p>
+                </div>
+                
+                <div class="instruction-section">
+                    <h3>🔫 Level 3 - Mystic Trial</h3>
+                    <p>Advanced combat level with bullet mechanics. Defeat enemies and navigate through challenging obstacles. Use mouse to aim and shoot, WASD to move, and various keys for combat actions.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pause Menu Screen -->
+    <div id="pause-menu" class="menu-screen hidden">
+        <div class="menu-background">
+            <div class="menu-particles"></div>
+        </div>
+        <div class="menu-content">
+            <div class="menu-header">
+                <h2 class="screen-title">PAUSED</h2>
+                <div class="pause-subtitle">Game is paused</div>
+            </div>
+            
+            <div class="pause-options">
+                <button class="pause-button" onclick="resumeGame()">
+                    <span class="button-icon">▶️</span>
+                    <span class="button-text">RESUME</span>
+                </button>
+                
+                <button class="pause-button" onclick="showSettings()">
+                    <span class="button-icon">⚙️</span>
+                    <span class="button-text">SETTINGS</span>
+                </button>
+                
+                <button class="pause-button" onclick="restartLevel()">
+                    <span class="button-icon">🔄</span>
+                    <span class="button-text">RESTART LEVEL</span>
+                </button>
+                
+                <button class="pause-button" onclick="returnToMainMenuFromPause()">
+                    <span class="button-icon">🏠</span>
+                    <span class="button-text">MAIN MENU</span>
+                </button>
+            </div>
+            
+            <div class="pause-footer">
+                <p class="pause-hint">Press ESC to resume</p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="menu.js"></script>
     <script type="module" src="main.js"></script>
 </body>
 </html>

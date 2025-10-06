@@ -666,7 +666,7 @@ function createUI() {
 
     const instructionsDiv = document.createElement('div');
     instructionsDiv.className = "game-ui";
-    instructionsDiv.innerHTML = 'Escape to the rooftop!<br>Find the stairs to go up, reach the green door on the roof.<br>WASD: Move, Mouse: Look, Space: Jump, F: Shoot Bullets, ESC: Main Menu<br>Shoot boxes to reverse their gravity!<br>Building is now 5x larger - explore the massive space!';
+    instructionsDiv.innerHTML = 'Escape to the rooftop!<br>Find the stairs to go up, reach the green door on the roof.<br>WASD: Move, Mouse: Look, Space: Jump, F: Shoot Bullets, ESC: Pause Menu<br>Shoot boxes to reverse their gravity!<br>Building is now 5x larger - explore the massive space!';
     instructionsDiv.style.cssText = `
         color: white; font-size: 16px; position: absolute; top: 60px; left: 50%; 
         transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
@@ -760,7 +760,13 @@ function handleKeyDown(e) {
     if (e.code === "Space") {
         spaceHeld = true;
     } else if (e.code === "Escape") {
-        returnToMainCallback();
+        // Show pause menu using ESC key
+        if (window.showPauseMenu) {
+            window.showPauseMenu(3);
+        } else {
+            // Fallback to direct return if pause menu not available
+            returnToMainCallback();
+        }
     } else if (e.code === "KeyF") { // Shoot with F key
         shootBullet();
     } else {
@@ -1028,10 +1034,13 @@ function checkGoal() {
 
 // Animation loop
 function animate() {
-    updatePlayer();
-    updateBullets();        // Add this line
-    updateBoxPhysics();     // Add this line - CRITICAL!
-    checkGoal();
+    // Only update if game is not paused
+    if (!window.isGamePaused || !window.isGamePaused()) {
+        updatePlayer();
+        updateBullets();        // Add this line
+        updateBoxPhysics();     // Add this line - CRITICAL!
+        checkGoal();
+    }
     
     renderer.render(scene, camera);
     if (labelRenderer) {
