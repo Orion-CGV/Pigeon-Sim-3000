@@ -66,6 +66,126 @@ window.showCredits = function() {
     }
 };
 
+// Function to show cinematic credits
+window.showCinematicCredits = function() {
+    hideAllMenuScreens();
+    const cinematicCredits = document.getElementById('cinematic-credits');
+    if (cinematicCredits) {
+        cinematicCredits.classList.remove('hidden');
+        currentMenuScreen = 'cinematic-credits';
+        window.creditsStartTime = Date.now(); // Track start time
+        
+        // Initialize speed display
+        const speedSlider = document.getElementById('credits-speed-slider');
+        if (speedSlider) {
+            updateCreditsSpeed(speedSlider.value);
+        }
+        
+        startCinematicCredits();
+    }
+};
+
+// Global variable to store credits timeout
+let creditsTimeout = null;
+let currentCreditsSpeed = 55; // Default speed in seconds (100 - 45 = 55, so slider at 45 gives 55s duration)
+
+// Function to start cinematic credits animation
+function startCinematicCredits() {
+    const creditsContainer = document.querySelector('.credits-container');
+    if (creditsContainer) {
+        // Reset animation
+        creditsContainer.style.animation = 'none';
+        creditsContainer.offsetHeight; // Trigger reflow
+        creditsContainer.style.animation = `creditsScroll ${currentCreditsSpeed}s linear forwards`;
+        
+        // Clear any existing timeout
+        if (creditsTimeout) {
+            clearTimeout(creditsTimeout);
+        }
+        
+        // Auto-return to main menu after credits finish
+        creditsTimeout = setTimeout(() => {
+            if (currentMenuScreen === 'cinematic-credits') {
+                skipCinematicCredits();
+            }
+        }, currentCreditsSpeed * 1000); // Convert seconds to milliseconds
+    }
+}
+
+// Function to update credits speed
+window.updateCreditsSpeed = function(speed) {
+    const sliderValue = parseInt(speed);
+    // Invert the speed: lower slider values = faster scroll (shorter duration)
+    // 10 = 10s (very fast), 90 = 10s (very slow)
+    currentCreditsSpeed = 100 - sliderValue;
+    
+    const speedDisplay = document.getElementById('speed-display');
+    const creditsContainer = document.querySelector('.credits-container');
+    
+    // Update speed display text (flipped logic: lower values = slower, higher values = faster)
+    if (speedDisplay) {
+        if (sliderValue <= 20) {
+            speedDisplay.textContent = 'Very Slow';
+        } else if (sliderValue <= 30) {
+            speedDisplay.textContent = 'Slow';
+        } else if (sliderValue <= 50) {
+            speedDisplay.textContent = 'Normal';
+        } else if (sliderValue <= 70) {
+            speedDisplay.textContent = 'Fast';
+        } else {
+            speedDisplay.textContent = 'Very Fast';
+        }
+    }
+    
+    // Update animation if credits are currently playing
+    if (creditsContainer && currentMenuScreen === 'cinematic-credits') {
+        // Get current animation progress
+        const computedStyle = window.getComputedStyle(creditsContainer);
+        const animationName = computedStyle.animationName;
+        
+        if (animationName === 'creditsScroll') {
+            // Calculate how much of the animation has already completed
+            const elapsed = (Date.now() - (window.creditsStartTime || Date.now())) / 1000;
+            const oldDuration = parseFloat(computedStyle.animationDuration) || 45;
+            const progressRatio = Math.min(elapsed / oldDuration, 1); // Cap at 1.0
+            
+            // Restart animation with new speed
+            creditsContainer.style.animation = 'none';
+            creditsContainer.offsetHeight; // Trigger reflow
+            creditsContainer.style.animation = `creditsScroll ${currentCreditsSpeed}s linear forwards`;
+            
+            // Update timeout - calculate remaining time based on new duration and current progress
+            if (creditsTimeout) {
+                clearTimeout(creditsTimeout);
+            }
+            
+            // Calculate remaining time: new duration minus the time that would have passed at new speed
+            const remainingTime = currentCreditsSpeed * (1 - progressRatio);
+            
+            creditsTimeout = setTimeout(() => {
+                if (currentMenuScreen === 'cinematic-credits') {
+                    skipCinematicCredits();
+                }
+            }, remainingTime * 1000);
+        }
+    }
+};
+
+// Function to skip cinematic credits
+window.skipCinematicCredits = function() {
+    const cinematicCredits = document.getElementById('cinematic-credits');
+    if (cinematicCredits) {
+        // Clear timeout
+        if (creditsTimeout) {
+            clearTimeout(creditsTimeout);
+            creditsTimeout = null;
+        }
+        
+        cinematicCredits.classList.add('hidden');
+        showMainMenu();
+    }
+};
+
 // Function to show instructions
 window.showInstructions = function() {
     hideAllMenuScreens();
@@ -134,7 +254,7 @@ window.startStoryMode = function() {
 
 // Function to hide all menu screens
 function hideAllMenuScreens() {
-    const menuScreens = ['main-menu', 'play-submenu', 'level-select', 'settings', 'credits', 'instructions', 'pause-menu'];
+    const menuScreens = ['main-menu', 'play-submenu', 'level-select', 'settings', 'credits', 'cinematic-credits', 'instructions', 'pause-menu'];
     menuScreens.forEach(screenId => {
         const screen = document.getElementById(screenId);
         if (screen) {
@@ -411,4 +531,11 @@ function createFloatingParticles() {
 // Initialize intro screen when page loads
 document.addEventListener('DOMContentLoaded', function() {
     showIntroScreen();
+    
+    // Add keyboard event listener for skipping cinematic credits
+    document.addEventListener('keydown', function(event) {
+        if (currentMenuScreen === 'cinematic-credits' && event.key === 'Escape') {
+            skipCinematicCredits();
+        }
+    });
 });

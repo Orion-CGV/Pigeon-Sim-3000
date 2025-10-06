@@ -50,7 +50,7 @@
                     <span class="button-icon">⚙️</span>
                     <span class="button-text">SETTINGS</span>
                 </button>
-                <button class="menu-button" onclick="showCredits()">
+                <button class="menu-button" onclick="showCinematicCredits()">
                     <span class="button-icon">📋</span>
                     <span class="button-text">CREDITS</span>
                 </button>
@@ -229,9 +229,96 @@
                 
                 <div class="credits-section">
                     <h3>Copyright</h3>
-                    <p>© 2024 Orion Studios</p>
+                    <p>© 2025 Orion Studios</p>
                     <p>All rights reserved</p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cinematic Credits Screen -->
+    <div id="cinematic-credits" class="cinematic-credits-screen hidden">
+        <div class="cinematic-background">
+            <div class="stars"></div>
+            <div class="stars2"></div>
+            <div class="stars3"></div>
+        </div>
+        
+        <div class="credits-container">
+            <div class="credits-scroll">
+                <div class="credits-title">LEGACY ARCADE</div>
+                <div class="credits-subtitle">A child's journey through magical arcade worlds</div>
+                
+                <div class="credits-section-title">PRODUCED BY</div>
+                <div class="credits-name">ORION STUDIOS</div>
+                
+                <div class="credits-section-title">GAME DIRECTOR</div>
+                <div class="credits-name">Arcade Master</div>
+                
+                <div class="credits-section-title">LEAD DEVELOPER</div>
+                <div class="credits-name">Legacy Team</div>
+                
+                <div class="credits-section-title">3D ART & DESIGN</div>
+                <div class="credits-name">Retro Artists</div>
+                <div class="credits-name">Pixel Perfectionist</div>
+                
+                <div class="credits-section-title">AUDIO DESIGN</div>
+                <div class="credits-name">Sound Wizard</div>
+                <div class="credits-name">Music Maestro</div>
+                
+                <div class="credits-section-title">TECHNOLOGY</div>
+                <div class="credits-name">Three.js Engine</div>
+                <div class="credits-name">WebGL Graphics</div>
+                <div class="credits-name">Modern Web Technologies</div>
+                
+                <div class="credits-section-title">SPECIAL THANKS</div>
+                <div class="credits-name">All the arcade legends who inspired this journey</div>
+                <div class="credits-name">The grandfather's legacy that lives on</div>
+                <div class="credits-name">Players who believe in the magic of arcades</div>
+                <div class="credits-name">The community that keeps retro gaming alive</div>
+                
+                <div class="credits-section-title">DEDICATED TO</div>
+                <div class="credits-name">Every child who ever dreamed of arcade adventures</div>
+                <div class="credits-name">Every parent who shared the magic of gaming</div>
+                <div class="credits-name">Every gamer who keeps the legacy alive</div>
+                
+                <div class="credits-section-title">COPYRIGHT</div>
+                <div class="credits-name">© 2025 ORION STUDIOS</div>
+                <div class="credits-name">ALL RIGHTS RESERVED</div>
+                
+                <div class="credits-final">
+                    <div class="credits-thank-you">THANK YOU FOR PLAYING</div>
+                    <div class="credits-game-title">LEGACY ARCADE</div>
+                </div>
+                
+                <!-- Extra white space for continued scrolling after text -->
+                <div class="credits-whitespace">
+                    <div class="whitespace-section"></div>
+                    <div class="whitespace-section"></div>
+                    <div class="whitespace-section"></div>
+                    <div class="whitespace-section"></div>
+                    <div class="whitespace-section"></div>
+                    <div class="whitespace-section"></div>
+                    <div class="whitespace-section"></div>
+                    <div class="whitespace-section"></div>
+                    <div class="whitespace-section"></div>
+                    <div class="whitespace-section"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="credits-controls">
+            <div class="speed-control">
+                <label class="speed-label">Scroll Speed</label>
+                <input type="range" id="credits-speed-slider" class="speed-slider" min="10" max="90" value="45" oninput="updateCreditsSpeed(this.value)">
+                <span id="speed-display" class="speed-display">Normal</span>
+            </div>
+            
+            <div class="skip-credits">
+                <button class="skip-credits-button" onclick="skipCinematicCredits()">
+                    <span class="skip-text">SKIP CREDITS</span>
+                    <span class="skip-hint">Press ESC or Click to Skip</span>
+                </button>
             </div>
         </div>
     </div>
