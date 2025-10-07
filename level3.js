@@ -758,6 +758,7 @@ function checkGoal() {
 }
 
 export function updateLevel() {
+    if (window.__stats) window.__stats.begin();
     // Update drag distance if F or E is pressed
     if (selectedBox) {
         if (keys["KeyF"]) {
@@ -794,6 +795,7 @@ export function updateLevel() {
     updateBullets();
     updateBoxPhysics();
     checkGoal();
+    if (window.__stats) window.__stats.end();
 }
 
 export function cleanupLevel() {

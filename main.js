@@ -6,9 +6,49 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 // ---------- Scene / Camera / Renderer ----------
 // Global variables to store our 3D environment components
 let scene,     // The 3D scene that contains all objects
-    camera,    // The virtual camera that defines our view
-    renderer,  // The WebGL renderer that draws the 3D scene
-    labelRenderer; // Special renderer for HTML text labels
+	camera,    // The virtual camera that defines our view
+	renderer,  // The WebGL renderer that draws the 3D scene
+	labelRenderer; // Special renderer for HTML text labels
+
+// Performance HUD (stats.js)
+let stats = null;
+
+// Create the stats HUD if available (loaded via CDN in index.html)
+function ensureStats() {
+	if (typeof window === 'undefined') return;
+
+	// If already created, nothing to do
+	if (stats) return;
+
+	// If Stats is available, create it now
+	if (window.Stats) {
+		stats = new window.Stats();
+		stats.showPanel(0); // 0: FPS
+		document.body.appendChild(stats.dom);
+		stats.dom.style.position = 'fixed';
+		stats.dom.style.left = '0px';
+		stats.dom.style.top = '0px';
+		stats.dom.style.zIndex = '2002';
+		window.__stats = stats; // expose globally for levels
+		return;
+	}
+
+	// Fallback: try to load from an alternate CDN once
+	if (!window.__statsLoadAttempted) {
+		window.__statsLoadAttempted = true;
+		const script = document.createElement('script');
+		script.src = 'https://unpkg.com/stats.js@0.17.0/build/stats.min.js';
+		script.async = true;
+		script.onload = () => {
+			// Try again after script loads
+			try { ensureStats(); } catch (e) { /* noop */ }
+		};
+		script.onerror = () => {
+			console.warn('Failed to load stats.js from fallback CDN');
+		};
+		document.head.appendChild(script);
+	}
+}
 
 // ---------- Game State ----------
 // Tracks which level we're currently in
@@ -38,6 +78,7 @@ function initMainMenu() {
         renderer.setSize(window.innerWidth, window.innerHeight);
         // Add the renderer's canvas element to the webpage
         document.body.appendChild(renderer.domElement);
+        ensureStats();
     }
     // Check if CSS label renderer doesn't exist yet
     if (!labelRenderer) {
@@ -67,6 +108,8 @@ function initMainMenu() {
     // Start the animation loop that updates and renders the scene continuously
     gameLoopActive = true;
     renderer.setAnimationLoop(animate);
+    // Make sure stats HUD exists and is visible
+    ensureStats();
     
     console.log('initMainMenu completed');
     console.log('Scene children count:', scene.children.length);
@@ -228,6 +271,7 @@ function loadLevel(levelNumber) {
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
+        ensureStats();
     }
     if (!labelRenderer) {
         labelRenderer = new CSS2DRenderer();
@@ -254,6 +298,9 @@ function loadLevel(levelNumber) {
         labelRenderer.domElement.style.display = 'block';
     }
     
+    // Ensure stats HUD exists and is visible in levels too
+    ensureStats();
+
     // 6. Dynamically import the level module (separate JavaScript file)
     import(`./level${levelNumber}.js`)
         .then(levelModule => {
@@ -713,6 +760,7 @@ function onWindowResize() {
 // ---------- Animation Loop ----------
 // Main game loop that runs continuously (called ~60 times per second)
 function animate() {
+    if (stats) stats.begin();
     // Only continue if game is not paused
     if (gameLoopActive && !window.isGamePaused()) {
         // Only update player and interactions in main menu
@@ -740,6 +788,7 @@ function animate() {
             labelRenderer.render(scene, camera);
         }
     }
+    if (stats) stats.end();
 }
 
 
