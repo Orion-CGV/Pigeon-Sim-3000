@@ -21,7 +21,7 @@ const MOUSE_SENS = 0.0025;
 
 // Physics variables
 const WALK_SPEED = 0.15;
-const DRIVE_SPEED = 0.15; // Reduced from 0.5 for more reasonable speed
+const DRIVE_SPEED = 2.75; // Increased from 0.15 for more reasonable speed
 const gravity = -0.03;
 const jumpStrength = 0.45;
 let velocityY = 0;
@@ -58,6 +58,28 @@ let currentSpeed = 0;
 // Building model
 let buildingModel = null;
 let buildingLoaded = false;
+
+// Check points
+const checkpoints = [];
+let currentCheckpoint = null;
+let totalCheckpoints = 0;
+let checkpointsPassed = 0;
+let goalUnlocked = false;
+
+// Traffic cars - obstacles
+const trafficCars = [];
+
+// Lanes x,y
+const lanes = {
+    horizontal: [],
+    vertical: []
+};
+
+// Respawn data points
+let lastCheckpointIndex = -1; // -1 = start
+let respawnPosition = new THREE.Vector3(0, 0.1, 0);
+let respawnRotation = 0;
+
 
 // Available cars data
 const availableCars = [
@@ -431,7 +453,326 @@ function createRoads() {
             scene.add(line);
         }
     }
+
+    // Record lane centers for spawning traffic
+    // vertical lanes are the x coords where we created plane roads earlier (every 30)
+    for (let x = -90; x <= 90; x += 30) lanes.vertical.push(x);
+    // horizontal lanes are the z coords
+    for (let z = -90; z <= 90; z += 30) lanes.horizontal.push(z);
+
+    // Create checkpoints along a main route (example positions) — you can tweak positions
+    createCheckpoints();
+    updateCheckpointDisplay();
+
+    // Spawn traffic obstacles in lanes
+    // spawnTraffic();
+
 }
+
+// function spawnTraffic() {
+//     // Remove old traffic
+//     trafficCars.forEach(tc => scene.remove(tc.mesh));
+//     trafficCars.length = 0;
+
+//     // Helper to load and clone a car model
+//     function createTrafficCarModel(carIndex, callback) {
+//         const selectedCar = availableCars[carIndex];
+//         const mtlLoader = new MTLLoader();
+//         const objLoader = new OBJLoader();
+
+//         mtlLoader.load(`assets/models/cars/${selectedCar.mtl}`, (materials) => {
+//             materials.preload();
+//             objLoader.setMaterials(materials);
+
+//             objLoader.load(`assets/models/cars/${selectedCar.obj}`, (object) => {
+//                 object.scale.set(0.5, 0.5, 0.5);
+//                 object.traverse((child) => {
+//                     if (child.isMesh) {
+//                         child.castShadow = true;
+//                         child.receiveShadow = true;
+//                     }
+//                 });
+//                 callback(object);
+//             }, undefined, () => {
+//                 // fallback to box if model fails
+//                 const mesh = new THREE.Mesh(
+//                     new THREE.BoxGeometry(2, 1, 4),
+//                     new THREE.MeshLambertMaterial({ color: 0xff3333 })
+//                 );
+//                 callback(mesh);
+//             });
+//         }, undefined, () => {
+//             // fallback to box if materials fail
+//             const mesh = new THREE.Mesh(
+//                 new THREE.BoxGeometry(2, 1, 4),
+//                 new THREE.MeshLambertMaterial({ color: 0xff3333 })
+//             );
+//             callback(mesh);
+//         });
+//     }
+
+//     // Spawn a few cars per lane (both vertical and horizontal lanes)
+//     const carsPerLane = 2;
+//     const trafficCarIndices = [1, 2, 3, 4, 5, 6, 7]; // Use different car models for variety
+
+//     lanes.vertical.forEach((x, laneIndex) => {
+//         if (Math.abs(x) < 15) return;
+//         for (let i = 0; i < carsPerLane; i++) {
+//             const carIndex = trafficCarIndices[(laneIndex + i) % trafficCarIndices.length];
+//             createTrafficCarModel(carIndex, (mesh) => {
+//                 // place at varying z positions
+//                 const z = -80 + Math.random() * 160;
+//                 mesh.position.set(x, 0.5, z);
+//                 mesh.rotation.y = 0; // driving along z axis
+//                 scene.add(mesh);
+
+//                 trafficCars.push({
+//                     mesh,
+//                     laneIndex,
+//                     orientation: 'vertical', // moves along z
+//                     speed: 0.4 + Math.random() * 0.8,
+//                     dir: Math.random() < 0.5 ? 1 : -1,
+//                     bbox: new THREE.Box3().setFromObject(mesh)
+//                 });
+//             });
+//         }
+//     });
+
+//     lanes.horizontal.forEach((z, laneIndex) => {
+//         if (Math.abs(z) < 15) return;
+//         for (let i = 0; i < carsPerLane; i++) {
+//             const carIndex = trafficCarIndices[(laneIndex + i) % trafficCarIndices.length];
+//             createTrafficCarModel(carIndex, (mesh) => {
+//                 const x = -80 + Math.random() * 160;
+//                 mesh.position.set(x, 0.5, z);
+//                 mesh.rotation.y = Math.PI / 2; // driving along x axis
+//                 scene.add(mesh);
+
+//                 trafficCars.push({
+//                     mesh,
+//                     laneIndex,
+//                     orientation: 'horizontal', // moves along x
+//                     speed: 0.4 + Math.random() * 0.8,
+//                     dir: Math.random() < 0.5 ? 1 : -1,
+//                     bbox: new THREE.Box3().setFromObject(mesh)
+//                 });
+//             });
+//         }
+//     });
+// }
+
+function updateTraffic() {
+    // Move traffic and update bounding boxes
+    for (const tc of trafficCars) {
+        if (!tc.mesh) continue;
+
+        if (tc.orientation === 'vertical') {
+            tc.mesh.position.z += tc.speed * tc.dir;
+            // Reverse at ends
+            if (tc.mesh.position.z > 95) tc.dir = -1;
+            if (tc.mesh.position.z < -95) tc.dir = 1;
+        } else {
+            tc.mesh.position.x += tc.speed * tc.dir;
+            if (tc.mesh.position.x > 95) tc.dir = -1;
+            if (tc.mesh.position.x < -95) tc.dir = 1;
+        }
+
+        tc.bbox.setFromObject(tc.mesh);
+
+        // Optional: small bob or rotation for variety
+        tc.mesh.rotation.y += Math.sin(performance.now() * 0.0005 + tc.mesh.position.x) * 0.0005;
+    }
+}
+
+function createCheckpoints() {
+    // Clear previous
+    checkpoints.forEach(cp => scene.remove(cp.mesh));
+    checkpoints.length = 0;
+    lastCheckpointIndex = -1;
+    respawnPosition.set(0, 0.1, 0);
+    respawnRotation = 0;
+    checkpointsPassed = 0;
+    goalUnlocked = false;
+
+    // Example checkpoint path — you can adjust or generate procedurally
+    const cpPositions = [
+        new THREE.Vector3(0, 0.1, 0),       // start
+        new THREE.Vector3(0, 0.1, 25),
+        new THREE.Vector3(30, 0.1, 0),
+        new THREE.Vector3(30, 0.1, 40),
+        new THREE.Vector3(60, 0.1, 40),
+        new THREE.Vector3(80, 0.1, 70)      // near goal
+    ];
+
+    const geo = new THREE.TorusGeometry(3, 0.2, 16, 100);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 });
+
+    cpPositions.forEach((pos, i) => {
+        const mesh = new THREE.Mesh(geo, mat.clone());
+        mesh.position.copy(pos);
+        mesh.rotation.x = Math.PI / 2;
+        mesh.name = `checkpoint_${i}`;
+        scene.add(mesh);
+        const box = new THREE.Box3().setFromObject(mesh);
+        checkpoints.push({ mesh, index: i, box, passed: false });
+
+        // Save start as initial respawn
+        if (i === 0) {
+            lastCheckpointIndex = 0;
+            respawnPosition.copy(pos);
+            respawnRotation = 0;
+            checkpoints[0].mesh.material.color.set(0x00ff00); // show start as "passed"
+            checkpoints[0].passed = true;
+        }
+    });
+
+    totalCheckpoints = checkpoints.length;
+    console.log(`Created ${totalCheckpoints} checkpoints`);
+
+}
+
+function spawnParticles(position) {
+    const count = 60; // number of particles
+    const positions = new Float32Array(count * 3);
+    const speeds = [];
+
+    // randomize starting positions & velocities
+    for (let i = 0; i < count; i++) {
+        positions[i * 3] = position.x + (Math.random() - 0.5) * 1.5;
+        positions[i * 3 + 1] = position.y + (Math.random() - 0.5) * 1.5;
+        positions[i * 3 + 2] = position.z + (Math.random() - 0.5) * 1.5;
+        speeds.push(
+            new THREE.Vector3(
+                (Math.random() - 0.5) * 0.1,
+                Math.random() * 0.1,
+                (Math.random() - 0.5) * 0.1
+            )
+        );
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+
+    const material = new THREE.PointsMaterial({
+        color: 0x00ff99,
+        size: 0.15,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    });
+
+    const particles = new THREE.Points(geometry, material);
+    scene.add(particles);
+
+    // animate burst fade + movement
+    const start = performance.now();
+    const duration = 1000; // ms
+
+    function animateBurst() {
+        const elapsed = performance.now() - start;
+        const positions = particles.geometry.attributes.position.array;
+
+        for (let i = 0; i < count; i++) {
+            const speed = speeds[i];
+            positions[i * 3] += speed.x;
+            positions[i * 3 + 1] += speed.y;
+            positions[i * 3 + 2] += speed.z;
+            // gravity
+            speed.y -= 0.003;
+        }
+
+        particles.geometry.attributes.position.needsUpdate = true;
+        material.opacity = 1 - elapsed / duration;
+
+        if (elapsed < duration) {
+            requestAnimationFrame(animateBurst);
+        } else {
+            scene.remove(particles);
+            particles.geometry.dispose();
+            particles.material.dispose();
+        }
+    }
+
+    animateBurst();
+}
+
+
+function checkCheckpointCollision() {
+    if (!player) return;
+    const playerBox = new THREE.Box3().setFromObject(player);
+
+    for (const cp of checkpoints) {
+        if (!cp) continue;
+        const cpBox = new THREE.Box3().setFromObject(cp.mesh);
+        if (playerBox.intersectsBox(cpBox) && !cp.passed) {
+            // Mark checkpoint passed
+            cp.passed = true;
+            cp.mesh.material.color.set(0x00ff00);
+            lastCheckpointIndex = cp.index;
+            respawnPosition.copy(cp.mesh.position);
+            respawnPosition.y = 0.1;
+            checkpointsPassed++; // Increment the checkpoints passed
+
+            // align direction to face forward toward next checkpoint if available
+            const next = checkpoints.find(c => c.index === cp.index + 1);
+            if (next) {
+                // compute rotation toward next
+                const dir = new THREE.Vector3().subVectors(next.mesh.position, cp.mesh.position).normalize();
+                respawnRotation = Math.atan2(dir.x, dir.z);
+            }
+            // nice feedback
+            spawnParticles(cp.mesh.position);
+            updateCheckpointDisplay();
+
+            // check if all checkpoints passed to unlock goal
+            if(checkpointsPassed === totalCheckpoints - 1) {
+                unlockGoal();
+            }
+            break;
+        }
+    }
+}
+
+function unlockGoal() {
+    goalUnlocked = true;
+    const goal = scene.getObjectByName('goal');
+    if (goal) {
+        goal.material.color.set(0x0000ff); // change color to indicate unlocked
+        spawnParticles(goal.position);
+    }
+
+}
+
+function updateCheckpointDisplay() {
+    let el = document.getElementById("checkpointDisplay");
+    if (!el) {
+        el = document.createElement("div");
+        el.id = "checkpointDisplay";
+        el.style.position = "absolute";
+        el.style.top = "40px";
+        el.style.left = "10px";
+        el.style.color = "#0f0";
+        el.style.fontFamily = "monospace";
+        el.style.fontSize = "14px";
+        document.body.appendChild(el);
+    }
+    el.innerText = `Checkpoints: ${checkpointsPassed}/${totalCheckpoints - 1}`;
+}
+
+function handleCrash() {
+    // Respawn at last checkpoint (or start)
+    if (!player) return;
+    player.position.copy(respawnPosition);
+    player.rotation.y = respawnRotation || 0;
+    currentSpeed = 0;
+    // small camera bump / flash feedback
+    updateSpeedDisplay();
+    // optional particle or sound
+    spawnParticles(player.position);
+}
+
+
 
 function createUI() {
     // Title
@@ -851,6 +1192,17 @@ function updatePlayer() {
         }
     }
 
+    // traffic collisions -> full crash & respawn
+    for (const tc of trafficCars) {
+        if (!tc || !tc.bbox) continue;
+        if (playerBox.intersectsBox(tc.bbox)) {
+            // Crash detected
+            handleCrash();
+            return; // skip rest for this frame
+        }
+    }
+
+
     // Boundary check
     if (player.position.x < -95 || player.position.x > 95 || 
         player.position.z < -95 || player.position.z > 95) {
@@ -892,7 +1244,7 @@ function checkGoal() {
     const playerBox = new THREE.Box3().setFromObject(player);
     const goal = scene.getObjectByName('goal');
     
-    if (goal) {
+    if (goal && goalUnlocked) {
         const goalBox = new THREE.Box3().setFromObject(goal);
         if (playerBox.intersectsBox(goalBox)) {
             alert('Congratulations! You won the race!');
@@ -906,6 +1258,8 @@ export function updateLevel() {
     if (window.__stats) window.__stats.begin();
     updatePlayer();
     checkGoal();
+    updateTraffic();
+    checkCheckpointCollision();
     if (window.__stats) window.__stats.end();
 }
 
@@ -943,7 +1297,17 @@ export function cleanupLevel() {
     if (audioListener) {
         audioListener = null;
     }
-    
+
+    // Remove traffic
+    trafficCars.forEach(tc => {
+        if (tc.mesh) scene.remove(tc.mesh);
+    });
+    trafficCars.length = 0;
+
+    // Remove checkpoints
+    checkpoints.forEach(cp => { if (cp.mesh) scene.remove(cp.mesh); });
+    checkpoints.length = 0;
+
     // Clean up models
     buildingModel = null;
     buildingLoaded = false;
