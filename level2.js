@@ -903,8 +903,10 @@ function checkGoal() {
 
 // Level update function called by main.js animation loop
 export function updateLevel() {
+    if (window.__stats) window.__stats.begin();
     updatePlayer();
     checkGoal();
+    if (window.__stats) window.__stats.end();
 }
 
 // Cleanup function
