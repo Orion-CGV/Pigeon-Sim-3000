@@ -104,7 +104,7 @@ world.addBody(newPlatformBody);
 newPlatformMesh.userData.physicsBody = newPlatformBody;
 
 // Inside setupScene(), after the yellow platform creation
-// Create third platform mesh
+// Create third platform mesh (cyan)
 const thirdPlatformGeo = new THREE.PlaneGeometry(12.5, 20); // Width=12.5, Depth=20
 const thirdPlatformMat = new THREE.MeshBasicMaterial({
     color: 0x00ffff, // Cyan to distinguish from green platform, yellow platform, and blue ground
@@ -130,7 +130,7 @@ world.addBody(thirdPlatformBody);
 thirdPlatformMesh.userData.physicsBody = thirdPlatformBody;
 
 // Inside setupScene(), after the cyan platform creation
-// Create fourth platform mesh
+// Create fourth platform mesh (magenta)
 const fourthPlatformGeo = new THREE.PlaneGeometry(12.5, 29.3); // Width=12.5, Depth=29.3
 const fourthPlatformMat = new THREE.MeshBasicMaterial({
     color: 0xff00ff, // Magenta to distinguish from green, yellow, cyan platforms, and blue ground
@@ -156,7 +156,7 @@ world.addBody(fourthPlatformBody);
 fourthPlatformMesh.userData.physicsBody = fourthPlatformBody;
 
 // Inside setupScene(), after the magenta platform creation
-// Create fifth platform mesh
+// Create fifth platform mesh (orange)
 const fifthPlatformGeo = new THREE.PlaneGeometry(12.5, 100); // Width=12.5, Depth=100
 const fifthPlatformMat = new THREE.MeshBasicMaterial({
     color: 0xffa500, // Orange to distinguish from green, yellow, cyan, magenta platforms, and blue ground
@@ -764,14 +764,37 @@ let boxBody, boxMesh;
 
 // Key state tracking object
 const keys = {};
+let canJump = true; // Jump cooldown flag
 
 // Add key event listeners at the module level (e.g., after imports)
 document.addEventListener('keydown', (event) => {
     keys[event.code] = true;
+    
+    // Handle jump when space is pressed
+    if (event.code === 'Space' && canJump) {
+        jump();
+    }
 });
 document.addEventListener('keyup', (event) => {
     keys[event.code] = false;
 });
+
+// Jump function
+function jump() {
+    // Check if the box is close to the ground (you can adjust this threshold)
+    const isOnGround = boxBody.position.y <= 1.1; // Adjust based on your platform heights
+    
+    if (isOnGround) {
+        // Apply upward impulse for jumping
+        boxBody.velocity.y = 8; // Adjust this value for higher/lower jumps
+        canJump = false;
+        
+        // Reset jump cooldown after a short delay
+        setTimeout(() => {
+            canJump = true;
+        }, 500); // 500ms cooldown between jumps
+    }
+}
 
 // Inside addTestObjects() - remove 'const' from boxBody and boxMesh
 function addTestObjects() {
