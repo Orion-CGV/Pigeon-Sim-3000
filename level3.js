@@ -4,8 +4,19 @@ import * as CANNON from 'cannon-es';
 
 // Store level-specific variables
 let scene, camera, renderer, labelRenderer;
-let world, groundBody, groundMesh;
+let world;
 let returnCallback;
+
+// ── UI & INPUT ───────────────────────────────────────────────────────
+const DOOR_INTERACT_DISTANCE = 50;          // max distance to interact
+const MOUSE_SENS = 0.002;                  // mouse look sensitivity
+const PI_2 = Math.PI / 2;
+
+let yaw = 0, pitch = 0;                    // camera rotation
+let doorPromptDiv = null;                  // UI element
+const raycaster = new THREE.Raycaster();  // reused for door & camera
+
+let player = null;                         // reference to the physics box mesh
 
 // Initialize the level
 export function initLevel(levelScene, levelCamera, levelRenderer, levelLabelRenderer, callback) {
@@ -34,24 +45,6 @@ function setupScene() {
     world = new CANNON.World({
         gravity: new CANNON.Vec3(0, -9.81, 0)
     });
-
-    // Create ground
-    const groundGeo = new THREE.PlaneGeometry(30, 30);
-    const groundMat = new THREE.MeshBasicMaterial({
-        color: 0x0000ff,
-        side: THREE.DoubleSide,
-        wireframe: true
-    });
-    // groundMesh = new THREE.Mesh(groundGeo, groundMat);
-    // scene.add(groundMesh);
-
-    // Create physics ground body
-    // groundBody = new CANNON.Body({
-    //     shape: new CANNON.Box(new CANNON.Vec3(15, 15, 0.1)),
-    //     mass: 0 // mass 0 = static body
-    // });
-    // groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-    // world.addBody(groundBody);
 
     // Create platform mesh
     const platformGeo = new THREE.PlaneGeometry(12.5, 100); // Width=12.5, Depth=100
@@ -384,30 +377,6 @@ world.addBody(thirteenthWallBody);
 // Store reference for synchronization
 thirteenthWallMesh.userData.physicsBody = thirteenthWallBody;
 
-// Create fourteenth wall mesh (gold, at x=-50, YZ plane)
-const fourteenthWallGeo = new THREE.PlaneGeometry(100, 10); // Width=Z=100, Height=Y=10
-const fourteenthWallMat = new THREE.MeshBasicMaterial({
-    color: 0xffd700, // Gold to distinguish from other platforms and walls
-    side: THREE.DoubleSide,
-    wireframe: true
-});
-const fourteenthWallMesh = new THREE.Mesh(fourteenthWallGeo, fourteenthWallMat);
-fourteenthWallMesh.position.set(-50, 5, 0); // Center at (-50, 5, 0)
-fourteenthWallMesh.receiveShadow = true; // Match platform settings
-scene.add(fourteenthWallMesh);
-
-// Create fourteenth physics wall body
-const fourteenthWallBody = new CANNON.Body({
-    shape: new CANNON.Box(new CANNON.Vec3(100 / 2, 10 / 2, 0.1)), // Half-extents: thickness/2, height/2, depth/2
-    mass: 0 // Static body
-});
-fourteenthWallBody.position.set(-50, 5, 0); // Center matches mesh
-fourteenthWallBody.quaternion.setFromEuler(0, -Math.PI / 2, 0);
-world.addBody(fourteenthWallBody);
-
-// Store reference for synchronization
-fourteenthWallMesh.userData.physicsBody = fourteenthWallBody;
-
 // Create fifteenth wall mesh (brown, at z=-50, XY plane)
 const fifteenthWallGeo = new THREE.PlaneGeometry(100, 12); // Width=X=100, Height=Y=10
 const fifteenthWallMat = new THREE.MeshBasicMaterial({
@@ -720,6 +689,913 @@ world.addBody(twentySeventhWallBody);
 // Store reference for synchronization
 twentySeventhWallMesh.userData.physicsBody = twentySeventhWallBody;
 
+// ---------------------------------------------------------------
+//  28th wall – Wall 1 (deepskyblue)
+//  Corners: (12.425,10,-45.218), (12.425,-2,-45.218),
+//           (12.425,-2,50),      (12.425,10,50)
+// ---------------------------------------------------------------
+const wall28Geo = new THREE.PlaneGeometry(95.218, 12); // Z = 95.218, Y = 12
+const wall28Mat = new THREE.MeshBasicMaterial({
+    color: 0x00bfff,          // deepskyblue – distinct from every other colour
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall28Mesh = new THREE.Mesh(wall28Geo, wall28Mat);
+wall28Mesh.position.set(12.425, 4, 2.391);   // centre: y = (10-2)/2 = 4, z = (-45.218+50)/2 = 2.391
+wall28Mesh.receiveShadow = true;
+scene.add(wall28Mesh);
+
+const wall28Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(95.218/2, 12/2,0.1)), // half-extents
+    mass: 0
+});
+wall28Body.position.set(12.425, 4, 2.391);
+wall28Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall28Body);
+wall28Mesh.userData.physicsBody = wall28Body;
+
+// ---------------------------------------------------------------
+//  29th wall – Wall 2 (firebrick)
+//  Corners: (12.425,10,-50), (12.425,-2,-50),
+//           (12.425,-2,-48.406), (12.425,10,-48.406)
+// ---------------------------------------------------------------
+const wall29Geo = new THREE.PlaneGeometry(1.594, 12); // Z = 1.594, Y = 12
+const wall29Mat = new THREE.MeshBasicMaterial({
+    color: 0xb22222,          // firebrick – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall29Mesh = new THREE.Mesh(wall29Geo, wall29Mat);
+wall29Mesh.position.set(12.425, 4, -49.203); // centre: z = (-50 + -48.406)/2 = -49.203
+wall29Mesh.receiveShadow = true;
+scene.add(wall29Mesh);
+
+const wall29Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3( 1.594/2, 12/2, 0.1)), // half-extents
+    mass: 0
+});
+wall29Body.position.set(12.425, 4, -49.203);
+wall29Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall29Body);
+wall29Mesh.userData.physicsBody = wall29Body;
+
+// ---------------------------------------------------------------
+//  30th wall – Wall 1 (crimson)
+//  Corners: (0,10,-50), (0,-2,-50), (0,-2,45.379), (0,10,45.379)
+// ---------------------------------------------------------------
+const wall30Geo = new THREE.PlaneGeometry(95.379, 12); // Z = 95.379, Y = 12
+const wall30Mat = new THREE.MeshBasicMaterial({
+    color: 0xdc143c,          // crimson – distinct from every previous colour
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall30Mesh = new THREE.Mesh(wall30Geo, wall30Mat);
+wall30Mesh.position.set(0, 4, -2.3105);   // y = (10-2)/2 = 4
+                                         // z = (-50 + 45.379)/2 = -2.3105
+wall30Mesh.receiveShadow = true;
+scene.add(wall30Mesh);
+
+const wall30Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3( 95.379/2, 12/2, 0.1)), // half-extents
+    mass: 0
+});
+wall30Body.position.set(0, 4, -2.3105);
+wall30Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall30Body);
+wall30Mesh.userData.physicsBody = wall30Body;
+
+// ---------------------------------------------------------------
+//  31st wall – Wall 2 (darkorange)
+//  Corners: (0,10,45.379), (0,5,45.379), (0,5,48.46), (0,10,48.46)
+// ---------------------------------------------------------------
+const wall31Geo = new THREE.PlaneGeometry(3.081, 5); // Z = 3.081, Y = 5
+const wall31Mat = new THREE.MeshBasicMaterial({
+    color: 0xff8c00,          // darkorange – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall31Mesh = new THREE.Mesh(wall31Geo, wall31Mat);
+wall31Mesh.position.set(0, 7.5, 46.9195); // y = (10+5)/2 = 7.5
+                                          // z = (45.379+48.46)/2 = 46.9195
+wall31Mesh.receiveShadow = true;
+scene.add(wall31Mesh);
+
+const wall31Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3( 3.081/2, 5/2, 0.1)), // half-extents
+    mass: 0
+});
+wall31Body.position.set(0, 7.5, 46.9195);
+wall31Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall31Body);
+wall31Mesh.userData.physicsBody = wall31Body;
+
+// ---------------------------------------------------------------
+//  32nd wall – Wall 3 (mediumseagreen)
+//  Corners: (0,10,50), (0,10,48.46), (0,-2,48.46), (0,-2,50)
+// ---------------------------------------------------------------
+const wall32Geo = new THREE.PlaneGeometry(1.54, 12); // Z = 1.54, Y = 12
+const wall32Mat = new THREE.MeshBasicMaterial({
+    color: 0x3cb371,          // mediumseagreen – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall32Mesh = new THREE.Mesh(wall32Geo, wall32Mat);
+wall32Mesh.position.set(0, 4, 49.23);    // y = (10-2)/2 = 4
+                                         // z = (50+48.46)/2 = 49.23
+wall32Mesh.receiveShadow = true;
+scene.add(wall32Mesh);
+
+const wall32Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(1.54/2, 12/2, 0.1)), // half-extents
+    mass: 0
+});
+wall32Body.position.set(0, 4, 49.23);
+wall32Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall32Body);
+wall32Mesh.userData.physicsBody = wall32Body;
+
+// ---------------------------------------------------------------
+//  33rd wall – Wall 1 (slateblue)
+//  Corners: (-12.5,10,-50), (-12.5,10,-48.415),
+//           (-12.5,-2,-48.415), (-12.5,-2,-50)
+// ---------------------------------------------------------------
+const wall33Geo = new THREE.PlaneGeometry(1.585, 12); // Z = 1.585, Y = 12
+const wall33Mat = new THREE.MeshBasicMaterial({
+    color: 0x6a5acd,          // slateblue – distinct from every previous colour
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall33Mesh = new THREE.Mesh(wall33Geo, wall33Mat);
+wall33Mesh.position.set(-12.5, 4, -49.2075);   // y = (10-2)/2 = 4
+                                              // z = (-50 + -48.415)/2 = -49.2075
+wall33Mesh.receiveShadow = true;
+scene.add(wall33Mesh);
+
+const wall33Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(1.585/2, 12/2, 0.1)), // half-extents
+    mass: 0
+});
+wall33Body.position.set(-12.5, 4, -49.2075);
+wall33Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall33Body);
+wall33Mesh.userData.physicsBody = wall33Body;
+
+// ---------------------------------------------------------------
+//  34th wall – Wall 2 (goldenrod)
+//  Corners: (-12.5,10,-45.246), (-12.5,-2,-45.246),
+//           (-12.5,-2,50), (-12.5,10,50)
+// ---------------------------------------------------------------
+const wall34Geo = new THREE.PlaneGeometry(95.246, 12); // Z = 95.246, Y = 12
+const wall34Mat = new THREE.MeshBasicMaterial({
+    color: 0xdaa520,          // goldenrod – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall34Mesh = new THREE.Mesh(wall34Geo, wall34Mat);
+wall34Mesh.position.set(-12.5, 4, 2.377);     // y = (10-2)/2 = 4
+                                             // z = (-45.246 + 50)/2 = 2.377
+wall34Mesh.receiveShadow = true;
+scene.add(wall34Mesh);
+
+const wall34Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3( 95.246/2, 12/2, 0.1)), // half-extents
+    mass: 0
+});
+wall34Body.position.set(-12.5, 4, 2.377);
+wall34Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall34Body);
+wall34Mesh.userData.physicsBody = wall34Body;
+
+const wall35Geo = new THREE.PlaneGeometry(95.379, 12); // Z = 95.379, Y = 12
+const wall35Mat = new THREE.MeshBasicMaterial({
+    color: 0xdc143c,          // crimson – distinct from every previous colour
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall35Mesh = new THREE.Mesh(wall35Geo, wall35Mat);
+wall35Mesh.position.set(-25, 4, -2.3105);   // y = (10-2)/2 = 4
+                                         // z = (-50 + 45.379)/2 = -2.3105
+wall35Mesh.receiveShadow = true;
+scene.add(wall35Mesh);
+
+const wall35Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3( 95.379/2, 12/2, 0.1)), // half-extents
+    mass: 0
+});
+wall35Body.position.set(-25, 4, -2.3105);
+wall35Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall35Body);
+wall35Mesh.userData.physicsBody = wall35Body;
+
+// ---------------------------------------------------------------
+//  31st wall – Wall 2 (darkorange)
+//  Corners: (0,10,45.379), (0,5,45.379), (0,5,48.46), (0,10,48.46)
+// ---------------------------------------------------------------
+const wall36Geo = new THREE.PlaneGeometry(3.081, 5); // Z = 3.081, Y = 5
+const wall36Mat = new THREE.MeshBasicMaterial({
+    color: 0xff8c00,          // darkorange – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall36Mesh = new THREE.Mesh(wall36Geo, wall36Mat);
+wall36Mesh.position.set(-25, 7.5, 46.9195); // y = (10+5)/2 = 7.5
+                                          // z = (45.379+48.46)/2 = 46.9195
+wall36Mesh.receiveShadow = true;
+scene.add(wall36Mesh);
+
+const wall36Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3( 3.081/2, 5/2, 0.1)), // half-extents
+    mass: 0
+});
+wall36Body.position.set(-25, 7.5, 46.9195);
+wall36Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall36Body);
+wall36Mesh.userData.physicsBody = wall36Body;
+
+// ---------------------------------------------------------------
+//  32nd wall – Wall 3 (mediumseagreen)
+//  Corners: (0,10,50), (0,10,48.46), (0,-2,48.46), (0,-2,50)
+// ---------------------------------------------------------------
+const wall37Geo = new THREE.PlaneGeometry(1.54, 12); // Z = 1.54, Y = 12
+const wall37Mat = new THREE.MeshBasicMaterial({
+    color: 0x3cb371,          // mediumseagreen – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall37Mesh = new THREE.Mesh(wall37Geo, wall37Mat);
+wall37Mesh.position.set(-25, 4, 49.23);    // y = (10-2)/2 = 4
+                                         // z = (50+48.46)/2 = 49.23
+wall37Mesh.receiveShadow = true;
+scene.add(wall37Mesh);
+
+const wall37Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(1.54/2, 12/2, 0.1)), // half-extents
+    mass: 0
+});
+wall37Body.position.set(-25, 4, 49.23);
+wall37Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall37Body);
+wall37Mesh.userData.physicsBody = wall37Body;
+
+// ---------------------------------------------------------------
+//  35th wall – Wall 1 (darkviolet)
+//  Corners: (-37.5,10,-50), (-37.5,-2,-50),
+//           (-37.5,-2,-46.83), (-37.5,10,-46.83)
+// ---------------------------------------------------------------
+const wall38Geo = new THREE.PlaneGeometry(3.17, 12); // Z = 3.17, Y = 12
+const wall38Mat = new THREE.MeshBasicMaterial({
+    color: 0x9400d3,          // darkviolet – distinct from all previous
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall38Mesh = new THREE.Mesh(wall38Geo, wall38Mat);
+wall38Mesh.position.set(-37.5, 4, -48.415);   // y = (10-2)/2 = 4
+                                             // z = (-50 + -46.83)/2 = -48.415
+wall38Mesh.receiveShadow = true;
+scene.add(wall38Mesh);
+
+const wall38Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3( 3.17/2, 12/2, 0.1)), // half-extents
+    mass: 0
+});
+wall38Body.position.set(-37.5, 4, -48.415);
+wall38Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall38Body);
+wall38Mesh.userData.physicsBody = wall38Body;
+
+// ---------------------------------------------------------------
+//  36th wall – Wall 2 (tomato)
+//  Corners: (-37.5,10,-46.83), (-37.5,5,-46.83),
+//           (-37.5,5,-43.661), (-37.5,10,-43.661)
+// ---------------------------------------------------------------
+const wall39Geo = new THREE.PlaneGeometry(3.169, 5); // Z = 3.169, Y = 5
+const wall39Mat = new THREE.MeshBasicMaterial({
+    color: 0xff6347,          // tomato – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall39Mesh = new THREE.Mesh(wall39Geo, wall39Mat);
+wall39Mesh.position.set(-37.5, 7.5, -45.2455); // y = (10+5)/2 = 7.5
+                                               // z = (-46.83 + -43.661)/2 = -45.2455
+wall39Mesh.receiveShadow = true;
+scene.add(wall39Mesh);
+
+const wall39Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(3.169/2, 5/2, 0.1)), // half-extents
+    mass: 0
+});
+wall39Body.position.set(-37.5, 7.5, -45.2455);
+wall39Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall39Body);
+wall39Mesh.userData.physicsBody = wall39Body;
+
+// ---------------------------------------------------------------
+//  37th wall – Wall 3 (steelblue)
+//  Corners: (-37.5,10,-43.661), (-37.5,-2,-43.661),
+//           (-37.5,-2,50), (-37.5,10,50)
+// ---------------------------------------------------------------
+const wall40Geo = new THREE.PlaneGeometry(93.661, 12); // Z = 93.661, Y = 12
+const wall40Mat = new THREE.MeshBasicMaterial({
+    color: 0x4682b4,          // steelblue – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall40Mesh = new THREE.Mesh(wall40Geo, wall40Mat);
+wall40Mesh.position.set(-37.5, 4, 3.1695);     // y = (10-2)/2 = 4
+                                              // z = (-43.661 + 50)/2 = 3.1695
+wall40Mesh.receiveShadow = true;
+scene.add(wall40Mesh);
+
+const wall40Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(93.661/2, 12/2, 0.1)), // half-extents
+    mass: 0
+});
+wall40Body.position.set(-37.5, 4, 3.1695);
+wall40Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall40Body);
+wall40Mesh.userData.physicsBody = wall40Body;
+
+// ---------------------------------------------------------------
+//  41st wall – Wall 1 (peru)
+//  Corners: (37.5,0,0.71252), (37.5,-2,0.71252),
+//           (25,-2,0.71252), (25,0,0.71252)
+// ---------------------------------------------------------------
+const wall41Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252
+const wall41Mat = new THREE.MeshBasicMaterial({
+    color: 0xcd853f,          // peru – distinct from all previous
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall41Mesh = new THREE.Mesh(wall41Geo, wall41Mat);                // horizontal XZ plane
+wall41Mesh.position.set(31.25, -1, 0.71252);         // x = (37.5+25)/2 = 31.25
+                                                     // y = (0 + -2)/2 = -1
+                                                     // z = 0.71252 / 2 = 0.35626
+wall41Mesh.receiveShadow = true;
+scene.add(wall41Mesh);
+
+const wall41Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(12.5/2, 1, 0.1)), // half-extents
+    mass: 0
+});
+wall41Body.position.set(31.25, -1, 0.71252);
+world.addBody(wall41Body);
+wall41Mesh.userData.physicsBody = wall41Body;
+
+// ---------------------------------------------------------------
+//  42nd wall – Wall 2 (saddlebrown)
+//  Corners: (37.5,0,29.977), (37.5,-2,29.977),
+//           (25,-2,29.977), (25,0,29.977)
+// ---------------------------------------------------------------
+const wall42Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252
+const wall42Mat = new THREE.MeshBasicMaterial({
+    color: 0x8b4513,          // saddlebrown – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall42Mesh = new THREE.Mesh(wall42Geo, wall42Mat);                // horizontal XZ plane
+wall42Mesh.position.set(31.25, -1, 29.977 + 0.35626); // x = 31.25
+                                                     // y = -1
+                                                     // z = 29.977 + 0.35626
+wall42Mesh.receiveShadow = true;
+scene.add(wall42Mesh);
+
+const wall42Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(12.5/2, 1, 0.1)), // half-extents
+    mass: 0
+});
+wall42Body.position.set(31.25, -1, 29.977 + 0.35626);
+world.addBody(wall42Body);
+wall42Mesh.userData.physicsBody = wall42Body;
+
+// ---------------------------------------------------------------
+//  43rd wall – Wall 1 (dodgerblue) – top face
+//  Corners: (10.425,5,-43.718), (14.425,5,-43.718),
+//           (14.425,5,-50), (10.425,5,-50)
+// ---------------------------------------------------------------
+const wall43Geo = new THREE.PlaneGeometry(4, 6.282); // X = 4, Z = 6.282
+const wall43Mat = new THREE.MeshBasicMaterial({
+    color: 0x1e90ff,          // dodgerblue – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall43Mesh = new THREE.Mesh(wall43Geo, wall43Mat);               // horizontal XZ plane
+wall43Mesh.position.set(12.425, 5, -46.859);         // x = (10.425+14.425)/2
+                                                     // y = 5
+                                                     // z = (-43.718 + -50)/2
+wall43Mesh.receiveShadow = true;
+scene.add(wall43Mesh);
+
+const wall43Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(4/2, 6.282/2, 0.1)), // half-extents
+    mass: 0
+});
+wall43Body.position.set(12.425, 5, -46.859);
+wall43Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+world.addBody(wall43Body);
+wall43Mesh.userData.physicsBody = wall43Body;
+
+// ---------------------------------------------------------------
+//  44th wall – Wall 2 (royalblue) – front face
+//  Corners: (10.425,5,-43.718), (14.425,5,-43.718),
+//           (14.425,0,-43.718), (10.425,0,-43.718)
+// ---------------------------------------------------------------
+const wall44Geo = new THREE.PlaneGeometry(4, 5); // X = 4, Y = 5
+const wall44Mat = new THREE.MeshBasicMaterial({
+    color: 0x4169e1,          // royalblue – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall44Mesh = new THREE.Mesh(wall44Geo, wall44Mat);
+wall44Mesh.position.set(12.425, 2.5, -43.718);       // x = 12.425, y = (5+0)/2 = 2.5, z = -43.718
+wall44Mesh.receiveShadow = true;
+scene.add(wall44Mesh);
+
+const wall44Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(4/2, 5/2, 0.1)), // half-extents
+    mass: 0
+});
+wall44Body.position.set(12.425, 2.5, -43.718);
+world.addBody(wall44Body);
+wall44Mesh.userData.physicsBody = wall44Body;
+
+// ---------------------------------------------------------------
+//  45th wall – Wall 3 (cornflowerblue) – left face
+//  Corners: (10.425,5,-43.718), (10.425,5,-50),
+//           (10.425,0,-50), (10.425,0,-43.718)
+// ---------------------------------------------------------------
+const wall45Geo = new THREE.PlaneGeometry(6.282, 5); // Z = 6.282, Y = 5
+const wall45Mat = new THREE.MeshBasicMaterial({
+    color: 0x6495ed,          // cornflowerblue – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall45Mesh = new THREE.Mesh(wall45Geo, wall45Mat);
+wall45Mesh.position.set(10.425, 2.5, -46.859);  
+wall45Mesh.receiveShadow = true;
+scene.add(wall45Mesh);
+
+const wall45Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(6.282/2, 5/2, 0.1)), // half-extents
+    mass: 0
+});
+wall45Body.position.set(10.425, 2.5, -46.859);
+wall45Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall45Body);
+wall45Mesh.userData.physicsBody = wall45Body;
+
+// ---------------------------------------------------------------
+//  46th wall – Wall 4 (lightskyblue) – right face
+//  Corners: (14.425,5,-43.718), (14.425,0,-43.718),
+//           (14.425,0,-50), (14.425,5,-50)
+// ---------------------------------------------------------------
+const wall46Geo = new THREE.PlaneGeometry(6.282, 5); // Z = 6.282, Y = 5
+const wall46Mat = new THREE.MeshBasicMaterial({
+    color: 0x87cefa,          // lightskyblue – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall46Mesh = new THREE.Mesh(wall46Geo, wall46Mat);
+wall46Mesh.position.set(14.425, 2.5, -46.859);    
+wall46Mesh.receiveShadow = true;
+scene.add(wall46Mesh);
+
+const wall46Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3( 6.282/2, 5/2, 0.1)), // half-extents
+    mass: 0
+});
+wall46Body.position.set(14.425, 2.5, -46.859);
+wall46Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall46Body);
+wall46Mesh.userData.physicsBody = wall46Body;
+
+// ---------------------------------------------------------------
+//  47th wall – Wall 1 (darkslategray)
+//  Corners: (0,0,-37.322), (0,-2,-37.322),
+//           (12.5,-2,-37.322), (12.5,0,-37.322)
+// ---------------------------------------------------------------
+const wall47Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252 (same thickness as walls 41/42)
+const wall47Mat = new THREE.MeshBasicMaterial({
+    color: 0x2f4f4f,          // darkslategray – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall47Mesh = new THREE.Mesh(wall47Geo, wall47Mat);                // horizontal XZ plane
+wall47Mesh.position.set(6.25, -1, -37.322);           // x = (0+12.5)/2 = 6.25
+                                                      // y = (0 + -2)/2 = -1
+                                                      // z = -37.322 (center in Z)
+wall47Mesh.receiveShadow = true;
+scene.add(wall47Mesh);
+
+const wall47Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(12.5/2, 1, 0.1)), // half-extents: X/2, thickness/2, Z/2
+    mass: 0
+});
+wall47Body.position.set(6.25, -1, -37.322);
+world.addBody(wall47Body);
+wall47Mesh.userData.physicsBody = wall47Body;
+
+// ---------------------------------------------------------------
+//  48th wall – Wall 2 (dimgray)
+//  Corners: (0,0,37.678), (0,-2,37.678),
+//           (12.5,-2,37.678), (12.5,0,37.678)
+// ---------------------------------------------------------------
+const wall48Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252
+const wall48Mat = new THREE.MeshBasicMaterial({
+    color: 0x696969,          // dimgray – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall48Mesh = new THREE.Mesh(wall48Geo, wall48Mat);               // horizontal XZ plane
+wall48Mesh.position.set(6.25, -1, 37.678);            // x = 6.25, y = -1, z = 37.678
+wall48Mesh.receiveShadow = true;
+scene.add(wall48Mesh);
+
+const wall48Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(12.5/2, 1, 0.1)), // half-extents
+    mass: 0
+});
+wall48Body.position.set(6.25, -1, 37.678);
+world.addBody(wall48Body);
+wall48Mesh.userData.physicsBody = wall48Body;
+
+// ---------------------------------------------------------------
+//  49th wall – Wall 1 (slategray)
+//  Corners: (0,0,43.839), (0,-2,43.839),
+//           (-12.5,-2,43.839), (-12.5,0,43.839)
+// ---------------------------------------------------------------
+const wall49Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252 (consistent thickness)
+const wall49Mat = new THREE.MeshBasicMaterial({
+    color: 0x708090,          // slategray – distinct from all previous
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall49Mesh = new THREE.Mesh(wall49Geo, wall49Mat);                // horizontal XZ plane
+wall49Mesh.position.set(-6.25, -1, 43.839);           // x = (0 + -12.5)/2 = -6.25
+                                                      // y = (0 + -2)/2 = -1
+                                                      // z = 43.839 (center in Z)
+wall49Mesh.receiveShadow = true;
+scene.add(wall49Mesh);
+
+const wall49Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(12.5/2, 1, 0.1)), // half-extents: X/2, thickness/2, Z/2
+    mass: 0
+});
+wall49Body.position.set(-6.25, -1, 43.839);
+world.addBody(wall49Body);
+wall49Mesh.userData.physicsBody = wall49Body;
+
+// ---------------------------------------------------------------
+//  50th wall – Wall 1 (mediumblue)
+//  Corners: (-12.5,-2,-45.246), (-12.5,-2,-48.415),
+//           (-12.5,5,-48.415), (-12.5,5,-45.246)
+// ---------------------------------------------------------------
+const wall50Geo = new THREE.PlaneGeometry(3.169, 7); // Z = 3.169, Y = 7
+const wall50Mat = new THREE.MeshBasicMaterial({
+    color: 0x0000cd,          // mediumblue – distinct from all previous
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall50Mesh = new THREE.Mesh(wall50Geo, wall50Mat);
+wall50Mesh.position.set(-12.5, 1.5, -46.8305);     // y = (-2 + 5)/2 = 1.5
+                                                    // z = (-45.246 + -48.415)/2 = -46.8305
+wall50Mesh.receiveShadow = true;
+scene.add(wall50Mesh);
+
+const wall50Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(3.169/2, 7/2, 0.1)), // half-extents: thickness/2, height/2, depth/2
+    mass: 0
+});
+wall50Body.position.set(-12.5, 1.5, -46.8305);
+wall50Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall50Body);
+wall50Mesh.userData.physicsBody = wall50Body;
+
+// ---------------------------------------------------------------
+//  51st wall – Wall 1 (midnightblue) – top face
+//  Corners: (-14.5,5,-43.746), (-14.5,4,-43.746),
+//           (-10.5,4,-43.746), (-10.5,5,-43.746)
+// ---------------------------------------------------------------
+const wall51Geo = new THREE.PlaneGeometry(4, 1); // X = 4, Y = 1 (height)
+const wall51Mat = new THREE.MeshBasicMaterial({
+    color: 0x191970,          // midnightblue – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall51Mesh = new THREE.Mesh(wall51Geo, wall51Mat);                // horizontal XZ plane
+wall51Mesh.position.set(-12.5, 4.5, -43.746);         // x = (-14.5 + -10.5)/2 = -12.5
+                                                      // y = (5 + 4)/2 = 4.5
+                                                      // z = -43.746
+wall51Mesh.receiveShadow = true;
+scene.add(wall51Mesh);
+
+const wall51Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(4/2, 1/2, 0.1)), // half-extents: X/2, Y/2, thickness/2
+    mass: 0
+});
+wall51Body.position.set(-12.5, 4.5, -43.746);
+world.addBody(wall51Body);
+wall51Mesh.userData.physicsBody = wall51Body;
+
+// ---------------------------------------------------------------
+//  52nd wall – Wall 2 (navy) – left face
+//  Corners: (-14.5,5,-43.746), (-14.5,4,-43.746),
+//           (-14.5,4,-50), (-14.5,5,-50)
+// ---------------------------------------------------------------
+const wall52Geo = new THREE.PlaneGeometry(6.254, 1); // Z = 6.254, Y = 1
+const wall52Mat = new THREE.MeshBasicMaterial({
+    color: 0x000080,          // navy – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall52Mesh = new THREE.Mesh(wall52Geo, wall52Mat);
+wall52Mesh.position.set(-14.5, 4.5, -46.873); // YZ plane
+wall52Mesh.receiveShadow = true;
+scene.add(wall52Mesh);
+
+const wall52Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(6.254/2, 1/2, 0.1)), // half-extents
+    mass: 0
+});
+wall52Body.position.set(-14.5, 4.5, -46.873);
+wall52Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall52Body);
+wall52Mesh.userData.physicsBody = wall52Body;
+
+// ---------------------------------------------------------------
+//  53rd wall – Wall 3 (darkblue) – right face
+//  Corners: (-10.5,5,-43.746), (-10.5,4,-43.746),
+//           (-10.5,4,-50), (-10.5,5,-50)
+// ---------------------------------------------------------------
+const wall53Geo = new THREE.PlaneGeometry(6.254, 1); // Z = 6.254, Y = 1
+const wall53Mat = new THREE.MeshBasicMaterial({
+    color: 0x00008b,          // darkblue – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall53Mesh = new THREE.Mesh(wall53Geo, wall53Mat);
+wall53Mesh.position.set(-10.5, 4.5, -46.873);
+wall53Mesh.receiveShadow = true;
+scene.add(wall53Mesh);
+
+const wall53Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(6.254/2, 1/2, 0.1)),
+    mass: 0
+});
+wall53Body.position.set(-10.5, 4.5, -46.873);
+wall53Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall53Body);
+wall53Mesh.userData.physicsBody = wall53Body;
+
+// ---------------------------------------------------------------
+//  54th wall – Wall 4 (indigo) – top face (higher)
+//  Corners: (-14.5,5,-43.746), (-10.5,5,-43.746),
+//           (-10.5,5,-50), (-14.5,5,-50)
+// ---------------------------------------------------------------
+const wall54Geo = new THREE.PlaneGeometry(4, 6.254); // X = 4, Z = 6.254
+const wall54Mat = new THREE.MeshBasicMaterial({
+    color: 0x4b0082,          // indigo – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall54Mesh = new THREE.Mesh(wall54Geo, wall54Mat);
+wall54Mesh.position.set(-12.5, 5, -46.873);
+wall54Mesh.receiveShadow = true;
+scene.add(wall54Mesh);
+
+const wall54Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(4/2, 6.254/2, 0.1)),
+    mass: 0
+});
+wall54Body.position.set(-12.5, 5, -46.873);
+wall54Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+world.addBody(wall54Body);
+wall54Mesh.userData.physicsBody = wall54Body;
+
+// ---------------------------------------------------------------
+//  55th wall – Wall 5 (darkslateblue) – bottom face
+//  Corners: (-14.5,4,-43.746), (-10.5,4,-43.746),
+//           (-10.5,4,-50), (-14.5,4,-50)
+// ---------------------------------------------------------------
+const wall55Geo = new THREE.PlaneGeometry(4, 6.254); // X = 4, Z = 6.254
+const wall55Mat = new THREE.MeshBasicMaterial({
+    color: 0x483d8b,          // darkslateblue – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall55Mesh = new THREE.Mesh(wall55Geo, wall55Mat);
+wall55Mesh.position.set(-12.5, 4, -46.873);
+wall55Mesh.receiveShadow = true;
+scene.add(wall55Mesh);
+
+const wall55Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(4/2, 6.254/2, 0.1)),
+    mass: 0
+});
+wall55Body.position.set(-12.5, 4, -46.873);
+wall55Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+world.addBody(wall55Body);
+wall55Mesh.userData.physicsBody = wall55Body;
+
+// ---------------------------------------------------------------
+//  56th wall – Wall 1 (darkred)
+//  Corners: (-50,5,50), (-50,5,-50), (-50,0,-50), (-50,0,50)
+// ---------------------------------------------------------------
+const wall56Geo = new THREE.PlaneGeometry(100, 5); // Z = 100, Y = 5
+const wall56Mat = new THREE.MeshBasicMaterial({
+    color: 0x8b0000,          // darkred – distinct from all previous
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall56Mesh = new THREE.Mesh(wall56Geo, wall56Mat);
+wall56Mesh.position.set(-50, 2.5, 0);         // y = (5 + 0)/2 = 2.5, z = (50 + -50)/2 = 0
+wall56Mesh.receiveShadow = true;
+scene.add(wall56Mesh);
+
+const wall56Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(100/2, 5/2, 0.1)), // half-extents: thickness/2, height/2, depth/2
+    mass: 0
+});
+wall56Body.position.set(-50, 2.5, 0);
+wall56Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall56Body);
+wall56Mesh.userData.physicsBody = wall56Body;
+
+// ---------------------------------------------------------------
+//  57th wall – Wall 2 (maroon)
+//  Corners: (-50,10,50), (-50,10,-50), (-50,8.75,-50), (-50,8.75,50)
+// ---------------------------------------------------------------
+const wall57Geo = new THREE.PlaneGeometry(100, 1.25); // Z = 100, Y = 1.25
+const wall57Mat = new THREE.MeshBasicMaterial({
+    color: 0x800000,          // maroon – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall57Mesh = new THREE.Mesh(wall57Geo, wall57Mat);
+wall57Mesh.position.set(-50, 9.375, 0);       // y = (10 + 8.75)/2 = 9.375, z = 0
+wall57Mesh.receiveShadow = true;
+scene.add(wall57Mesh);
+
+const wall57Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(100/2, 1.25/2, 0.1)), // half-extents
+    mass: 0
+});
+wall57Body.position.set(-50, 9.375, 0);
+wall57Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall57Body);
+wall57Mesh.userData.physicsBody = wall57Body;
+
+// ---------------------------------------------------------------
+//  58th wall – Wall 1 (crimson)
+//  Corners: (-50,8.75,-0.87225), (-50,8.75,-50),
+//           (-50,5,-50), (-50,5,-0.87225)
+// ---------------------------------------------------------------
+const wall58Geo = new THREE.PlaneGeometry(49.12775, 3.75); // Z = 49.12775, Y = 3.75
+const wall58Mat = new THREE.MeshBasicMaterial({
+    color: 0xdc143c,          // crimson – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall58Mesh = new THREE.Mesh(wall58Geo, wall58Mat);
+wall58Mesh.position.set(-50, 6.875, -25.436125);   // y = (8.75 + 5)/2 = 6.875
+                                                   // z = (-0.87225 + -50)/2 = -25.436125
+wall58Mesh.receiveShadow = true;
+scene.add(wall58Mesh);
+
+const wall58Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(49.12775/2, 3.75/2, 0.1)), // half-extents
+    mass: 0
+});
+wall58Body.position.set(-50, 6.875, -25.436125);
+wall58Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall58Body);
+wall58Mesh.userData.physicsBody = wall58Body;
+
+// ---------------------------------------------------------------
+//  59th wall – Wall 2 (firebrick)
+//  Corners: (-50,8.75,50), (-50,8.75,2.2527),
+//           (-50,5,2.2527), (-50,5,50)
+// ---------------------------------------------------------------
+const wall59Geo = new THREE.PlaneGeometry(47.7473, 3.75); // Z = 47.7473, Y = 3.75
+const wall59Mat = new THREE.MeshBasicMaterial({
+    color: 0xb22222,          // firebrick – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall59Mesh = new THREE.Mesh(wall59Geo, wall59Mat);
+wall59Mesh.position.set(-50, 6.875, 26.12635);     // y = 6.875
+                                                   // z = (50 + 2.2527)/2 = 26.12635
+wall59Mesh.receiveShadow = true;
+scene.add(wall59Mesh);
+
+const wall59Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(47.7473/2, 3.75/2, 0.1)), // half-extents
+    mass: 0
+});
+wall59Body.position.set(-50, 6.875, 26.12635);
+wall59Body.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+world.addBody(wall59Body);
+wall59Mesh.userData.physicsBody = wall59Body;
+
+// ---------------------------------------------------------------
+//  60th wall – Wall 1 (darkmagenta)
+//  Corners: (-53,5,2.2527), (-50,5,2.2527),
+//           (-50,8.75,2.2527), (-53,8.75,2.2527)
+// ---------------------------------------------------------------
+const wall60Geo = new THREE.PlaneGeometry(3.25, 3.75); // X = 3, Z = 3.75 (but rotated)
+const wall60Mat = new THREE.MeshBasicMaterial({
+    color: 0x8b008b,          // darkmagenta – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall60Mesh = new THREE.Mesh(wall60Geo, wall60Mat);                  // rotate to XZ plane (vertical)
+wall60Mesh.position.set(-51.5, 6.875, 2.2527);         // x = (-53 + -50)/2 = -51.5
+                                                       // y = (5 + 8.75)/2 = 6.875
+                                                       // z = 2.2527
+wall60Mesh.receiveShadow = true;
+scene.add(wall60Mesh);
+
+const wall60Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(3.25/2, 3.75/2, 0.1)), // half-extents: depth/2, height/2, thickness/2
+    mass: 0
+});
+wall60Body.position.set(-51.5, 6.875, 2.2527);
+world.addBody(wall60Body);
+wall60Mesh.userData.physicsBody = wall60Body;
+
+// ---------------------------------------------------------------
+//  61st wall – Wall 2 (purple)
+//  Corners: (-53,5,-0.87225), (-50,5,-0.87225),
+//           (-50,8.75,-0.87225), (-53,8.75,-0.87225)
+// ---------------------------------------------------------------
+const wall61Geo = new THREE.PlaneGeometry(3.25, 3.75);
+const wall61Mat = new THREE.MeshBasicMaterial({
+    color: 0x800080,          // purple – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall61Mesh = new THREE.Mesh(wall61Geo, wall61Mat);
+wall61Mesh.position.set(-51.5, 6.875, -0.87225);
+wall61Mesh.receiveShadow = true;
+scene.add(wall61Mesh);
+
+const wall61Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(3.25/2, 3.75/2, 0.1)),
+    mass: 0
+});
+wall61Body.position.set(-51.5, 6.875, -0.87225);
+world.addBody(wall61Body);
+wall61Mesh.userData.physicsBody = wall61Body;
+
+// ---------------------------------------------------------------
+//  62nd wall – Wall 3 (mediumvioletred)
+//  Corners: (-53,5,2.2527), (-50,5,2.2527),
+//           (-50,5,-0.87225), (-53,5,-0.87225)
+// ---------------------------------------------------------------
+const wall62Geo = new THREE.PlaneGeometry(3.25, 3.125); // X = 3, Z = 3.125
+const wall62Mat = new THREE.MeshBasicMaterial({
+    color: 0xc71585,          // mediumvioletred – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall62Mesh = new THREE.Mesh(wall62Geo, wall62Mat);                 // horizontal XZ plane
+wall62Mesh.position.set(-51.5, 5, 0.690225);           // z = (2.2527 + -0.87225)/2 = 0.690225
+wall62Mesh.receiveShadow = true;
+scene.add(wall62Mesh);
+
+const wall62Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(3.25/2, 3.125/2, 0.1)),
+    mass: 0
+});
+wall62Body.position.set(-51.5, 5, 0.690225);
+wall62Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+world.addBody(wall62Body);
+wall62Mesh.userData.physicsBody = wall62Body;
+
+// ---------------------------------------------------------------
+//  63rd wall – Wall 4 (deeppink)
+//  Corners: (-53,8.75,2.2527), (-50,8.75,2.2527),
+//           (-50,8.75,-0.87225), (-53,8.75,-0.87225)
+// ---------------------------------------------------------------
+const wall63Geo = new THREE.PlaneGeometry(3.25, 3.125);
+const wall63Mat = new THREE.MeshBasicMaterial({
+    color: 0xff1493,          // deeppink – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const wall63Mesh = new THREE.Mesh(wall63Geo, wall63Mat);
+wall63Mesh.position.set(-51.5, 8.75, 0.690225);
+wall63Mesh.receiveShadow = true;
+scene.add(wall63Mesh);
+
+const wall63Body = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(3.25/2, 3.125/2, 0.1)),
+    mass: 0
+});
+wall63Body.position.set(-51.5, 8.75, 0.690225);
+wall63Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+world.addBody(wall63Body);
+wall63Mesh.userData.physicsBody = wall63Body;
+
         // Night sky background
     scene.background = new THREE.Color(0x001133);
     
@@ -758,8 +1634,74 @@ twentySeventhWallMesh.userData.physicsBody = twentySeventhWallBody;
     // Add some sample objects to test physics
     addTestObjects();
     createBuilding();
+
+    createUI();                 // <── NEW
+    requestPointerLock();
+    initInput();
+}
+function createUI() {
+    // Title
+    const titleDiv = document.createElement('div');
+    titleDiv.className = "game-ui";
+    titleDiv.textContent = 'LEVEL 3 - Gravity Puzzle';
+    titleDiv.style.cssText = `
+        color: white; font-size: 24px; font-weight: bold; position: absolute; 
+        top: 20px; left: 50%; transform: translateX(-50%); text-shadow: 2px 2px 4px black;
+        z-index: 1000; pointer-events: none;
+    `;
+    document.body.appendChild(titleDiv);
+
+    // Door interaction prompt
+    doorPromptDiv = document.createElement('div');
+    doorPromptDiv.className = "game-ui";
+    doorPromptDiv.textContent = 'Press E to open';
+    doorPromptDiv.style.cssText = `
+        color: white; font-size: 18px; position: absolute; 
+        top: 60%; left: 50%; transform: translate(-50%, -50%); 
+        text-shadow: 1px 1px 2px black; z-index: 1000; 
+        pointer-events: none; display: none;
+    `;
+    document.body.appendChild(doorPromptDiv);
+
+    // Crosshair
+    const crosshair = document.createElement('div');
+    crosshair.className = "game-ui";
+    crosshair.style.position = "absolute";
+    crosshair.style.top = "50%";
+    crosshair.style.left = "50%";
+    crosshair.style.width = "20px";
+    crosshair.style.height = "20px";
+    crosshair.style.marginLeft = "-10px";
+    crosshair.style.marginTop = "-10px";
+    crosshair.style.pointerEvents = "none";
+    crosshair.style.zIndex = "10";
+    crosshair.innerHTML = `
+        <div style="position:absolute;top:9px;left:0;width:20px;height:2px;background:white"></div>
+        <div style="position:absolute;top:0;left:9px;width:2px;height:20px;background:white"></div>
+    `;
+    document.body.appendChild(crosshair);
+}
+function requestPointerLock() {
+    renderer.domElement.addEventListener('click', () => {
+        renderer.domElement.requestPointerLock();
+    });
+    document.addEventListener('pointerlockchange', onPointerLockChange);
+}
+function onPointerLockChange() {
+    if (document.pointerLockElement === renderer.domElement) {
+        document.addEventListener('mousemove', onMouseMove);
+    } else {
+        document.removeEventListener('mousemove', onMouseMove);
+    }
 }
 
+function onMouseMove(e) {
+    yaw   -= e.movementX * MOUSE_SENS;
+    pitch += e.movementY * MOUSE_SENS;
+    const maxPitch = PI_2 - 0.1;
+    const minPitch = -maxPitch;
+    pitch = Math.max(minPitch, Math.min(maxPitch, pitch));
+}
 let boxBody, boxMesh;
 
 // Key state tracking object
@@ -786,7 +1728,7 @@ function jump() {
     
     if (isOnGround) {
         // Apply upward impulse for jumping
-        boxBody.velocity.y = 8; // Adjust this value for higher/lower jumps
+        boxBody.velocity.y = 16; // Adjust this value for higher/lower jumps
         canJump = false;
         
         // Reset jump cooldown after a short delay
@@ -796,70 +1738,99 @@ function jump() {
     }
 }
 
-// Inside addTestObjects() - remove 'const' from boxBody and boxMesh
 function addTestObjects() {
-    // Add a test box
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-    const boxMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    boxMesh = new THREE.Mesh(boxGeo, boxMat);  // Now module-level
-    boxMesh.position.set(48, 3, 0);
+    const boxMat = new THREE.MeshStandardMaterial({ color: 0xff5555 });
+    boxMesh = new THREE.Mesh(boxGeo, boxMat);
+
+    // SPAWN ON PLATFORM
+    boxMesh.position.set(46, 3, 0);  // Center of first green platform
+    boxMesh.castShadow = true;
     scene.add(boxMesh);
 
-    // Create physics body for the box
-    boxBody = new CANNON.Body({  // Now module-level
+    boxBody = new CANNON.Body({
         mass: 1,
-        shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))
+        shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
+        linearDamping: 0.3,
+        angularDamping: 0.9
     });
-    boxBody.position.set(48, 3, 0);
+    boxBody.position.copy(boxMesh.position);
     world.addBody(boxBody);
-
-    // Store reference for synchronization
     boxMesh.userData.physicsBody = boxBody;
+
+    player = boxMesh;
 }
 
 // Remove the old document.addEventListener('keydown') block entirely
 
 // Inside updateLevel() - add movement logic here for smooth updates
 export function updateLevel() {
-    const timeStep = 1 / 60;
-    const speed = 5;  // Adjust this for faster/slower movement
-    
-    // Step the physics world
-    world.step(timeStep);
+    const delta = 1 / 60;
+    world.step(delta);
 
-    // Handle movement based on key states (applied as velocity for physics)
-    const velocity = new CANNON.Vec3(0, 0, 0);
-    if (keys['KeyW']) velocity.z = -speed;
-    if (keys['KeyS']) velocity.z = speed;
-    if (keys['KeyA']) velocity.x = -speed;
-    if (keys['KeyD']) velocity.x = speed;
-    
-    // Normalize diagonal movement (optional, prevents faster diagonals)
-    if (velocity.length() > 0) {
-        velocity.normalize();
-        velocity.scale(speed, velocity);
+    // ── PLAYER MOVEMENT (WASD) ───────────────────────────────────────
+    const speed = 7;
+    const move = new THREE.Vector3();
+    if (keys['KeyW']) move.z -= 1;
+    if (keys['KeyS']) move.z += 1;
+    if (keys['KeyA']) move.x -= 1;
+    if (keys['KeyD']) move.x += 1;
+    if (move.lengthSq() > 0) {
+        move.normalize().multiplyScalar(speed);
+        // apply in world space (rotate by yaw)
+        const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+        const right   = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+        const vel = new CANNON.Vec3(
+            right.x * move.x + forward.x * move.z,
+            boxBody.velocity.y,
+            right.z * move.x + forward.z * move.z
+        );
+        boxBody.velocity.x = vel.x;
+        boxBody.velocity.z = vel.z;
     }
-    
-    boxBody.velocity.set(velocity.x, boxBody.velocity.y, velocity.z);  // Preserve Y velocity for gravity/jumping
 
-    // Synchronize Three.js objects with Cannon.js bodies
-    scene.traverse((object) => {
-        if (object.userData.physicsBody) {
-            const body = object.userData.physicsBody;
-            object.position.copy(body.position);
-            object.quaternion.copy(body.quaternion);
+    // ── JUMP (space) ─────────────────────────────────────────────────
+    if (keys['Space'] && canJump && boxBody.position.y <= 1.1) {
+        boxBody.velocity.y = 16;
+        canJump = false;
+        setTimeout(() => canJump = true, 500);
+    }
+
+    // ── SYNC PLAYER ─────────────────────────────────────────────────
+if (boxMesh && boxBody) {
+    boxMesh.position.copy(boxBody.position);
+    boxMesh.quaternion.copy(boxBody.quaternion);
+}
+
+// ── SYNC STATIC OBJECTS ─────────────────────────────────────────
+scene.traverse(obj => {
+    if (obj.userData.physicsBody && obj !== boxMesh) {
+        const b = obj.userData.physicsBody;
+        obj.position.copy(b.position);
+        obj.quaternion.copy(b.quaternion);
+    }
+});
+
+    // ── DOOR ANIMATION (half-open) ───────────────────────────────────
+    doors.forEach(door => {
+        if (door.mixer && door.action && door.isOpen && !door.animationCompleted) {
+            if (door.action.time >= door.model.userData.halfDuration) {
+                door.action.paused = true;
+                door.animationCompleted = true;
+            } else {
+                door.mixer.update(delta);
+            }
+        } else if (door.mixer) {
+            door.mixer.update(delta);
         }
     });
 
-    // Synchronize ground
-    // groundMesh.position.copy(groundBody.position);
-    // groundMesh.quaternion.copy(groundBody.quaternion);
+    // ── UI PROMPT ─────────────────────────────────────────────────────
+    const targeted = getTargetedDoor();
+    doorPromptDiv.style.display = targeted ? 'block' : 'none';
 
-    // Update camera to follow the player (third-person style)
-    const cameraOffset = new THREE.Vector3(0, 3, 5); // Behind and above player
-    const targetCameraPosition = boxMesh.position.clone().add(cameraOffset);
-    camera.position.copy(targetCameraPosition);
-    camera.lookAt(boxMesh.position);
+    // ── CAMERA ───────────────────────────────────────────────────────
+    updateCamera();
 }
 
 let doors = []; // Array to store door objects and their mixers
@@ -973,21 +1944,81 @@ function createBuilding() {
         }
     );
 }
+function getTargetedDoor() {
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    raycaster.set(camera.position, direction);
+    raycaster.far = DOOR_INTERACT_DISTANCE;
+
+    for (const door of doors) {
+        const hits = raycaster.intersectObject(door.model, true);
+        if (hits.length > 0) {
+            const dist = camera.position.distanceTo(door.model.position);
+            if (dist <= DOOR_INTERACT_DISTANCE && !door.isOpen) {
+                return door;
+            }
+        }
+    }
+    return null;
+}
+function initInput() {
+    document.addEventListener('keydown', e => {
+        if (e.code === 'KeyE') {
+            const door = getTargetedDoor();
+            if (door && door.action && !door.isOpen) {
+                door.action.reset().play();
+                door.isOpen = true;
+                // stop at half-way (see animation update below)
+            }
+        }
+    });
+}
 
 // Clean up the level
 export function cleanupLevel() {
-    // Remove any event listeners
-    // Clean up any resources
-    if (world) {
-        // Remove all bodies from world
-        while(world.bodies.length > 0) {
-            world.remove(world.bodies[0]);
-        }
+    // remove UI
+    document.querySelectorAll('.game-ui').forEach(el => el.remove());
+
+    // remove pointer-lock listener
+    document.removeEventListener('pointerlockchange', onPointerLockChange);
+    document.removeEventListener('mousemove', onMouseMove);
+
+    // physics world
+    if (world) while (world.bodies.length) world.remove(world.bodies[0]);
+}
+function updateCamera() {
+    const cameraDistance = 8;
+    const cameraHeightOffset = 1.8;
+    const aimHeightOffset = 1.5;
+    const cosPitch = Math.cos(pitch);
+
+    const targetPos = new THREE.Vector3(
+        player.position.x - Math.sin(yaw) * cameraDistance * cosPitch,
+        player.position.y + Math.sin(pitch) * cameraDistance + cameraHeightOffset,
+        player.position.z - Math.cos(yaw) * cameraDistance * cosPitch
+    );
+
+    const playerCenter = player.position.clone().setY(player.position.y + aimHeightOffset);
+    const camDir = new THREE.Vector3().subVectors(targetPos, playerCenter).normalize();
+
+    raycaster.set(playerCenter, camDir);
+    raycaster.far = targetPos.distanceTo(playerCenter);
+    const obstacles = scene.children.filter(o => o !== player && o.name !== 'goal');
+    const hits = raycaster.intersectObjects(obstacles, true);
+
+    if (hits.length > 0) {
+        const actual = hits[0].distance - 0.2;               // stay a little inside
+        camera.position.copy(playerCenter).addScaledVector(camDir, actual);
+    } else {
+        camera.position.copy(targetPos);
     }
+
+    camera.lookAt(player.position.x, player.position.y + aimHeightOffset, player.position.z);
 }
 
 // Make functions available for the main game loop
 window.returnToMainMenuFromLevel3 = returnCallback;
+
 
 // Bullet class
 // class Bullet {
@@ -1038,12 +2069,7 @@ window.returnToMainMenuFromLevel3 = returnCallback;
 // const PI_2 = Math.PI / 2;
 // const MOUSE_SENS = 0.0025;
 
-// // Physics variables
-// const speed = 0.15;
-// // const gravity = -0.03;
-// const jumpStrength = 0.45;
-// let velocityY = 0;
-// const GROUND_TOLERANCE = 0;
+
 
 // // Player reference
 // let player;
@@ -1053,16 +2079,7 @@ window.returnToMainMenuFromLevel3 = returnCallback;
 // const raycaster = new THREE.Raycaster();
 // const cameraVector = new THREE.Vector3();
 
-// // Building dimensions
-// // const BUILDING_WIDTH = 30;
-// // const BUILDING_DEPTH = 30;
-// // const WALL_THICKNESS = 0.3;
-// // const SHORT_WALL_HEIGHT = 4;
-// // const HALLWAY_LENGTH = 10;
-// // const HALLWAY_HEIGHT = 8;
 
-// // Collision boxes array
-// // let collisionBoxes = [];
 
 // // Movable boxes
 // let movableBoxes = [];
@@ -1749,37 +2766,7 @@ window.returnToMainMenuFromLevel3 = returnCallback;
 //         }
 //     }
     
-//     // Update door animations
-//     const delta = 1 / 60; // Assuming 60 FPS for animation updates
-//     doors.forEach(door => {
-//         if (door.mixer && door.action && !door.animationCompleted) {
-//             // Check if animation has reached halfway point
-//             if (door.action.time >= door.model.userData.halfDuration) {
-//                 // Stop the animation at halfway point
-//                 door.action.paused = true;
-//                 door.animationCompleted = true;
-//                 console.log(`Door ${door.model.name} animation frozen at halfway point`);
-//             } else {
-//                 // Continue playing animation
-//                 door.mixer.update(delta);
-//             }
-//         } else if (door.mixer && !door.action) {
-//             // For doors without specific actions, just update normally
-//             door.mixer.update(delta);
-//         }
-//     });
 
-//     // Check for door interaction prompt
-//     const targetedDoor = getTargetedDoor();
-//     doorPromptDiv.style.display = targetedDoor ? 'block' : 'none';
-    
-//     // Rebuild collisionBoxes with all relevant scene objects
-//     // collisionBoxes = [];
-//     // scene.children.forEach(obj => {
-//     //     if (obj.isMesh && obj.name !== 'player' && obj.name !== 'goal' && !obj.userData.isMovable && !obj.name.startsWith('door_')) {
-//     //         addCollisionBox(obj);
-//     //     }
-//     // });
 //     // Add movable boxes and closed doors to collisionBoxes
 //     // movableBoxes.forEach(box => {
 //     //     addCollisionBox(box);
@@ -1799,31 +2786,4 @@ window.returnToMainMenuFromLevel3 = returnCallback;
 //     updateBoxPhysics();
 //     checkGoal();
 //     if (window.__stats) window.__stats.end();
-// }
-
-// export function cleanupLevel() {
-//     const uiElements = document.querySelectorAll('.game-ui');
-//     uiElements.forEach(el => {
-//         const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
-//         if (!isMainMenuElement) {
-//             el.remove();
-//         }
-//     });
-    
-//     document.removeEventListener("keydown", handleKeyDown);
-//     document.removeEventListener("keyup", handleKeyUp);
-//     document.removeEventListener("pointerlockchange", onPointerLockChange);
-//     document.removeEventListener("mousemove", onMouseMove);
-//     document.removeEventListener("mousedown", onMouseDown);
-    
-//     if (renderer && renderer.domElement) {
-//         renderer.domElement.removeEventListener("click", requestLock);
-//     }
-    
-//     // collisionBoxes = [];
-//     movableBoxes = [];
-//     bullets = [];
-//     doors = []; // Clear doors array
-//     selectedBox = null;
-//     dragDistance = 8;
 // }
