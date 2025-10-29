@@ -33,6 +33,7 @@ export class InputSystem {
             onBoostEnd: null,             // () => void
             onCameraToggle: null,         // () => void
             onHeadlightsToggle: null,     // () => void
+            onCollidersToggle: null,      // () => void
         };
         
         // Bound event handlers (for cleanup)
@@ -109,6 +110,13 @@ export class InputSystem {
         if (event.code === 'KeyL') {
             if (this.callbacks.onHeadlightsToggle) {
                 this.callbacks.onHeadlightsToggle();
+            }
+        }
+        
+        // Colliders toggle (C key)
+        if (event.code === 'KeyC') {
+            if (this.callbacks.onCollidersToggle) {
+                this.callbacks.onCollidersToggle();
             }
         }
         

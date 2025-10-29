@@ -18,6 +18,50 @@
     <link rel="stylesheet" href="level2/style.css">
 </head>
 <body>
+    <!-- Level 2 Racing Game UI -->
+    <div id="impact-flash"></div>
+    
+    <!-- Direction Info HUD -->
+    <div id="direction-info" class="game-ui" style="display: none;">
+        <div>FPS: <span id="fps">60</span></div>
+        <div>Direction: <span id="wheel-direction">Straight</span></div>
+        <div>Heading: <span id="car-heading">0°</span></div>
+        <div>Speed: <span id="car-speed">0.0</span></div>
+        <div id="headlights-ui" style="display: none;">Headlights: <span id="headlights-status">OFF</span></div>
+        <div>
+            Boost: <span id="boost-status">OFF</span>
+            <div class="boost-bar-container">
+                <div class="boost-bar-fill" id="boost-bar-fill"></div>
+            </div>
+            <span id="boost-percentage">100%</span>
+        </div>
+        <div>Camera: <span id="camera-mode">Behind Car</span></div>
+        <div>Delivery: <span id="delivery-status">Find Yellow Zone</span></div>
+    </div>
+    
+    <!-- Day/Night Toggle Button -->
+    <button id="toggle-daynight" class="toggle-btn game-ui" onclick="if(window.toggleDayNight) window.toggleDayNight()" style="display: none;">
+        Toggle Day/Night (H)
+    </button>
+    
+    <!-- Minimap -->
+    <div id="minimap-container" class="game-ui" style="display: none;">
+        <canvas id="minimap" width="200" height="200"></canvas>
+        <canvas id="minimap-overlay" width="200" height="200"></canvas>
+    </div>
+    
+    <!-- Mobile Controls -->
+    <div id="mobile-controls" class="game-ui">
+        <div id="joystick-container">
+            <div id="joystick-base"></div>
+            <div id="joystick-stick"></div>
+        </div>
+        <div id="mobile-buttons">
+            <div class="mobile-btn" id="mobile-boost">⚡</div>
+            <div class="mobile-btn" id="mobile-camera">📷</div>
+        </div>
+    </div>
+
     <!-- Intro Screen -->
     <div id="intro-screen">
         <div class="arcade-icon">🕹️</div>

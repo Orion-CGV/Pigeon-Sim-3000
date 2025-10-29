@@ -50,6 +50,9 @@ let groundHelper;
 let timeStep = 1 / 60;
 let collidersVisible = true;
 
+// Boost effect tracking
+let wasBoostingLastFrame = false;
+
 export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, callback) {
     if (!sceneRef || !cameraRef || !rendererRef || !labelRendererRef) {
         console.error('Missing required references!');
@@ -80,6 +83,9 @@ function setupLevel() {
     // Setup shadow ground
     setupShadowGround();
     
+    // Show Level 2 UI elements
+    showLevel2UI();
+    
     // Initialize Camera System (pass existing camera from main.js)
     cameraSystem = new CameraSystem(scene, renderer, camera);
     cameraSystem.init();
@@ -107,6 +113,13 @@ function setupLevel() {
     lightingSystem = new LightingSystem(scene, uiSystem);
     lightingSystem.init();
     
+    // Expose toggleDayNight globally for the UI button
+    window.toggleDayNight = () => {
+        if (lightingSystem) {
+            lightingSystem.toggleDayNight();
+        }
+    };
+    
     // Initialize Car Physics System
     carPhysicsSystem = new CarPhysicsSystem(scene, world);
     
@@ -116,6 +129,152 @@ function setupLevel() {
     
     // Load the car model
     environmentSystem.loadModel('./level2/Car.glb');
+}
+
+/**
+ * Creates and shows Level 2 UI elements
+ * Elements are created dynamically to avoid conflicts with main.js cleanup
+ * that removes .game-ui elements when returning to menu
+ */
+function showLevel2UI() {
+    console.log('🎮 Creating/Showing Level 2 UI elements...');
+    
+    // Create impact flash if it doesn't exist
+    if (!document.getElementById('impact-flash')) {
+        const impactFlash = document.createElement('div');
+        impactFlash.id = 'impact-flash';
+        document.body.appendChild(impactFlash);
+        console.log('✅ Created impact-flash');
+    }
+    
+    // Create direction info panel if it doesn't exist
+    if (!document.getElementById('direction-info')) {
+        const directionInfo = document.createElement('div');
+        directionInfo.id = 'direction-info';
+        directionInfo.className = 'game-ui';
+        directionInfo.innerHTML = `
+            <div>FPS: <span id="fps">60</span></div>
+            <div>Direction: <span id="wheel-direction">Straight</span></div>
+            <div>Heading: <span id="car-heading">0°</span></div>
+            <div>Speed: <span id="car-speed">0.0</span></div>
+            <div id="headlights-ui" style="display: none;">Headlights: <span id="headlights-status">OFF</span></div>
+            <div>
+                Boost: <span id="boost-status">OFF</span>
+                <div class="boost-bar-container">
+                    <div class="boost-bar-fill" id="boost-bar-fill"></div>
+                </div>
+                <span id="boost-percentage">100%</span>
+            </div>
+            <div>Camera: <span id="camera-mode">Behind Car</span></div>
+            <div>Delivery: <span id="delivery-status">Find Yellow Zone</span></div>
+        `;
+        directionInfo.style.display = 'block';
+        document.body.appendChild(directionInfo);
+        console.log('✅ Created direction-info');
+    } else {
+        document.getElementById('direction-info').style.display = 'block';
+        console.log('✅ Showed existing direction-info');
+    }
+    
+    // Create day/night toggle button if it doesn't exist
+    if (!document.getElementById('toggle-daynight')) {
+        const toggleBtn = document.createElement('button');
+        toggleBtn.id = 'toggle-daynight';
+        toggleBtn.className = 'toggle-btn game-ui';
+        toggleBtn.textContent = 'Toggle Day/Night (H)';
+        toggleBtn.onclick = () => { if(window.toggleDayNight) window.toggleDayNight(); };
+        toggleBtn.style.display = 'block';
+        document.body.appendChild(toggleBtn);
+        console.log('✅ Created toggle-daynight');
+    } else {
+        document.getElementById('toggle-daynight').style.display = 'block';
+        console.log('✅ Showed existing toggle-daynight');
+    }
+    
+    // Create collider toggle button if it doesn't exist
+    if (!document.getElementById('toggle-colliders')) {
+        const toggleCollidersBtn = document.createElement('button');
+        toggleCollidersBtn.id = 'toggle-colliders';
+        toggleCollidersBtn.className = 'toggle-btn game-ui';
+        toggleCollidersBtn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
+        toggleCollidersBtn.style.display = 'block';
+        toggleCollidersBtn.style.top = '120px';
+        toggleCollidersBtn.onclick = toggleColliders;
+        document.body.appendChild(toggleCollidersBtn);
+        console.log('✅ Created toggle-colliders');
+    } else {
+        const btn = document.getElementById('toggle-colliders');
+        btn.style.display = 'block';
+        btn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
+        console.log('✅ Showed existing toggle-colliders');
+    }
+    
+    // Create minimap container if it doesn't exist
+    if (!document.getElementById('minimap-container')) {
+        const minimapContainer = document.createElement('div');
+        minimapContainer.id = 'minimap-container';
+        minimapContainer.className = 'game-ui';
+        
+        const minimapCanvas = document.createElement('canvas');
+        minimapCanvas.id = 'minimap';
+        minimapCanvas.width = 200;
+        minimapCanvas.height = 200;
+        
+        const minimapOverlay = document.createElement('canvas');
+        minimapOverlay.id = 'minimap-overlay';
+        minimapOverlay.width = 200;
+        minimapOverlay.height = 200;
+        
+        minimapContainer.appendChild(minimapCanvas);
+        minimapContainer.appendChild(minimapOverlay);
+        minimapContainer.style.display = 'block';
+        document.body.appendChild(minimapContainer);
+        console.log('✅ Created minimap-container with canvases');
+    } else {
+        document.getElementById('minimap-container').style.display = 'block';
+        console.log('✅ Showed existing minimap-container');
+    }
+    
+    // Create mobile controls if they don't exist
+    if (!document.getElementById('mobile-controls')) {
+        const mobileControls = document.createElement('div');
+        mobileControls.id = 'mobile-controls';
+        mobileControls.className = 'game-ui';
+        mobileControls.innerHTML = `
+            <div id="joystick-container">
+                <div id="joystick-base"></div>
+                <div id="joystick-stick"></div>
+            </div>
+            <div id="mobile-buttons">
+                <div class="mobile-btn" id="mobile-boost">⚡</div>
+                <div class="mobile-btn" id="mobile-camera">📷</div>
+            </div>
+        `;
+        document.body.appendChild(mobileControls);
+        console.log('✅ Created mobile-controls');
+    }
+    
+    console.log('✅ All Level 2 UI elements ready');
+}
+
+function hideLevel2UI() {
+    console.log('🎮 Hiding Level 2 UI elements...');
+    
+    const uiElements = [
+        'direction-info',
+        'toggle-daynight',
+        'toggle-colliders',
+        'minimap-container',
+        'mobile-controls'
+    ];
+    
+    uiElements.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.style.display = 'none';
+            console.log(`✅ Hid ${id}`);
+        }
+    });
 }
 
 function initPhysics() {
@@ -327,6 +486,9 @@ function setupInputCallbacks() {
                 lightingSystem.toggleHeadlights();
             }
         },
+        onCollidersToggle: () => {
+            toggleColliders();
+        },
         onPause: () => {
         if (window.showPauseMenu) {
             window.showPauseMenu(2);
@@ -339,6 +501,8 @@ function setupInputCallbacks() {
 
 function toggleColliders() {
     collidersVisible = !collidersVisible;
+    
+    console.log(`🔲 Colliders ${collidersVisible ? 'visible' : 'hidden'}`);
     
     if (carHelper) {
         carHelper.visible = collidersVisible;
@@ -353,12 +517,16 @@ function toggleColliders() {
             envObj.object.userData.physicsHelper.visible = collidersVisible;
         }
     });
+    
+    // Update button text to show current state
+    const toggleBtn = document.getElementById('toggle-colliders');
+    if (toggleBtn) {
+        toggleBtn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
+    }
 }
 
 // Level update function called by main.js animation loop
 export function updateLevel() {
-    if (window.__stats) window.__stats.begin();
-    
     const currentTime = performance.now();
     const deltaTime = (currentTime - (uiSystem ? uiSystem.lastFrameTime : performance.now())) / 1000;
     if (uiSystem) {
@@ -393,8 +561,23 @@ export function updateLevel() {
         deliverySystem.update(deltaTime, carWrapper);
     }
     
-    if (effectsSystem) {
-        effectsSystem.update(deltaTime);
+    if (effectsSystem && carPhysicsSystem && carWrapper) {
+        const isBoosting = carPhysicsSystem.getIsBoosting();
+        
+        // Trigger boost activation effect when boost starts
+        if (isBoosting && !wasBoostingLastFrame) {
+            effectsSystem.triggerBoostActivation(carWrapper.position, carWrapper.quaternion);
+        }
+        
+        wasBoostingLastFrame = isBoosting;
+        
+        // Update effects with boost trail particles and wheel swoosh
+        effectsSystem.update(deltaTime, {
+            isBoosting: isBoosting,
+            carPosition: carWrapper.position,
+            carRotation: carWrapper.quaternion,
+            carWrapper: carWrapper
+        });
     }
     
     if (uiSystem && deliverySystem && cameraSystem && carPhysicsSystem) {
@@ -414,20 +597,15 @@ export function updateLevel() {
         };
         uiSystem.update(deltaTime, gameState);
     }
-    
-    if (window.__stats) window.__stats.end();
 }
 
 // Cleanup function
 export function cleanupLevel() {
-    // Remove level-specific UI elements
-    const uiElements = document.querySelectorAll('.game-ui');
-    uiElements.forEach(el => {
-        const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
-        if (!isMainMenuElement) {
-            el.remove();
-        }
-    });
+    // Hide Level 2 UI elements
+    hideLevel2UI();
+    
+    // Remove global functions
+    delete window.toggleDayNight;
     
     // Clean up systems
     if (effectsSystem) effectsSystem.cleanup();
@@ -459,4 +637,7 @@ export function cleanupLevel() {
     world = null;
     groundBody = null;
     groundHelper = null;
+    
+    // Reset boost tracking
+    wasBoostingLastFrame = false;
 }

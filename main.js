@@ -110,12 +110,6 @@ function initMainMenu() {
     renderer.setAnimationLoop(animate);
     // Make sure stats HUD exists and is visible
     ensureStats();
-    
-    console.log('initMainMenu completed');
-    console.log('Scene children count:', scene.children.length);
-    console.log('Scene children:', scene.children.map(child => child.name || child.type));
-    console.log('Renderer canvas:', renderer.domElement);
-    console.log('Game loop active:', gameLoopActive);
 
     // ---------- Resize ----------
     // Add event listener to handle browser window resizing
@@ -253,9 +247,14 @@ let currentLevelModule = null; // Store reference to the level module for cleanu
 // Loads a specific level by number (1, 2, or 3)
 function loadLevel(levelNumber) {
     // 1. Clean up current scene before loading new one
-    cleanupCurrentLevel(); 
+    cleanupCurrentLevel();
     
-    // 2. Ensure scene, camera, and renderers are properly initialized
+    // 2. Ensure animation loop is fully stopped before proceeding
+    if (renderer) {
+        renderer.setAnimationLoop(null);
+    } 
+    
+    // 3. Ensure scene, camera, and renderers are properly initialized
     if (!scene) {
         scene = new THREE.Scene();
     }
@@ -282,15 +281,15 @@ function loadLevel(levelNumber) {
         document.body.appendChild(labelRenderer.domElement);
     }
     
-    // 3. Update game state to track current level
+    // 4. Update game state to track current level
     currentLevel = `level${levelNumber}`;
     
-    // 4. Hide HTML menu screens when loading a level (so level UI is visible)
+    // 5. Hide HTML menu screens when loading a level (so level UI is visible)
     if (window.hideAllMenuScreens) {
         window.hideAllMenuScreens();
     }
     
-    // 5. Show the canvas elements
+    // 6. Show the canvas elements
     if (renderer && renderer.domElement) {
         renderer.domElement.style.display = 'block';
     }
@@ -301,7 +300,7 @@ function loadLevel(levelNumber) {
     // Ensure stats HUD exists and is visible in levels too
     ensureStats();
 
-    // 6. Dynamically import the level module (separate JavaScript file)
+    // 7. Dynamically import the level module (separate JavaScript file)
     import(`./level${levelNumber}.js`)
         .then(levelModule => {
             // Store the module reference for later cleanup
@@ -367,6 +366,12 @@ function returnToMainMenuFromStory() {
     // Update game state
     currentLevel = 'main';
     // Keep Story Mode flag set (we're staying in 3D hub world)
+    
+    // IMPORTANT: Restart the animation loop for story mode
+    gameLoopActive = true;
+    if (renderer) {
+        renderer.setAnimationLoop(animate);
+    }
     
     // Don't call showMainMenu() - we want to stay in the 3D hub world
     // The 3D scene should already be visible and the hub world should be active
@@ -520,8 +525,12 @@ function handleInteraction() {
         eKeyLocked = true;
         // Get level number from the arcade machine's userData
         const level = currentInteractable.userData.level;
-        // Load the selected level
-        loadLevel(level);
+        
+        // IMPORTANT: Defer level loading until AFTER current animation frame completes
+        // This prevents double animation loops (old frame + new frame running simultaneously)
+        setTimeout(() => {
+            loadLevel(level);
+        }, 0);
         
         // Reset key lock after a delay (1 second)
         setTimeout(() => {
