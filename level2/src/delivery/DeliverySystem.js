@@ -38,6 +38,12 @@ export class DeliverySystem {
         this.gameEndTime = null;
         this.completionTime = 0;
         
+        // Scoring system
+        this.collisionCount = 0;
+        this.collisionPoints = 50;
+        this.timePoints = 50;
+        this.totalScore = 100;
+        
         // Zone objects
         this.pickupZone1 = null;
         this.deliveryZone1 = null;
@@ -96,10 +102,6 @@ export class DeliverySystem {
      * @param {Array} refuelZones - Array of refuel zone objects
      */
     setupImportedZones(pickupZones, dropoffZones, refuelZones) {
-        console.log('🎯 Setting up imported delivery zones as detectors...');
-        console.log(`   Received pickup zones: ${pickupZones ? pickupZones.length : 'undefined'}`);
-        console.log(`   Received dropoff zones: ${dropoffZones ? dropoffZones.length : 'undefined'}`);
-        console.log(`   Received refuel zones: ${refuelZones ? refuelZones.length : 'undefined'}`);
         this.usingImportedZones = true;
         
         // Setup Zone 1 (first delivery)
@@ -139,21 +141,10 @@ export class DeliverySystem {
             this.setupZoneAsDetector(this.gasStation, 0xffaa00, false); // Orange - hidden initially
             this.gasStationHelper = this.createZoneOutline(this.gasStation, 0xffaa00, false); // Hidden until after first delivery
             this.gasStationBBox = this.createZoneBBox(this.gasStation);
-            
-            const bbox = new THREE.Box3().setFromObject(this.gasStation);
-            const center = bbox.getCenter(new THREE.Vector3());
-            console.log(`✅ Refuel zone configured: ${this.gasStation.name} at (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})`);
-        } else {
-            console.warn('⚠ No refuel zone found in model!');
         }
         
         // Start the game timer
         this.gameStartTime = performance.now();
-        
-        console.log('✅ Multi-stage delivery system initialized!');
-        console.log('   Stage 1: Pickup Zone 1 → Delivery Zone 1');
-        console.log('   Stage 2: Refuel at Gas Station');
-        console.log('   Stage 3: Pickup Zone 2 → Delivery Zone 2 (Night)');
     }
     
     /**
@@ -196,7 +187,6 @@ export class DeliverySystem {
             }
         });
         
-        console.log(`✓ Zone "${zone.name}" configured as detector (color: ${color.toString(16)})`);
     }
     
     /**
@@ -235,8 +225,6 @@ export class DeliverySystem {
         outline.renderOrder = 3; // Render on top
         
         this.scene.add(outline);
-        
-        console.log(`✓ Created outline for zone "${zone.name}"`);
         
         return outline;
     }
@@ -360,22 +348,6 @@ export class DeliverySystem {
             inDeliveryZone = distToDelivery < this.deliveryRadius;
         }
         
-        // Log trigger activation/deactivation
-        if (inPickupZone && !this.lastTriggerState.pickup) {
-            console.log(`🟢 PICKUP TRIGGER ACTIVATED at car position: (${carPos.x.toFixed(2)}, ${carPos.y.toFixed(2)}, ${carPos.z.toFixed(2)})`);
-            this.lastTriggerState.pickup = true;
-        } else if (!inPickupZone && this.lastTriggerState.pickup) {
-            console.log(`⚪ PICKUP TRIGGER DEACTIVATED at car position: (${carPos.x.toFixed(2)}, ${carPos.y.toFixed(2)}, ${carPos.z.toFixed(2)})`);
-            this.lastTriggerState.pickup = false;
-        }
-        
-        if (inDeliveryZone && !this.lastTriggerState.delivery) {
-            console.log(`🔵 DELIVERY TRIGGER ACTIVATED at car position: (${carPos.x.toFixed(2)}, ${carPos.y.toFixed(2)}, ${carPos.z.toFixed(2)})`);
-            this.lastTriggerState.delivery = true;
-        } else if (!inDeliveryZone && this.lastTriggerState.delivery) {
-            console.log(`⚪ DELIVERY TRIGGER DEACTIVATED at car position: (${carPos.x.toFixed(2)}, ${carPos.y.toFixed(2)}, ${carPos.z.toFixed(2)})`);
-            this.lastTriggerState.delivery = false;
-        }
         
         // Update outline colors - now handled by updateZoneVisuals method
         
@@ -483,7 +455,6 @@ export class DeliverySystem {
      * Transition to refuel stage
      */
     transitionToRefuel() {
-        console.log('🚗 First delivery complete! Go refuel at the gas station');
         this.gameState = 'refuel';
         this.deliveryState = 'idle';
         this.pickupTimer = 0;
@@ -505,7 +476,6 @@ export class DeliverySystem {
      * Transition to night and second pickup
      */
     transitionToNight() {
-        console.log('🌙 Refueled! Day turns to night...');
         this.gameState = 'second_pickup';
         this.deliveryState = 'idle';
         this.refuelTimer = 0;
@@ -529,6 +499,35 @@ export class DeliverySystem {
     }
     
     /**
+     * Record a collision
+     */
+    recordCollision() {
+        this.collisionCount++;
+        this.collisionPoints = Math.max(0, 50 - (this.collisionCount * 3));
+    }
+    
+    /**
+     * Calculate final score
+     */
+    calculateScore() {
+        // Time scoring: 50 points at 80 seconds, -3 points per 10 seconds over
+        const targetTime = 80; // 1:20
+        const timeOver = Math.max(0, this.completionTime - targetTime);
+        const timeOverIntervals = Math.floor(timeOver / 10);
+        this.timePoints = Math.max(0, 50 - (timeOverIntervals * 3));
+        
+        // Total score
+        this.totalScore = this.collisionPoints + this.timePoints;
+        
+        return {
+            collisionPoints: this.collisionPoints,
+            collisionCount: this.collisionCount,
+            timePoints: this.timePoints,
+            totalScore: this.totalScore
+        };
+    }
+    
+    /**
      * Complete the game
      */
     completeGame() {
@@ -539,19 +538,66 @@ export class DeliverySystem {
         const minutes = Math.floor(this.completionTime / 60);
         const seconds = (this.completionTime % 60).toFixed(2);
         const paddedSeconds = seconds.padStart(5, '0'); // Pad to 5 chars (XX.XX format)
+        const formattedTime = `${minutes}:${paddedSeconds}`;
         
-        console.log(`🎉 GAME COMPLETED in ${minutes}:${paddedSeconds}!`);
+        // Calculate score
+        const scoreData = this.calculateScore();
         
-        if (this.uiSystem) {
-            this.uiSystem.updateDeliveryStatus(
-                `COMPLETED! Time: ${minutes}:${paddedSeconds}`, 
-                '#00ff00'
-            );
-        }
+        console.log(`🎉 GAME COMPLETED in ${formattedTime}!`);
+        console.log(`Score: ${scoreData.totalScore} (Time: ${scoreData.timePoints} + Collisions: ${scoreData.collisionPoints})`);
+        
+        // Show completion popup
+        this.showCompletionPopup(formattedTime, scoreData);
         
         // Hide all zones
         if (this.deliveryZone2) this.deliveryZone2.visible = false;
         if (this.deliveryZone2Helper) this.deliveryZone2Helper.visible = false;
+    }
+    
+    /**
+     * Show animated completion popup
+     */
+    showCompletionPopup(time, scoreData) {
+        // Create popup element
+        const popup = document.createElement('div');
+        popup.id = 'completion-popup';
+        popup.className = 'completion-popup';
+        popup.innerHTML = `
+            <div class="completion-content">
+                <h1 class="completion-title">🎉 DELIVERY COMPLETE! 🎉</h1>
+                
+                <div class="completion-time">
+                    <div class="stat-label">Time</div>
+                    <div class="stat-value">${time}</div>
+                </div>
+                
+                <div class="completion-scores">
+                    <div class="score-row">
+                        <span class="score-label">Time Score</span>
+                        <span class="score-value">${scoreData.timePoints} pts</span>
+                    </div>
+                    <div class="score-row">
+                        <span class="score-label">Collision Score</span>
+                        <span class="score-value">${scoreData.collisionPoints} pts</span>
+                    </div>
+                    <div class="score-detail">${scoreData.collisionCount} collisions</div>
+                </div>
+                
+                <div class="completion-total">
+                    <div class="total-label">TOTAL SCORE</div>
+                    <div class="total-value">${scoreData.totalScore}</div>
+                </div>
+                
+                <button class="completion-button" onclick="location.reload()">Play Again</button>
+            </div>
+        `;
+        
+        document.body.appendChild(popup);
+        
+        // Trigger animation
+        setTimeout(() => {
+            popup.classList.add('show');
+        }, 100);
     }
     
     /**
@@ -731,9 +777,22 @@ export class DeliverySystem {
     }
     
     /**
+     * Get collision count
+     */
+    getCollisionCount() {
+        return this.collisionCount;
+    }
+    
+    /**
      * Cleanup delivery system
      */
     cleanup() {
+        // Remove completion popup if it exists
+        const popup = document.getElementById('completion-popup');
+        if (popup) {
+            popup.remove();
+        }
+        
         // Clean up zone helpers
         if (this.pickupZone1Helper) {
             this.scene.remove(this.pickupZone1Helper);
