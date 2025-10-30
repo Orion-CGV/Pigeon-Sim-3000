@@ -19,6 +19,11 @@ const speed = 0.15;
 const gravity = -0.03;
 const jumpStrength = 0.45;
 let velocityY = 0;
+const flightVelocity = new THREE.Vector3();
+let currentFlightSpeed = 0;
+const FLIGHT_ACCEL = 0.01;
+const FLIGHT_MAX_SPEED = 0.35; // slightly faster than walking
+
 
 // Player reference
 let player;
@@ -345,36 +350,95 @@ function updatePlayer() {
     if (isFlying) {
         const currentSpeed = FLY_SPEED;
 
-        // Smooth ascent when flight is toggled on
-        if (isAscendingToFly) {
-            if (player.position.y < targetFlyHeight) {
-                player.position.y += 0.2; // ascent speed
-            } else {
-                player.position.y = targetFlyHeight;
-                isAscendingToFly = false;
-            }
+    // Smooth ascent when flight is toggled on
+    if (isAscendingToFly) {
+        if (player.position.y < targetFlyHeight) {
+            player.position.y += 0.2;
+        } else {
+            isAscendingToFly = false;
         }
+    }
 
-        // Horizontal movement
-        player.position.x += _moveDir.x * currentSpeed;
-        player.position.z += _moveDir.z * currentSpeed;
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    direction.normalize();
 
-        // Vertical movement via keys
-        if (spaceHeld) player.position.y += currentSpeed; // ascend
-        if (keys["control"] || keys["c"]) player.position.y -= currentSpeed; // descend
+    // If W pressed → move forward in camera direction
+    if (keys["w"] || keys["arrowup"]) {
+        player.position.addScaledVector(direction, currentSpeed);
+    }
+    // S moves backward
+    if (keys["s"] || keys["arrowdown"]) {
+        player.position.addScaledVector(direction, -currentSpeed);
+    }
 
-        // Collision detection (prevent clipping into buildings)
-        const playerBox = new THREE.Box3().setFromObject(player);
-        for (const box of collisionBoxes) {
-            if (playerBox.intersectsBox(box)) {
-                player.position.copy(prevPos);
-                break;
-            }
+    // A / D strafing (uses camera right vector)
+    const right = new THREE.Vector3();
+    right.crossVectors(direction, new THREE.Vector3(0, 1, 0)).normalize();
+
+    if (keys["d"] || keys["arrowright"]) {
+        player.position.addScaledVector(right, currentSpeed);
+    }
+    if (keys["a"] || keys["arrowleft"]) {
+        player.position.addScaledVector(right, -currentSpeed);
+    }
+
+    // Space and Ctrl for up/down while flying
+    if (spaceHeld) player.position.y += currentSpeed;
+    if (keys["control"] || keys["c"]) player.position.y -= currentSpeed;
+
+    // Collision detection — prevent clipping
+    /*const playerBox = new THREE.Box3().setFromObject(player);
+    for (const box of collisionBoxes) {
+        if (playerBox.intersectsBox(box)) {
+            player.position.copy(prevPos);
+            break;
         }
+    }*/
 
-    // ----------------------------
-    // WALKING / JUMPING MODE
-    // ----------------------------
+    // --- AUTO EXIT FLY MODE IF PLAYER LANDS ON SURFACE ---
+
+// Calculate player bounding box once
+const playerBox = new THREE.Box3().setFromObject(player);
+
+// Player feet height (player is 1 high, so half = 0.5)
+const playerFeetY = player.position.y - 0.5;
+
+let landed = false;
+
+// Check rooftop landings — ONLY if feet are above the roof
+for (const box of collisionBoxes) {
+    if (playerBox.intersectsBox(box)) {
+        const roofHeight = box.max.y;
+
+        // ✅ Only land if the player is *on top* of the building, not into the side
+        if (playerFeetY <= roofHeight + 0.1 && playerFeetY >= roofHeight - 0.5) {
+            player.position.y = roofHeight + 0.5; // Place feet exactly on roof
+            landed = true;
+        } else {
+            // Side collision → push back horizontally
+            player.position.copy(prevPos);
+        }
+        break;
+    }
+}
+
+// Ground check (y <= 0.5 = touching grass)
+if (player.position.y <= 0.5) {
+    player.position.y = 0.5;
+    landed = true;
+}
+
+if (landed) {
+    isFlying = false;
+    velocityY = 0;
+    isAscendingToFly = false;
+    updateFlyStatus();
+}
+    
+
+    updateCamera();
+    return;
     } else {
     const currentSpeed = speed;
     const halfHeight = 0.5; // player height = 1, so half is 0.5
@@ -443,24 +507,18 @@ function updatePlayer() {
     updateCamera();
 }
 
-
-
 function updateCamera() {
-    const cameraDistance = 8;
-    const cameraHeightOffset = 1.8;
-    const cosPitch = Math.cos(pitch);
+    const distance = 6;
+    const height = 2.5;
 
-    camera.position.x = player.position.x - Math.sin(yaw) * cameraDistance * cosPitch;
-    camera.position.z = player.position.z - Math.cos(yaw) * cameraDistance * cosPitch;
-    camera.position.y = player.position.y + Math.sin(pitch) * cameraDistance + cameraHeightOffset;
+    const camOffset = new THREE.Vector3(0, 0, -distance)
+        .applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
 
-    const aimHeightOffset = 1.5;
-    camera.lookAt(
-        player.position.x,
-        player.position.y + aimHeightOffset,
-        player.position.z
-    );
+    camera.position.copy(player.position).add(camOffset);
+    camera.position.y += height;
+    camera.lookAt(player.position);
 }
+
 
 // Check for goal collision
 function checkGoal() {
