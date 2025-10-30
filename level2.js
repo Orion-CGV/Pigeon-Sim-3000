@@ -357,12 +357,20 @@ function onEnvironmentModelLoaded(data) {
     
     // Initialize delivery zones with imported zones if available
     if (deliverySystem) {
+        // Set lighting system reference for day/night transitions
+        if (lightingSystem) {
+            deliverySystem.setLightingSystem(lightingSystem);
+        }
+        
         if (data.pickupZones && data.pickupZones.length > 0 && 
             data.dropoffZones && data.dropoffZones.length > 0) {
             console.log('✅ Using imported pickup and dropoff zones from model');
+            console.log(`📍 level2.js - Passing refuel zones: ${data.refuelZones ? data.refuelZones.length : 'undefined'}`);
+            
             deliverySystem.init({
                 pickupZones: data.pickupZones,
-                dropoffZones: data.dropoffZones
+                dropoffZones: data.dropoffZones,
+                refuelZones: data.refuelZones || []
             });
         } else {
             console.log('ℹ No zones found in model, creating default zones');

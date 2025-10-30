@@ -36,6 +36,7 @@ export class EnvironmentSystem {
         // Delivery zones
         this.pickupZones = [];
         this.dropoffZones = [];
+        this.refuelZones = [];
         
         // Car components
         this.carBodyGroup = null;
@@ -107,7 +108,8 @@ export class EnvironmentSystem {
                                        'GasStation', 'Gas_Station', 'Gas', 'Station'];
         
         const zoneObjectNames = ['Pick Zone', 'Dropoff Zone', 'PickZone', 'DropoffZone', 
-                                'Pickup_Zone', 'Dropoff_Zone', 'PickupZone', 'DropoffZone'];
+                                'Pickup_Zone', 'Dropoff_Zone', 'PickupZone', 'DropoffZone',
+                                'Gas_Fill_Zone', 'GasFillZone', 'Refuel_Zone', 'RefuelZone'];
         
         // Categorize objects
         const childrenToMove = [];
@@ -117,6 +119,13 @@ export class EnvironmentSystem {
         
         childrenToMove.forEach(child => {
             const childName = child.name || '';
+            
+            // Debug: Log all object names to help diagnose zone detection
+            if (childName.toLowerCase().includes('refuel') || 
+                childName.toLowerCase().includes('gas') || 
+                childName.toLowerCase().includes('fill')) {
+                console.log(`🔍 Checking potential zone: "${childName}"`);
+            }
             
             const isCarComponent = carObjectNames.some(name => childName.includes(name));
             const isEnvironmentObject = environmentObjectNames.some(name => childName.includes(name));
@@ -128,12 +137,21 @@ export class EnvironmentSystem {
                 // Handle delivery zones separately - don't add to environment group
                 this.environmentGroup.add(child);
                 
+                console.log(`🎯 Processing zone: "${childName}" (isZone: true)`);
+                
                 if (childName.toLowerCase().includes('pick')) {
                     this.pickupZones.push(child);
                     console.log(`✓ Found pickup zone: ${childName}`);
                 } else if (childName.toLowerCase().includes('drop')) {
                     this.dropoffZones.push(child);
                     console.log(`✓ Found dropoff zone: ${childName}`);
+                } else if (childName.toLowerCase().includes('gas') || 
+                          childName.toLowerCase().includes('refuel') || 
+                          childName.toLowerCase().includes('fill')) {
+                    this.refuelZones.push(child);
+                    console.log(`✓ Found refuel zone: ${childName}`);
+                } else {
+                    console.warn(`⚠ Zone detected but not categorized: ${childName}`);
                 }
             } else if (isEnvironmentObject || childName.includes('Ground')) {
                 this.environmentGroup.add(child);
@@ -201,6 +219,11 @@ export class EnvironmentSystem {
         
         // Call external callback
         if (this.onModelLoadedCallback) {
+            console.log(`📦 Passing zones to callback:`);
+            console.log(`   Pickup zones: ${this.pickupZones.length}`);
+            console.log(`   Dropoff zones: ${this.dropoffZones.length}`);
+            console.log(`   Refuel zones: ${this.refuelZones.length}`);
+            
             this.onModelLoadedCallback({
                 carWrapper: this.carWrapper,
                 groundObject: this.groundObject,
@@ -208,7 +231,8 @@ export class EnvironmentSystem {
                 frontWheelsGroup: this.frontWheelsGroup,
                 gasStationLights: this.gasStationLights,
                 pickupZones: this.pickupZones,
-                dropoffZones: this.dropoffZones
+                dropoffZones: this.dropoffZones,
+                refuelZones: this.refuelZones
             });
         }
     }
@@ -655,6 +679,14 @@ export class EnvironmentSystem {
      */
     getGasStationLights() {
         return this.gasStationLights;
+    }
+    
+    /**
+     * Get gas stations
+     * @returns {Array}
+     */
+    getGasStations() {
+        return this.gasStations;
     }
     
     /**
