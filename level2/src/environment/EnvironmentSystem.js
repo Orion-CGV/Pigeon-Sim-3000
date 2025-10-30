@@ -36,6 +36,7 @@ export class EnvironmentSystem {
         // Delivery zones
         this.pickupZones = [];
         this.dropoffZones = [];
+        this.refuelZones = [];
         
         // Car components
         this.carBodyGroup = null;
@@ -107,7 +108,8 @@ export class EnvironmentSystem {
                                        'GasStation', 'Gas_Station', 'Gas', 'Station'];
         
         const zoneObjectNames = ['Pick Zone', 'Dropoff Zone', 'PickZone', 'DropoffZone', 
-                                'Pickup_Zone', 'Dropoff_Zone', 'PickupZone', 'DropoffZone'];
+                                'Pickup_Zone', 'Dropoff_Zone', 'PickupZone', 'DropoffZone',
+                                'Gas_Fill_Zone', 'GasFillZone', 'Refuel_Zone', 'RefuelZone'];
         
         // Categorize objects
         const childrenToMove = [];
@@ -130,10 +132,12 @@ export class EnvironmentSystem {
                 
                 if (childName.toLowerCase().includes('pick')) {
                     this.pickupZones.push(child);
-                    console.log(`✓ Found pickup zone: ${childName}`);
                 } else if (childName.toLowerCase().includes('drop')) {
                     this.dropoffZones.push(child);
-                    console.log(`✓ Found dropoff zone: ${childName}`);
+                } else if (childName.toLowerCase().includes('gas') || 
+                          childName.toLowerCase().includes('refuel') || 
+                          childName.toLowerCase().includes('fill')) {
+                    this.refuelZones.push(child);
                 }
             } else if (isEnvironmentObject || childName.includes('Ground')) {
                 this.environmentGroup.add(child);
@@ -208,7 +212,8 @@ export class EnvironmentSystem {
                 frontWheelsGroup: this.frontWheelsGroup,
                 gasStationLights: this.gasStationLights,
                 pickupZones: this.pickupZones,
-                dropoffZones: this.dropoffZones
+                dropoffZones: this.dropoffZones,
+                refuelZones: this.refuelZones
             });
         }
     }
@@ -655,6 +660,14 @@ export class EnvironmentSystem {
      */
     getGasStationLights() {
         return this.gasStationLights;
+    }
+    
+    /**
+     * Get gas stations
+     * @returns {Array}
+     */
+    getGasStations() {
+        return this.gasStations;
     }
     
     /**

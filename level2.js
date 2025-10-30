@@ -357,15 +357,19 @@ function onEnvironmentModelLoaded(data) {
     
     // Initialize delivery zones with imported zones if available
     if (deliverySystem) {
+        // Set lighting system reference for day/night transitions
+        if (lightingSystem) {
+            deliverySystem.setLightingSystem(lightingSystem);
+        }
+        
         if (data.pickupZones && data.pickupZones.length > 0 && 
             data.dropoffZones && data.dropoffZones.length > 0) {
-            console.log('✅ Using imported pickup and dropoff zones from model');
             deliverySystem.init({
                 pickupZones: data.pickupZones,
-                dropoffZones: data.dropoffZones
+                dropoffZones: data.dropoffZones,
+                refuelZones: data.refuelZones || []
             });
         } else {
-            console.log('ℹ No zones found in model, creating default zones');
             deliverySystem.init();
         }
     }
@@ -430,6 +434,9 @@ function setupCollisionListeners() {
         return;
     }
     
+    let lastCollisionTime = 0;
+    const collisionCooldown = 200; // milliseconds between counting collisions
+    
     carBody.addEventListener('collide', function(event) {
         const otherBody = event.body;
         
@@ -458,6 +465,13 @@ function setupCollisionListeners() {
                 color = 0xff0000;
             } else if (speed > 5) {
                 color = 0xff6600;
+            }
+            
+            // Record collision for scoring (with debounce to prevent double-counting)
+            const currentTime = performance.now();
+            if (deliverySystem && (currentTime - lastCollisionTime) > collisionCooldown) {
+                deliverySystem.recordCollision();
+                lastCollisionTime = currentTime;
             }
             
             if (effectsSystem) {

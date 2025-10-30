@@ -398,13 +398,27 @@ export class UISystem {
             ctx.fillText(distText, clampedX, clampedY - 12);
         };
         
-        // Draw indicator for pickup zone (if not picked up yet)
-        if (deliveryState === 'idle' || deliveryState === 'picking_up') {
+        // Determine which arrow to show based on delivery state
+        if (deliveryState === 'refueling' || deliveryState === 'idle') {
+            // Check if we're in refuel game state by comparing locations
+            // If pickupLocation and deliveryLocation are the same, it's refuel
+            const isRefuelState = pickupLocation.x === deliveryLocation.x && 
+                                 pickupLocation.z === deliveryLocation.z;
+            
+            if (isRefuelState) {
+                // Show orange arrow to refuel zone
+                drawEdgeIndicator(pickupLocation.x, pickupLocation.z, '#ffaa00', 'Refuel');
+            } else {
+                // Show green arrow to pickup zone
+                drawEdgeIndicator(pickupLocation.x, pickupLocation.z, '#00ff00', 'Pickup');
+            }
+        }
+        // Draw indicator for pickup zone (if picking up)
+        else if (deliveryState === 'picking_up') {
             drawEdgeIndicator(pickupLocation.x, pickupLocation.z, '#00ff00', 'Pickup');
         }
-        
         // Draw indicator for delivery zone (if has package)
-        if (deliveryState === 'has_package') {
+        else if (deliveryState === 'has_package') {
             drawEdgeIndicator(deliveryLocation.x, deliveryLocation.z, '#0088ff', 'Delivery');
         }
     }

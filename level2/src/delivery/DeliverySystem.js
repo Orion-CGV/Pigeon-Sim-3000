@@ -20,28 +20,63 @@ export class DeliverySystem {
         this.scene = scene;
         this.uiSystem = uiSystem;
         
-        // Delivery state
-        this.deliveryState = 'idle'; // idle, picking_up, has_package, delivered
+        // Game state machine
+        this.gameState = 'first_pickup'; // first_pickup, first_delivery, refuel, second_pickup, second_delivery, completed
+        this.deliveryState = 'idle'; // idle, picking_up, has_package, delivered, refueling
         this.pickupTimer = 0;
+        this.refuelTimer = 0;
         
         // Configuration
         this.pickupLocation = { x: 30, z: 30 };
         this.deliveryLocation = { x: -40, z: -40 };
-        this.pickupRequired = 5; // seconds to pickup
+        this.pickupRequired = 3; // seconds to pickup/deliver
+        this.refuelRequired = 5; // seconds to refuel
         this.deliveryRadius = 8; // zone radius
         
+        // Game timer
+        this.gameStartTime = null;
+        this.gameEndTime = null;
+        this.completionTime = 0;
+        
+        // Scoring system
+        this.collisionCount = 0;
+        this.collisionPoints = 50;
+        this.timePoints = 50;
+        this.totalScore = 100;
+        
         // Zone objects
-        this.pickupZone = null;
-        this.deliveryZone = null;
+        this.pickupZone1 = null;
+        this.deliveryZone1 = null;
+        this.pickupZone2 = null;
+        this.deliveryZone2 = null;
+        this.gasStation = null;
+        
+        // Current active zones
+        this.activePickupZone = null;
+        this.activeDeliveryZone = null;
         
         // Imported zones from model
-        this.importedPickupZone = null;
-        this.importedDropoffZone = null;
         this.usingImportedZones = false;
         
         // Zone helpers (visual outlines)
-        this.pickupZoneHelper = null;
-        this.deliveryZoneHelper = null;
+        this.pickupZone1Helper = null;
+        this.deliveryZone1Helper = null;
+        this.pickupZone2Helper = null;
+        this.deliveryZone2Helper = null;
+        this.gasStationHelper = null;
+        
+        // Zone bounding boxes for debugging
+        this.pickupZone1BBox = null;
+        this.deliveryZone1BBox = null;
+        this.pickupZone2BBox = null;
+        this.deliveryZone2BBox = null;
+        this.gasStationBBox = null;
+        
+        // Track if we've logged trigger activation to avoid spam
+        this.lastTriggerState = { pickup: false, delivery: false, refuel: false };
+        
+        // Reference to lighting system (set externally)
+        this.lightingSystem = null;
     }
     
     /**
@@ -49,11 +84,12 @@ export class DeliverySystem {
      * @param {Object} options - Optional configuration
      * @param {Array} options.pickupZones - Imported pickup zones from model
      * @param {Array} options.dropoffZones - Imported dropoff zones from model
+     * @param {Array} options.refuelZones - Imported refuel zones from model
      */
     init(options = {}) {
         if (options.pickupZones && options.pickupZones.length > 0 && 
             options.dropoffZones && options.dropoffZones.length > 0) {
-            this.setupImportedZones(options.pickupZones, options.dropoffZones);
+            this.setupImportedZones(options.pickupZones, options.dropoffZones, options.refuelZones);
         } else {
             this.createDeliveryZones();
         }
@@ -63,47 +99,64 @@ export class DeliverySystem {
      * Setup imported zones from the model as detectors
      * @param {Array} pickupZones - Array of pickup zone objects
      * @param {Array} dropoffZones - Array of dropoff zone objects
+     * @param {Array} refuelZones - Array of refuel zone objects
      */
-    setupImportedZones(pickupZones, dropoffZones) {
-        console.log('🎯 Setting up imported delivery zones as detectors...');
+    setupImportedZones(pickupZones, dropoffZones, refuelZones) {
         this.usingImportedZones = true;
         
-        // Use the first pickup zone
-        this.importedPickupZone = pickupZones[0];
-        this.pickupZone = this.importedPickupZone;
+        // Setup Zone 1 (first delivery)
+        if (pickupZones.length > 0) {
+            this.pickupZone1 = pickupZones[0];
+            this.setupZoneAsDetector(this.pickupZone1, 0x00ff00, true);
+            this.pickupZone1Helper = this.createZoneOutline(this.pickupZone1, 0x00ff00, true);
+            this.pickupZone1BBox = this.createZoneBBox(this.pickupZone1);
+            this.activePickupZone = this.pickupZone1;
+        }
         
-        // Use the first dropoff zone
-        this.importedDropoffZone = dropoffZones[0];
-        this.deliveryZone = this.importedDropoffZone;
+        if (dropoffZones.length > 0) {
+            this.deliveryZone1 = dropoffZones[0];
+            this.setupZoneAsDetector(this.deliveryZone1, 0x0088ff, false);
+            this.deliveryZone1Helper = this.createZoneOutline(this.deliveryZone1, 0x0088ff, false);
+            this.deliveryZone1BBox = this.createZoneBBox(this.deliveryZone1);
+        }
         
-        // Setup pickup zone as detector
-        this.setupZoneAsDetector(this.pickupZone, 0x00ff00, true);
+        // Setup Zone 2 (second delivery - hidden initially)
+        if (pickupZones.length > 1) {
+            this.pickupZone2 = pickupZones[1];
+            this.setupZoneAsDetector(this.pickupZone2, 0x00ff00, false);
+            this.pickupZone2Helper = this.createZoneOutline(this.pickupZone2, 0x00ff00, false);
+            this.pickupZone2BBox = this.createZoneBBox(this.pickupZone2);
+        }
         
-        // Setup dropoff zone as detector (hidden initially)
-        this.setupZoneAsDetector(this.deliveryZone, 0x0088ff, false);
+        if (dropoffZones.length > 1) {
+            this.deliveryZone2 = dropoffZones[1];
+            this.setupZoneAsDetector(this.deliveryZone2, 0x0088ff, false);
+            this.deliveryZone2Helper = this.createZoneOutline(this.deliveryZone2, 0x0088ff, false);
+            this.deliveryZone2BBox = this.createZoneBBox(this.deliveryZone2);
+        }
         
-        // Update locations based on zone positions
-        this.pickupLocation = {
-            x: this.pickupZone.position.x,
-            z: this.pickupZone.position.z
-        };
-        this.deliveryLocation = {
-            x: this.deliveryZone.position.x,
-            z: this.deliveryZone.position.z
-        };
+        // Setup refuel zone (Gas Fill Zone)
+        if (refuelZones && refuelZones.length > 0) {
+            this.gasStation = refuelZones[0];
+            this.setupZoneAsDetector(this.gasStation, 0xffaa00, false); // Orange - hidden initially
+            this.gasStationHelper = this.createZoneOutline(this.gasStation, 0xffaa00, false); // Hidden until after first delivery
+            this.gasStationBBox = this.createZoneBBox(this.gasStation);
+        }
         
-        // Calculate radius from zone bounding box
-        const pickupBBox = new THREE.Box3().setFromObject(this.pickupZone);
-        const pickupSize = pickupBBox.getSize(new THREE.Vector3());
-        this.deliveryRadius = Math.max(pickupSize.x, pickupSize.z) / 2;
-        
-        // Create visual outlines for the zones
-        this.createZoneOutline(this.pickupZone, 0x00ff00, true);
-        this.createZoneOutline(this.deliveryZone, 0x0088ff, false);
-        
-        console.log(`✅ Pickup zone at (${this.pickupLocation.x.toFixed(2)}, ${this.pickupLocation.z.toFixed(2)})`);
-        console.log(`✅ Dropoff zone at (${this.deliveryLocation.x.toFixed(2)}, ${this.deliveryLocation.z.toFixed(2)})`);
-        console.log(`✅ Detection radius: ${this.deliveryRadius.toFixed(2)}`);
+        // Start the game timer
+        this.gameStartTime = performance.now();
+    }
+    
+    /**
+     * Create bounding box for a zone with vertical expansion
+     * @param {THREE.Object3D} zone - Zone object
+     * @returns {THREE.Box3} Bounding box
+     */
+    createZoneBBox(zone) {
+        const bbox = new THREE.Box3().setFromObject(zone);
+        bbox.min.y -= 10;
+        bbox.max.y += 10;
+        return bbox;
     }
     
     /**
@@ -134,7 +187,6 @@ export class DeliverySystem {
             }
         });
         
-        console.log(`✓ Zone "${zone.name}" configured as detector (color: ${color.toString(16)})`);
     }
     
     /**
@@ -142,6 +194,7 @@ export class DeliverySystem {
      * @param {THREE.Object3D} zone - Zone object
      * @param {number} color - Hex color for outline
      * @param {boolean} visible - Initial visibility
+     * @returns {THREE.Mesh} The outline mesh
      */
     createZoneOutline(zone, color, visible) {
         // Calculate bounding box for the zone
@@ -149,11 +202,11 @@ export class DeliverySystem {
         const size = bbox.getSize(new THREE.Vector3());
         const center = bbox.getCenter(new THREE.Vector3());
         
-        // Expand the outline to match the expanded detection area
+        // Only expand vertically to show the actual detection area
         const expandedSize = new THREE.Vector3(
-            size.x + 4,  // Expand X by 4 (2 on each side)
+            size.x,      // No horizontal expansion
             size.y + 20, // Expand Y by 20 (10 on each side) - taller trigger
-            size.z + 4   // Expand Z by 4 (2 on each side)
+            size.z       // No horizontal expansion
         );
         
         // Create wireframe box as outline
@@ -173,15 +226,9 @@ export class DeliverySystem {
         
         this.scene.add(outline);
         
-        // Store reference based on which zone
-        if (zone === this.pickupZone) {
-            this.pickupZoneHelper = outline;
-        } else if (zone === this.deliveryZone) {
-            this.deliveryZoneHelper = outline;
-        }
-        
-        console.log(`✓ Created outline for zone "${zone.name}" (expanded for better detection)`);
+        return outline;
     }
+    
     
     /**
      * Create pickup and delivery zone visuals
@@ -243,12 +290,20 @@ export class DeliverySystem {
     }
     
     /**
-     * Update delivery system logic
+     * Set lighting system reference
+     * @param {Object} lightingSystem - Lighting system instance
+     */
+    setLightingSystem(lightingSystem) {
+        this.lightingSystem = lightingSystem;
+    }
+    
+    /**
+     * Update delivery system logic with multi-stage game flow
      * @param {number} deltaTime - Time since last frame (seconds)
      * @param {THREE.Object3D} carWrapper - Car object with position
      */
     update(deltaTime, carWrapper) {
-        if (!carWrapper) return;
+        if (!carWrapper || this.gameState === 'completed') return;
         
         const carPos = carWrapper.position;
         
@@ -256,8 +311,23 @@ export class DeliverySystem {
         let inPickupZone = false;
         let inDeliveryZone = false;
         
-        if (this.usingImportedZones && this.pickupZone) {
-            inPickupZone = this.isCarInZone(carWrapper, this.pickupZone);
+        // Determine which zones to check based on game state
+        if (this.gameState === 'first_pickup' || this.gameState === 'first_delivery') {
+            this.activePickupZone = this.pickupZone1;
+            this.activeDeliveryZone = this.deliveryZone1;
+        } else if (this.gameState === 'second_pickup' || this.gameState === 'second_delivery') {
+            this.activePickupZone = this.pickupZone2;
+            this.activeDeliveryZone = this.deliveryZone2;
+        }
+        
+        // Check for refueling
+        let inRefuelZone = false;
+        if (this.gameState === 'refuel' && this.gasStation) {
+            inRefuelZone = this.isCarInZone(carWrapper, this.gasStation);
+        }
+        
+        if (this.usingImportedZones && this.activePickupZone) {
+            inPickupZone = this.isCarInZone(carWrapper, this.activePickupZone);
         } else {
             // Fallback to distance-based detection for created zones
             const distToPickup = Math.sqrt(
@@ -267,8 +337,8 @@ export class DeliverySystem {
             inPickupZone = distToPickup < this.deliveryRadius;
         }
         
-        if (this.usingImportedZones && this.deliveryZone) {
-            inDeliveryZone = this.isCarInZone(carWrapper, this.deliveryZone);
+        if (this.usingImportedZones && this.activeDeliveryZone) {
+            inDeliveryZone = this.isCarInZone(carWrapper, this.activeDeliveryZone);
         } else {
             // Fallback to distance-based detection for created zones
             const distToDelivery = Math.sqrt(
@@ -278,16 +348,8 @@ export class DeliverySystem {
             inDeliveryZone = distToDelivery < this.deliveryRadius;
         }
         
-        // Update outline colors based on detection
-        if (this.pickupZoneHelper && this.deliveryState !== 'has_package' && this.deliveryState !== 'delivered') {
-            this.pickupZoneHelper.material.color.setHex(inPickupZone ? 0xffff00 : 0x00ff00);
-            this.pickupZoneHelper.material.opacity = inPickupZone ? 1.0 : 0.6;
-        }
         
-        if (this.deliveryZoneHelper && this.deliveryState === 'has_package') {
-            this.deliveryZoneHelper.material.color.setHex(inDeliveryZone ? 0xffff00 : 0x0088ff);
-            this.deliveryZoneHelper.material.opacity = inDeliveryZone ? 1.0 : 0.6;
-        }
+        // Update outline colors - now handled by updateZoneVisuals method
         
         // State machine
         if (this.deliveryState === 'idle' || this.deliveryState === 'picking_up') {
@@ -296,10 +358,8 @@ export class DeliverySystem {
                 this.pickupTimer += deltaTime;
                 
                 // Pulsing effect on zone
-                if (this.usingImportedZones) {
-                    this.updateZoneOpacity(this.pickupZone, 0.3 + Math.sin(Date.now() * 0.01) * 0.2);
-                } else {
-                    this.pickupZone.material.opacity = 0.3 + Math.sin(Date.now() * 0.01) * 0.2;
+                if (this.usingImportedZones && this.activePickupZone) {
+                    this.updateZoneOpacity(this.activePickupZone, 0.3 + Math.sin(Date.now() * 0.01) * 0.2);
                 }
                 
                 const remaining = Math.max(0, this.pickupRequired - this.pickupTimer);
@@ -312,14 +372,22 @@ export class DeliverySystem {
                 
                 if (this.pickupTimer >= this.pickupRequired) {
                     this.deliveryState = 'has_package';
-                    this.pickupZone.visible = false;
-                    this.deliveryZone.visible = true;
-                    
-                    // Show delivery zone outline, hide pickup zone outline
-                    if (this.pickupZoneHelper) this.pickupZoneHelper.visible = false;
-                    if (this.deliveryZoneHelper) this.deliveryZoneHelper.visible = true;
-                    
                     this.pickupTimer = 0;
+                    
+                    // Hide pickup zone and show delivery zone
+                    if (this.activePickupZone) this.activePickupZone.visible = false;
+                    if (this.activeDeliveryZone) this.activeDeliveryZone.visible = true;
+                    
+                    if (this.gameState === 'first_pickup') {
+                        this.gameState = 'first_delivery';
+                        if (this.pickupZone1Helper) this.pickupZone1Helper.visible = false;
+                        if (this.deliveryZone1Helper) this.deliveryZone1Helper.visible = true;
+                    } else if (this.gameState === 'second_pickup') {
+                        this.gameState = 'second_delivery';
+                        if (this.pickupZone2Helper) this.pickupZone2Helper.visible = false;
+                        if (this.deliveryZone2Helper) this.deliveryZone2Helper.visible = true;
+                    }
+                    
                     if (this.uiSystem) {
                         this.uiSystem.updateDeliveryStatus('Go to blue zone!', '#00ff00');
                     }
@@ -328,10 +396,8 @@ export class DeliverySystem {
                 // Left the zone
                 this.deliveryState = 'idle';
                 this.pickupTimer = 0;
-                if (this.usingImportedZones) {
-                    this.updateZoneOpacity(this.pickupZone, 0.5);
-                } else {
-                    this.pickupZone.material.opacity = 0.5;
+                if (this.usingImportedZones && this.activePickupZone) {
+                    this.updateZoneOpacity(this.activePickupZone, 0.5);
                 }
                 if (this.uiSystem) {
                     this.uiSystem.updateDeliveryStatus('Go to green zone', '#64b5f6');
@@ -340,35 +406,221 @@ export class DeliverySystem {
         } else if (this.deliveryState === 'has_package') {
             if (inDeliveryZone) {
                 this.deliveryState = 'delivered';
-                if (this.usingImportedZones) {
-                    this.updateZoneColor(this.deliveryZone, 0xffff00);
-                } else {
-                    this.deliveryZone.material.color.setHex(0xffff00);
+                if (this.usingImportedZones && this.activeDeliveryZone) {
+                    this.updateZoneColor(this.activeDeliveryZone, 0xffff00);
                 }
                 if (this.uiSystem) {
                     this.uiSystem.updateDeliveryStatus('Delivered! 🎉', '#00ff00');
                 }
                 
-                // Reset after 3 seconds
+                // Transition to next game state after 2 seconds
                 setTimeout(() => {
-                    this.deliveryState = 'idle';
-                    this.pickupTimer = 0;
-                    this.pickupZone.visible = true;
-                    this.deliveryZone.visible = false;
-                    
-                    // Show pickup zone outline, hide delivery zone outline
-                    if (this.pickupZoneHelper) this.pickupZoneHelper.visible = true;
-                    if (this.deliveryZoneHelper) this.deliveryZoneHelper.visible = false;
-                    
-                    if (this.usingImportedZones) {
-                        this.updateZoneColor(this.deliveryZone, 0x0088ff);
-                    } else {
-                        this.deliveryZone.material.color.setHex(0x0088ff);
+                    if (this.gameState === 'first_delivery') {
+                        // First delivery complete - go to refuel
+                        this.transitionToRefuel();
+                    } else if (this.gameState === 'second_delivery') {
+                        // Second delivery complete - game finished!
+                        this.completeGame();
                     }
-                    if (this.uiSystem) {
-                        this.uiSystem.updateDeliveryStatus('Go to green zone', '#64b5f6');
-                    }
-                }, 3000);
+                }, 2000);
+            }
+        }
+        
+        // Refuel state machine
+        if (this.gameState === 'refuel') {
+            if (inRefuelZone) {
+                this.deliveryState = 'refueling';
+                this.refuelTimer += deltaTime;
+                
+                const remaining = Math.max(0, this.refuelRequired - this.refuelTimer);
+                if (this.uiSystem) {
+                    this.uiSystem.updateDeliveryStatus(
+                        `Refueling... ${remaining.toFixed(1)}s`, 
+                        '#ffaa00'
+                    );
+                }
+                
+                if (this.refuelTimer >= this.refuelRequired) {
+                    // Refuel complete - transition to night and second pickup
+                    this.transitionToNight();
+                }
+            }
+        }
+        
+        // Update zone visuals
+        this.updateZoneVisuals(inPickupZone, inDeliveryZone, inRefuelZone);
+    }
+    
+    /**
+     * Transition to refuel stage
+     */
+    transitionToRefuel() {
+        this.gameState = 'refuel';
+        this.deliveryState = 'idle';
+        this.pickupTimer = 0;
+        
+        // Hide delivery zone 1
+        if (this.deliveryZone1) this.deliveryZone1.visible = false;
+        if (this.deliveryZone1Helper) this.deliveryZone1Helper.visible = false;
+        
+        // Show gas station
+        if (this.gasStation) this.gasStation.visible = true;
+        if (this.gasStationHelper) this.gasStationHelper.visible = true;
+        
+        if (this.uiSystem) {
+            this.uiSystem.updateDeliveryStatus('Go to Gas Station (Orange)', '#ffaa00');
+        }
+    }
+    
+    /**
+     * Transition to night and second pickup
+     */
+    transitionToNight() {
+        this.gameState = 'second_pickup';
+        this.deliveryState = 'idle';
+        this.refuelTimer = 0;
+        
+        // Hide gas station
+        if (this.gasStation) this.gasStation.visible = false;
+        if (this.gasStationHelper) this.gasStationHelper.visible = false;
+        
+        // Show pickup zone 2
+        if (this.pickupZone2) this.pickupZone2.visible = true;
+        if (this.pickupZone2Helper) this.pickupZone2Helper.visible = true;
+        
+        // Trigger day/night change
+        if (this.lightingSystem) {
+            this.lightingSystem.toggleDayNight();
+        }
+        
+        if (this.uiSystem) {
+            this.uiSystem.updateDeliveryStatus('Night delivery! Go to green zone', '#00ff00');
+        }
+    }
+    
+    /**
+     * Record a collision
+     */
+    recordCollision() {
+        this.collisionCount++;
+        this.collisionPoints = Math.max(0, 50 - (this.collisionCount * 3));
+    }
+    
+    /**
+     * Calculate final score
+     */
+    calculateScore() {
+        // Time scoring: 50 points at 80 seconds, -3 points per 10 seconds over
+        const targetTime = 80; // 1:20
+        const timeOver = Math.max(0, this.completionTime - targetTime);
+        const timeOverIntervals = Math.floor(timeOver / 10);
+        this.timePoints = Math.max(0, 50 - (timeOverIntervals * 3));
+        
+        // Total score
+        this.totalScore = this.collisionPoints + this.timePoints;
+        
+        return {
+            collisionPoints: this.collisionPoints,
+            collisionCount: this.collisionCount,
+            timePoints: this.timePoints,
+            totalScore: this.totalScore
+        };
+    }
+    
+    /**
+     * Complete the game
+     */
+    completeGame() {
+        this.gameState = 'completed';
+        this.gameEndTime = performance.now();
+        this.completionTime = (this.gameEndTime - this.gameStartTime) / 1000; // Convert to seconds
+        
+        const minutes = Math.floor(this.completionTime / 60);
+        const seconds = (this.completionTime % 60).toFixed(2);
+        const paddedSeconds = seconds.padStart(5, '0'); // Pad to 5 chars (XX.XX format)
+        const formattedTime = `${minutes}:${paddedSeconds}`;
+        
+        // Calculate score
+        const scoreData = this.calculateScore();
+        
+        console.log(`🎉 GAME COMPLETED in ${formattedTime}!`);
+        console.log(`Score: ${scoreData.totalScore} (Time: ${scoreData.timePoints} + Collisions: ${scoreData.collisionPoints})`);
+        
+        // Show completion popup
+        this.showCompletionPopup(formattedTime, scoreData);
+        
+        // Hide all zones
+        if (this.deliveryZone2) this.deliveryZone2.visible = false;
+        if (this.deliveryZone2Helper) this.deliveryZone2Helper.visible = false;
+    }
+    
+    /**
+     * Show animated completion popup
+     */
+    showCompletionPopup(time, scoreData) {
+        // Create popup element
+        const popup = document.createElement('div');
+        popup.id = 'completion-popup';
+        popup.className = 'completion-popup';
+        popup.innerHTML = `
+            <div class="completion-content">
+                <h1 class="completion-title">🎉 DELIVERY COMPLETE! 🎉</h1>
+                
+                <div class="completion-time">
+                    <div class="stat-label">Time</div>
+                    <div class="stat-value">${time}</div>
+                </div>
+                
+                <div class="completion-scores">
+                    <div class="score-row">
+                        <span class="score-label">Time Score</span>
+                        <span class="score-value">${scoreData.timePoints} pts</span>
+                    </div>
+                    <div class="score-row">
+                        <span class="score-label">Collision Score</span>
+                        <span class="score-value">${scoreData.collisionPoints} pts</span>
+                    </div>
+                    <div class="score-detail">${scoreData.collisionCount} collisions</div>
+                </div>
+                
+                <div class="completion-total">
+                    <div class="total-label">TOTAL SCORE</div>
+                    <div class="total-value">${scoreData.totalScore}</div>
+                </div>
+                
+                <button class="completion-button" onclick="location.reload()">Play Again</button>
+            </div>
+        `;
+        
+        document.body.appendChild(popup);
+        
+        // Trigger animation
+        setTimeout(() => {
+            popup.classList.add('show');
+        }, 100);
+    }
+    
+    /**
+     * Update zone visual feedback
+     */
+    updateZoneVisuals(inPickup, inDelivery, inRefuel) {
+        // Update active zones based on game state
+        if (this.gameState === 'first_pickup' || this.gameState === 'second_pickup') {
+            const helper = this.gameState === 'first_pickup' ? this.pickupZone1Helper : this.pickupZone2Helper;
+            if (helper) {
+                helper.material.color.setHex(inPickup ? 0xffff00 : 0x00ff00);
+                helper.material.opacity = inPickup ? 1.0 : 0.6;
+            }
+        } else if (this.gameState === 'first_delivery' || this.gameState === 'second_delivery') {
+            const helper = this.gameState === 'first_delivery' ? this.deliveryZone1Helper : this.deliveryZone2Helper;
+            if (helper) {
+                helper.material.color.setHex(inDelivery ? 0xffff00 : 0x0088ff);
+                helper.material.opacity = inDelivery ? 1.0 : 0.6;
+            }
+        } else if (this.gameState === 'refuel') {
+            if (this.gasStationHelper) {
+                this.gasStationHelper.material.color.setHex(inRefuel ? 0xffff00 : 0xffaa00);
+                this.gasStationHelper.material.opacity = inRefuel ? 1.0 : 0.6;
             }
         }
     }
@@ -382,18 +634,32 @@ export class DeliverySystem {
     }
     
     /**
-     * Get pickup location
+     * Get pickup location (based on current game state)
      * @returns {Object} {x, z} coordinates
      */
     getPickupLocation() {
+        if (this.gameState === 'first_pickup' && this.pickupZone1) {
+            return { x: this.pickupZone1.position.x, z: this.pickupZone1.position.z };
+        } else if (this.gameState === 'second_pickup' && this.pickupZone2) {
+            return { x: this.pickupZone2.position.x, z: this.pickupZone2.position.z };
+        } else if (this.gameState === 'refuel' && this.gasStation) {
+            return { x: this.gasStation.position.x, z: this.gasStation.position.z };
+        }
         return this.pickupLocation;
     }
     
     /**
-     * Get delivery location
+     * Get delivery location (based on current game state)
      * @returns {Object} {x, z} coordinates
      */
     getDeliveryLocation() {
+        if (this.gameState === 'first_delivery' && this.deliveryZone1) {
+            return { x: this.deliveryZone1.position.x, z: this.deliveryZone1.position.z };
+        } else if (this.gameState === 'second_delivery' && this.deliveryZone2) {
+            return { x: this.deliveryZone2.position.x, z: this.deliveryZone2.position.z };
+        } else if (this.gameState === 'refuel' && this.gasStation) {
+            return { x: this.gasStation.position.x, z: this.gasStation.position.z };
+        }
         return this.deliveryLocation;
     }
     
@@ -424,30 +690,29 @@ export class DeliverySystem {
     }
     
     /**
-     * Check if car is inside a zone using bounding box detection
+     * Check if car is inside a zone - entire car must be inside
      * @param {THREE.Object3D} carWrapper - Car object
      * @param {THREE.Object3D} zone - Zone object
-     * @returns {boolean} True if car is in zone
+     * @returns {boolean} True if entire car is in zone
      */
     isCarInZone(carWrapper, zone) {
-        // Get bounding boxes
+        // Get car's bounding box
         const carBBox = new THREE.Box3().setFromObject(carWrapper);
+        
+        // Get zone bounding box
         const zoneBBox = new THREE.Box3().setFromObject(zone);
         
-        // Expand the zone bounding box to make detection more generous
-        // Expand horizontally (X and Z) by 2 units and vertically (Y) by 10 units
-        const expansion = new THREE.Vector3(2, 10, 2);
-        zoneBBox.expandByVector(expansion);
+        // Only expand vertically to be more forgiving with height
+        zoneBBox.min.y -= 10;
+        zoneBBox.max.y += 10;
         
-        // Check if car's center point is inside the expanded zone bounding box
-        const carCenter = carBBox.getCenter(new THREE.Vector3());
+        // Check if the ENTIRE car bounding box is contained within the zone
+        // This ensures all parts of the car are inside before triggering
+        const isEntirelyInZone = carBBox.min.x >= zoneBBox.min.x && carBBox.max.x <= zoneBBox.max.x &&
+                                 carBBox.min.z >= zoneBBox.min.z && carBBox.max.z <= zoneBBox.max.z &&
+                                 carBBox.min.y >= zoneBBox.min.y && carBBox.max.y <= zoneBBox.max.y;
         
-        // Also check if car position is within the zone (ignore Y axis for more lenient detection)
-        const carPos = carWrapper.position;
-        const isInXZ = carPos.x >= zoneBBox.min.x && carPos.x <= zoneBBox.max.x &&
-                       carPos.z >= zoneBBox.min.z && carPos.z <= zoneBBox.max.z;
-        
-        return isInXZ || zoneBBox.containsPoint(carCenter);
+        return isEntirelyInZone;
     }
     
     /**
@@ -512,25 +777,57 @@ export class DeliverySystem {
     }
     
     /**
+     * Get collision count
+     */
+    getCollisionCount() {
+        return this.collisionCount;
+    }
+    
+    /**
      * Cleanup delivery system
      */
     cleanup() {
-        // Clean up zone helpers
-        if (this.pickupZoneHelper) {
-            this.scene.remove(this.pickupZoneHelper);
-            this.pickupZoneHelper.geometry.dispose();
-            this.pickupZoneHelper.material.dispose();
-            this.pickupZoneHelper = null;
+        // Remove completion popup if it exists
+        const popup = document.getElementById('completion-popup');
+        if (popup) {
+            popup.remove();
         }
-        if (this.deliveryZoneHelper) {
-            this.scene.remove(this.deliveryZoneHelper);
-            this.deliveryZoneHelper.geometry.dispose();
-            this.deliveryZoneHelper.material.dispose();
-            this.deliveryZoneHelper = null;
+        
+        // Clean up zone helpers
+        if (this.pickupZone1Helper) {
+            this.scene.remove(this.pickupZone1Helper);
+            this.pickupZone1Helper.geometry.dispose();
+            this.pickupZone1Helper.material.dispose();
+            this.pickupZone1Helper = null;
+        }
+        if (this.deliveryZone1Helper) {
+            this.scene.remove(this.deliveryZone1Helper);
+            this.deliveryZone1Helper.geometry.dispose();
+            this.deliveryZone1Helper.material.dispose();
+            this.deliveryZone1Helper = null;
+        }
+        if (this.pickupZone2Helper) {
+            this.scene.remove(this.pickupZone2Helper);
+            this.pickupZone2Helper.geometry.dispose();
+            this.pickupZone2Helper.material.dispose();
+            this.pickupZone2Helper = null;
+        }
+        if (this.deliveryZone2Helper) {
+            this.scene.remove(this.deliveryZone2Helper);
+            this.deliveryZone2Helper.geometry.dispose();
+            this.deliveryZone2Helper.material.dispose();
+            this.deliveryZone2Helper = null;
+        }
+        if (this.gasStationHelper) {
+            this.scene.remove(this.gasStationHelper);
+            this.gasStationHelper.geometry.dispose();
+            this.gasStationHelper.material.dispose();
+            this.gasStationHelper = null;
         }
         
         // Only clean up created zones, not imported ones
         if (!this.usingImportedZones) {
+            // Clean up any fallback zones created
             if (this.pickupZone) {
                 this.scene.remove(this.pickupZone);
                 this.pickupZone.geometry.dispose();
@@ -545,10 +842,13 @@ export class DeliverySystem {
             }
         } else {
             // Just clear references for imported zones
-            this.pickupZone = null;
-            this.deliveryZone = null;
-            this.importedPickupZone = null;
-            this.importedDropoffZone = null;
+            this.pickupZone1 = null;
+            this.deliveryZone1 = null;
+            this.pickupZone2 = null;
+            this.deliveryZone2 = null;
+            this.gasStation = null;
+            this.activePickupZone = null;
+            this.activeDeliveryZone = null;
         }
     }
 }
