@@ -69,8 +69,8 @@ export class LightingSystem {
         this.mainDirectionalLight.shadow.mapSize.width = 2048;
         this.mainDirectionalLight.shadow.mapSize.height = 2048;
         this.mainDirectionalLight.shadow.radius = 1;
-        this.mainDirectionalLight.shadow.bias = 0.0001;
-        this.mainDirectionalLight.shadow.normalBias = 0.02;
+        this.mainDirectionalLight.shadow.bias = -0.001;
+        this.mainDirectionalLight.shadow.normalBias = 0.05;
         this.scene.add(this.mainDirectionalLight);
         this.scene.add(this.mainDirectionalLight.target);
         
