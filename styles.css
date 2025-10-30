@@ -9,7 +9,11 @@ body {
 }
 
 canvas { 
-    display: block; 
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1;
 }
 
 /* Intro Screen Styles */

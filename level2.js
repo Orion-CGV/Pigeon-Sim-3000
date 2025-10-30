@@ -1,140 +1,61 @@
-// level2.js - City Racing Level (Improved)
+// level2.js - Arcade Racing Game Integration
 import * as THREE from 'three';
-import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
-import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// Make THREE and related classes available globally for the Arcade game modules
+// (The Arcade systems expect these to be global variables)
+if (!window.THREE) window.THREE = THREE;
+if (!window.OrbitControls) window.OrbitControls = OrbitControls;
+if (!window.GLTFLoader) window.GLTFLoader = GLTFLoader;
+
+// Import Arcade game systems
+import { EffectsSystem } from './level2/src/effects/EffectsSystem.js';
+import { UISystem } from './level2/src/ui/UISystem.js';
+import { InputSystem } from './level2/src/input/InputSystem.js';
+import { DeliverySystem } from './level2/src/delivery/DeliverySystem.js';
+import { LightingSystem } from './level2/src/lighting/LightingSystem.js';
+import { CameraSystem } from './level2/src/camera/CameraSystem.js';
+import { CarPhysicsSystem } from './level2/src/physics/CarPhysicsSystem.js';
+import { EnvironmentSystem } from './level2/src/environment/EnvironmentSystem.js';
 
 let scene, camera, renderer, labelRenderer;
 let returnToMainCallback;
 
-// Player controls variables
-let keys = {};
-let spaceHeld = false;
-let spaceLocked = false;
-let yaw = 0;
-let pitch = 0;
-let cameraYaw = 0; // Camera horizontal offset from car
-let cameraPitch = 0; // Camera vertical offset from car
-const PI_2 = Math.PI / 2;
-const MOUSE_SENS = 0.0025;
+// Modular Systems
+let effectsSystem = null;
+let uiSystem = null;
+let inputSystem = null;
+let deliverySystem = null;
+let lightingSystem = null;
+let cameraSystem = null;
+let carPhysicsSystem = null;
+let environmentSystem = null;
 
-// Physics variables
-const WALK_SPEED = 0.15;
-const DRIVE_SPEED = 0.15; // Reduced from 0.5 for more reasonable speed
-const gravity = -0.03;
-const jumpStrength = 0.45;
-let velocityY = 0;
+// Game objects
+let carWrapper = null;
+let frontWheelsGroup = null;
+let groundObject = null;
+let environmentObjects = [];
+let carBody = null;
+let carHelper = null;
+let carPhysicsOffset = null;
+let controls = null;
 
-// Player reference
-let player;
+// Physics
+let world;
+let groundBody;
+let groundHelper;
+let timeStep = 1 / 60;
+let collidersVisible = true;
 
-// Driving system variables
-let isDriving = true; // Always in driving mode
-let driveKeyLocked = false;
-
-// Collision objects
-let collisionBoxes = []; 
-
-// Car model
-let carModel = null;
-let carLoaded = false;
-let currentCarIndex = 0;
-
-// Audio system
-let audioListener = null;
-let engineSound = null;
-let isEngineRunning = false;
-
-// Texture tracking
-let currentTextureIndex = 0;
-
-// Car physics
-let carRotation = 0;
-const TURN_SPEED = 0.04;
-const CAR_ACCELERATION = 0.005; // Reduced from 0.02 for more gradual acceleration
-let currentSpeed = 0;
-
-// Building model
-let buildingModel = null;
-let buildingLoaded = false;
-
-// Available cars data
-const availableCars = [
-    { 
-        id: 'car01', 
-        name: 'Classic Sedan', 
-        obj: 'car01.obj', 
-        mtl: 'car01.mtl',
-        textures: ['car.png', 'car_blue.png', 'car_gray.png', 'car_red.png', 'car_snow.png', 'car_snow_blue.png', 'car_snow_gray.png', 'car_snow_red.png', 'car_snowcovered.png', 'car_snowcovered_blue.png', 'car_snowcovered_gray.png', 'car_snowcovered_red.png']
-    },
-    { 
-        id: 'car02', 
-        name: 'Sports Car', 
-        obj: 'car02.obj', 
-        mtl: 'car02.mtl',
-        textures: ['car2.png', 'car2_black.png', 'car2_red.png']
-    },
-    { 
-        id: 'car03', 
-        name: 'Compact Car', 
-        obj: 'car03.obj', 
-        mtl: 'car03.mtl',
-        textures: ['car3.png', 'car3_red.png', 'car3_yellow.png']
-    },
-    { 
-        id: 'car04', 
-        name: 'Modern Sedan', 
-        obj: 'car04.obj', 
-        mtl: 'car04.mtl',
-        textures: ['car4.png', 'car4_grey.png', 'car4_lightgrey.png', 'car4_lightorange.png']
-    },
-    { 
-        id: 'car05', 
-        name: 'Police/Taxi Car', 
-        obj: 'car05.obj', 
-        mtl: 'car05.mtl',
-        textures: ['car5.png', 'car5_green.png', 'car5_grey.png', 'car5_police.png', 'car5_police_la.png', 'car5_taxi.png']
-    },
-    { 
-        id: 'car06', 
-        name: 'Utility Vehicle', 
-        obj: 'car06.obj', 
-        mtl: 'car06.mtl',
-        textures: ['car6.png']
-    },
-    { 
-        id: 'car07', 
-        name: 'Luxury Car', 
-        obj: 'car07.obj', 
-        mtl: 'car07.mtl',
-        textures: ['car7.png', 'car7_black.png', 'car7_brown.png', 'car7_green.png', 'car7_grey.png', 'car7_red.png']
-    },
-    { 
-        id: 'car08', 
-        name: 'Delivery Van', 
-        obj: 'car08.obj', 
-        mtl: 'car08.mtl',
-        textures: ['Car8.png', 'Car8_grey.png', 'Car8_mail.png', 'Car8_purple.png']
-    }
-];
+// Boost effect tracking
+let wasBoostingLastFrame = false;
 
 export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, callback) {
-    
-    if (!sceneRef) {
-        console.error('sceneRef is undefined!');
-        return;
-    }
-    if (!cameraRef) {
-        console.error('cameraRef is undefined!');
-        return;
-    }
-    if (!rendererRef) {
-        console.error('rendererRef is undefined!');
-        return;
-    }
-    if (!labelRendererRef) {
-        console.error('labelRendererRef is undefined!');
+    if (!sceneRef || !cameraRef || !rendererRef || !labelRendererRef) {
+        console.error('Missing required references!');
         return;
     }
     
@@ -149,804 +70,593 @@ export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, ca
         scene.remove(scene.children[0]); 
     }
     
-    // Reset control state
-    keys = {};
-    spaceHeld = false;
-    spaceLocked = false;
-    velocityY = 0;
-    isDriving = true; // Always start in driving mode
-    driveKeyLocked = false;
-    currentSpeed = 0;
-    
-    // Reset camera orientation
-    yaw = 0;
-    pitch = 0;
-    cameraYaw = 0;
-    cameraPitch = 0;
-
-    setupLevel2();
-    setupLevelInput();
-    setupAudio();
+    setupLevel();
 }
 
-function setupLevel2() {
-    collisionBoxes = [];
+function setupLevel() {
+    // Initialize physics world
+    initPhysics();
     
-    // Sky background
-    scene.background = new THREE.Color(0x87CEEB);
+    // Setup renderer for shadows
+    setupRenderer();
     
-    // Large ground
-    const groundGeometry = new THREE.PlaneGeometry(200, 200);
-    const groundMaterial = new THREE.MeshLambertMaterial({ 
-        color: 0x2d5a2d, 
-        side: THREE.DoubleSide 
-    });
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    ground.receiveShadow = true;
-    scene.add(ground);
-
-    // Load building model first, then car model
-    loadBuildingModel();
+    // Setup shadow ground
+    setupShadowGround();
     
-    // Load car model, then create player
-    loadCarModel();
-
-    // Create roads
-    createRoads();
-
-    // Goal area
-    const goalGeometry = new THREE.BoxGeometry(8, 2, 8);
-    const goalMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.7 });
-    const goal = new THREE.Mesh(goalGeometry, goalMaterial);
-    goal.position.set(80, 1, 80);
-    goal.name = 'goal';
-    scene.add(goal);
-
-    // Enhanced lighting
-    setupRealisticLighting();
-
-    // UI
-    createUI();
+    // Show Level 2 UI elements
+    showLevel2UI();
     
-    // Initial camera position
-    camera.position.set(0, 10, 15);
-    camera.lookAt(0, 0, 0);
+    // Initialize Camera System (pass existing camera from main.js)
+    cameraSystem = new CameraSystem(scene, renderer, camera);
+    cameraSystem.init();
+    // camera is already set from initLevel, just get controls
+    controls = cameraSystem.getControls();
     
-    // Initialize yaw based on initial camera position
-    yaw = Math.atan2(camera.position.x, camera.position.z);
+    // Initialize Effects System
+    effectsSystem = new EffectsSystem(scene, camera);
+    effectsSystem.init();
+    
+    // Initialize UI System
+    uiSystem = new UISystem(scene);
+    uiSystem.init();
+    
+    // Initialize Input System
+    inputSystem = new InputSystem();
+    setupInputCallbacks();
+    inputSystem.init();
+    
+    // Initialize Delivery System (will be initialized later with zones from model)
+    deliverySystem = new DeliverySystem(scene, uiSystem);
+    
+    // Initialize Lighting System
+    lightingSystem = new LightingSystem(scene, uiSystem);
+    lightingSystem.init();
+    
+    // Expose toggleDayNight globally for the UI button
+    window.toggleDayNight = () => {
+        if (lightingSystem) {
+            lightingSystem.toggleDayNight();
+        }
+    };
+    
+    // Initialize Car Physics System
+    carPhysicsSystem = new CarPhysicsSystem(scene, world);
+    
+    // Initialize Environment System
+    environmentSystem = new EnvironmentSystem(scene, world);
+    environmentSystem.setOnModelLoadedCallback(onEnvironmentModelLoaded);
+    
+    // Load the car model
+    environmentSystem.loadModel('./level2/Car.glb');
 }
 
-function setupRealisticLighting() {
-    if (!renderer) {
-        console.error('Renderer is undefined in setupRealisticLighting!');
-        return;
+/**
+ * Creates and shows Level 2 UI elements
+ * Elements are created dynamically to avoid conflicts with main.js cleanup
+ * that removes .game-ui elements when returning to menu
+ */
+function showLevel2UI() {
+    console.log('🎮 Creating/Showing Level 2 UI elements...');
+    
+    // Create impact flash if it doesn't exist
+    if (!document.getElementById('impact-flash')) {
+        const impactFlash = document.createElement('div');
+        impactFlash.id = 'impact-flash';
+        document.body.appendChild(impactFlash);
+        console.log('✅ Created impact-flash');
     }
+    
+    // Create direction info panel if it doesn't exist
+    if (!document.getElementById('direction-info')) {
+        const directionInfo = document.createElement('div');
+        directionInfo.id = 'direction-info';
+        directionInfo.className = 'game-ui';
+        directionInfo.innerHTML = `
+            <div>FPS: <span id="fps">60</span></div>
+            <div>Direction: <span id="wheel-direction">Straight</span></div>
+            <div>Heading: <span id="car-heading">0°</span></div>
+            <div>Speed: <span id="car-speed">0.0</span></div>
+            <div id="headlights-ui" style="display: none;">Headlights: <span id="headlights-status">OFF</span></div>
+            <div>
+                Boost: <span id="boost-status">OFF</span>
+                <div class="boost-bar-container">
+                    <div class="boost-bar-fill" id="boost-bar-fill"></div>
+                </div>
+                <span id="boost-percentage">100%</span>
+            </div>
+            <div>Camera: <span id="camera-mode">Behind Car</span></div>
+            <div>Delivery: <span id="delivery-status">Find Yellow Zone</span></div>
+        `;
+        directionInfo.style.display = 'block';
+        document.body.appendChild(directionInfo);
+        console.log('✅ Created direction-info');
+    } else {
+        document.getElementById('direction-info').style.display = 'block';
+        console.log('✅ Showed existing direction-info');
+    }
+    
+    // Create day/night toggle button if it doesn't exist
+    if (!document.getElementById('toggle-daynight')) {
+        const toggleBtn = document.createElement('button');
+        toggleBtn.id = 'toggle-daynight';
+        toggleBtn.className = 'toggle-btn game-ui';
+        toggleBtn.textContent = 'Toggle Day/Night (H)';
+        toggleBtn.onclick = () => { if(window.toggleDayNight) window.toggleDayNight(); };
+        toggleBtn.style.display = 'block';
+        document.body.appendChild(toggleBtn);
+        console.log('✅ Created toggle-daynight');
+    } else {
+        document.getElementById('toggle-daynight').style.display = 'block';
+        console.log('✅ Showed existing toggle-daynight');
+    }
+    
+    // Create collider toggle button if it doesn't exist
+    if (!document.getElementById('toggle-colliders')) {
+        const toggleCollidersBtn = document.createElement('button');
+        toggleCollidersBtn.id = 'toggle-colliders';
+        toggleCollidersBtn.className = 'toggle-btn game-ui';
+        toggleCollidersBtn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
+        toggleCollidersBtn.style.display = 'block';
+        toggleCollidersBtn.style.top = '120px';
+        toggleCollidersBtn.onclick = toggleColliders;
+        document.body.appendChild(toggleCollidersBtn);
+        console.log('✅ Created toggle-colliders');
+    } else {
+        const btn = document.getElementById('toggle-colliders');
+        btn.style.display = 'block';
+        btn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
+        console.log('✅ Showed existing toggle-colliders');
+    }
+    
+    // Create minimap container if it doesn't exist
+    if (!document.getElementById('minimap-container')) {
+        const minimapContainer = document.createElement('div');
+        minimapContainer.id = 'minimap-container';
+        minimapContainer.className = 'game-ui';
+        
+        const minimapCanvas = document.createElement('canvas');
+        minimapCanvas.id = 'minimap';
+        minimapCanvas.width = 200;
+        minimapCanvas.height = 200;
+        
+        const minimapOverlay = document.createElement('canvas');
+        minimapOverlay.id = 'minimap-overlay';
+        minimapOverlay.width = 200;
+        minimapOverlay.height = 200;
+        
+        minimapContainer.appendChild(minimapCanvas);
+        minimapContainer.appendChild(minimapOverlay);
+        minimapContainer.style.display = 'block';
+        document.body.appendChild(minimapContainer);
+        console.log('✅ Created minimap-container with canvases');
+    } else {
+        document.getElementById('minimap-container').style.display = 'block';
+        console.log('✅ Showed existing minimap-container');
+    }
+    
+    // Create mobile controls if they don't exist
+    if (!document.getElementById('mobile-controls')) {
+        const mobileControls = document.createElement('div');
+        mobileControls.id = 'mobile-controls';
+        mobileControls.className = 'game-ui';
+        mobileControls.innerHTML = `
+            <div id="joystick-container">
+                <div id="joystick-base"></div>
+                <div id="joystick-stick"></div>
+            </div>
+            <div id="mobile-buttons">
+                <div class="mobile-btn" id="mobile-boost">⚡</div>
+                <div class="mobile-btn" id="mobile-camera">📷</div>
+            </div>
+        `;
+        document.body.appendChild(mobileControls);
+        console.log('✅ Created mobile-controls');
+    }
+    
+    console.log('✅ All Level 2 UI elements ready');
+}
+
+function hideLevel2UI() {
+    console.log('🎮 Hiding Level 2 UI elements...');
+    
+    const uiElements = [
+        'direction-info',
+        'toggle-daynight',
+        'toggle-colliders',
+        'minimap-container',
+        'mobile-controls'
+    ];
+    
+    uiElements.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.style.display = 'none';
+            console.log(`✅ Hid ${id}`);
+        }
+    });
+}
+
+function initPhysics() {
+    // Create CANNON.js physics world
+    world = new CANNON.World();
+    world.gravity.set(0, -9.8, 0); // Match Arcade: Lower gravity
+    world.broadphase = new CANNON.NaiveBroadphase();
+    world.solver.iterations = 10;
+    
+    // Trackmania-style: Low friction for sliding (from Arcade)
+    world.defaultContactMaterial.friction = 0.05;
+    world.defaultContactMaterial.restitution = 0;
+    
+    // Create ground physics body with low friction (from Arcade)
+    const groundShape = new CANNON.Plane();
+    groundBody = new CANNON.Body({
+        mass: 0,
+        shape: groundShape,
+        material: new CANNON.Material({ friction: 0.05, restitution: 0 })
+    });
+    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    groundBody.position.y = 0;
+    world.addBody(groundBody);
+    
+    // Create visual helper for ground collision plane
+    const helperGeometry = new THREE.PlaneGeometry(200, 200);
+    const helperMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x00ff00, 
+        wireframe: true,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+    });
+    groundHelper = new THREE.Mesh(helperGeometry, helperMaterial);
+    groundHelper.rotation.x = -Math.PI / 2;
+    groundHelper.position.y = 0;
+    groundHelper.visible = collidersVisible;
+    scene.add(groundHelper);
+}
+
+function setupRenderer() {
+    if (!renderer) return;
     
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
     
-    // Ambient light
-    const ambientLight = new THREE.AmbientLight(0x87CEEB, 0.4);
-    scene.add(ambientLight);
+    const maxPixelRatio = Math.min(window.devicePixelRatio, 2);
+    renderer.setPixelRatio(maxPixelRatio);
     
-    // Main directional light (sun)
-    const sunLight = new THREE.DirectionalLight(0xFFE4B5, 1.2);
-    sunLight.position.set(100, 80, 50);
-    sunLight.target.position.set(0, 0, 0);
-    
-    // Configure shadows
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.near = 0.5;
-    sunLight.shadow.camera.far = 200;
-    sunLight.shadow.camera.left = -100;
-    sunLight.shadow.camera.right = 100;
-    sunLight.shadow.camera.top = 100;
-    sunLight.shadow.camera.bottom = -100;
-    sunLight.shadow.bias = -0.0001;
-    
-    scene.add(sunLight);
-    scene.add(sunLight.target);
-    
-    // Fill light
-    const fillLight = new THREE.DirectionalLight(0x87CEEB, 0.3);
-    fillLight.position.set(-50, 40, -30);
-    fillLight.target.position.set(0, 0, 0);
-    scene.add(fillLight);
-    scene.add(fillLight.target);
-    
-    // Hemisphere light
-    const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x2d5a2d, 0.6);
-    scene.add(hemisphereLight);
+    renderer.logarithmicDepthBuffer = true;
 }
 
-function loadCarModel(carIndex = 0) {
-    if (carIndex >= availableCars.length) {
-        console.error('Invalid car index:', carIndex);
-        createFallbackPlayer();
-        return;
-    }
+function setupShadowGround() {
+    const shadowGroundGeometry = new THREE.PlaneGeometry(200, 200);
+    const shadowGroundMaterial = new THREE.ShadowMaterial({
+        opacity: 0.3,
+        side: THREE.DoubleSide
+    });
+    const shadowGround = new THREE.Mesh(shadowGroundGeometry, shadowGroundMaterial);
+    shadowGround.rotation.x = -Math.PI / 2;
+    shadowGround.position.y = 0;
+    shadowGround.receiveShadow = true;
+    shadowGround.renderOrder = -1;
+    shadowGroundMaterial.depthWrite = false;
+    shadowGroundMaterial.polygonOffset = true;
+    shadowGroundMaterial.polygonOffsetFactor = -1;
+    shadowGroundMaterial.polygonOffsetUnits = -1;
+    
+    scene.add(shadowGround);
+    window.shadowGroundPlane = shadowGround;
+}
 
-    const selectedCar = availableCars[carIndex];
-    const mtlLoader = new MTLLoader();
-    const objLoader = new OBJLoader();
+function onEnvironmentModelLoaded(data) {
+    carWrapper = data.carWrapper;
+    groundObject = data.groundObject;
+    environmentObjects = data.environmentObjects;
+    frontWheelsGroup = data.frontWheelsGroup;
     
-    console.log(`Loading car: ${selectedCar.name}`);
-    
-    // Load material file first
-    mtlLoader.load(`assets/models/cars/${selectedCar.mtl}`, (materials) => {
-        materials.preload();
-        objLoader.setMaterials(materials);
-        
-        // Load the car model
-        objLoader.load(`assets/models/cars/${selectedCar.obj}`, (object) => {
-            carModel = object;
-            carLoaded = true;
-            
-            // Scale and position the car
-            carModel.scale.set(0.5, 0.5, 0.5);
-            carModel.position.set(0, 0.1, 0); // Much lower position to sit properly on ground
-            carModel.name = 'player';
-            
-            // Enable shadows for the car
-            carModel.traverse((child) => {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                }
+    // Initialize delivery zones with imported zones if available
+    if (deliverySystem) {
+        if (data.pickupZones && data.pickupZones.length > 0 && 
+            data.dropoffZones && data.dropoffZones.length > 0) {
+            console.log('✅ Using imported pickup and dropoff zones from model');
+            deliverySystem.init({
+                pickupZones: data.pickupZones,
+                dropoffZones: data.dropoffZones
             });
-            
-            // Use the car model directly as the player
-            player = carModel;
-            scene.add(player);
-            
-            // Apply initial texture
-            applyInitialTexture();
-            
-        }, undefined, (error) => {
-            console.error('Error loading car model:', error);
-            createFallbackPlayer();
-        });
-    }, undefined, (error) => {
-        console.error('Error loading car materials:', error);
-        createFallbackPlayer();
-    });
-}
-
-function createFallbackPlayer() {
-    const playerGeometry = new THREE.BoxGeometry(2, 1, 4);
-    const playerMaterial = new THREE.MeshLambertMaterial({ 
-        color: 0x333333
-    });
-    player = new THREE.Mesh(playerGeometry, playerMaterial);
-    player.position.set(0, 0.1, 0); // Much lower position to sit properly on ground
-    player.name = 'player';
-    player.castShadow = true;
-    player.receiveShadow = true;
-    scene.add(player);
-    carLoaded = true;
-    console.log('Fallback car player created');
-}
-
-function loadBuildingModel() {
-    // For now, use fallback buildings
-    generateSkyscrapersFallback();
-}
-
-function generateSkyscrapersFallback() {
-    console.log('Using fallback cube buildings...');
-    const buildingColors = [
-        0x666666, 0x777777, 0x888888, 0x999999, 
-        0x555555, 0x444444, 0x333333, 0x222222
-    ];
-    
-    // Create buildings with proper spacing
-    for (let x = -80; x <= 80; x += 25) {
-        for (let z = -80; z <= 80; z += 25) {
-            // Skip center area for driving space
-            if (Math.abs(x) < 30 && Math.abs(z) < 30) continue;
-            
-            // Add some randomness
-            if (Math.random() < 0.2) continue;
-            
-            const width = 8 + Math.random() * 6;
-            const depth = 8 + Math.random() * 6;
-            const height = 20 + Math.random() * 50; 
-            const color = buildingColors[Math.floor(Math.random() * buildingColors.length)];
-            
-            createSkyscraper(x, 0, z, width, height, depth, color);
-        }
-    }
-}
-
-function createSkyscraper(x, y, z, width, height, depth, color) {
-    const geometry = new THREE.BoxGeometry(width, height, depth);
-    const material = new THREE.MeshLambertMaterial({ color: color });
-    const building = new THREE.Mesh(geometry, material);
-    
-    // Position building so its bottom is at ground level
-    building.position.set(x, y + height/2, z);
-    
-    // Enable shadows
-    building.castShadow = true;
-    building.receiveShadow = true;
-    
-    // Store collision box
-    const boundingBox = new THREE.Box3().setFromObject(building);
-    collisionBoxes.push(boundingBox);
-    
-    scene.add(building);
-    return building;
-}
-
-function createRoads() {
-    const roadMaterial = new THREE.MeshLambertMaterial({ 
-        color: 0x333333, 
-        side: THREE.DoubleSide 
-    });
-    const lineMaterial = new THREE.MeshLambertMaterial({ 
-        color: 0xffff00, 
-        side: THREE.DoubleSide 
-    });
-    
-    // Main roads
-    for (let x = -90; x <= 90; x += 30) {
-        const roadGeometry = new THREE.PlaneGeometry(8, 200);
-        const road = new THREE.Mesh(roadGeometry, roadMaterial);
-        road.rotation.x = -Math.PI / 2;
-        road.position.set(x, 0.1, 0);
-        road.receiveShadow = true;
-        scene.add(road);
-    }
-    
-    for (let z = -90; z <= 90; z += 30) {
-        const roadGeometry = new THREE.PlaneGeometry(200, 8);
-        const road = new THREE.Mesh(roadGeometry, roadMaterial);
-        road.rotation.x = -Math.PI / 2;
-        road.position.set(0, 0.1, z);
-        road.receiveShadow = true;
-        scene.add(road);
-    }
-    
-    // Road lines
-    for (let x = -90; x <= 90; x += 30) {
-        for (let z = -95; z <= 95; z += 10) {
-            const lineGeometry = new THREE.PlaneGeometry(0.5, 2);
-            const line = new THREE.Mesh(lineGeometry, lineMaterial);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(x, 0.11, z);
-            scene.add(line);
+        } else {
+            console.log('ℹ No zones found in model, creating default zones');
+            deliverySystem.init();
         }
     }
     
-    for (let z = -90; z <= 90; z += 30) {
-        for (let x = -95; x <= 95; x += 10) {
-            const lineGeometry = new THREE.PlaneGeometry(2, 0.5);
-            const line = new THREE.Mesh(lineGeometry, lineMaterial);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(x, 0.11, z);
-            scene.add(line);
+    const groundBBox = environmentSystem.setupGround();
+    if (groundBBox) {
+        const groundTopY = groundBBox.max.y;
+        const groundLevel = groundTopY + 1.5;
+        
+        if (cameraSystem) {
+            cameraSystem.setGroundLevel(groundLevel);
+        }
+        
+        groundBody.position.y = groundTopY;
+        
+        if (groundHelper) {
+            groundHelper.position.y = groundTopY;
+        }
+        
+        if (window.shadowGroundPlane) {
+            window.shadowGroundPlane.position.y = groundTopY + 0.02;
+        }
+        
+        if (deliverySystem) {
+            deliverySystem.updateZonePositions(groundTopY);
+        }
+    } else {
+        console.warn('⚠ Could not calculate ground bounding box - using default Y=0');
+        const groundLevel = 1.5;
+        if (cameraSystem) {
+            cameraSystem.setGroundLevel(groundLevel);
         }
     }
-}
-
-function createUI() {
-    // Title
-    const titleDiv = document.createElement('div');
-    titleDiv.className = "game-ui"; 
-    titleDiv.textContent = 'LEVEL 2 - City Racing';
-    titleDiv.style.cssText = `
-        color: white; font-size: 24px; font-weight: bold; position: absolute; 
-        top: 20px; left: 50%; transform: translateX(-50%); text-shadow: 2px 2px 4px black;
-        z-index: 1000; pointer-events: none;
-    `;
-    document.body.appendChild(titleDiv);
-
-    // Car selection display
-    const carInfoDiv = document.createElement('div');
-    carInfoDiv.className = "game-ui";
-    carInfoDiv.id = "car-info";
-    carInfoDiv.style.cssText = `
-        color: white; font-size: 16px; position: absolute; top: 60px; left: 20px; 
-        text-shadow: 2px 2px 4px black; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
-        z-index: 1000; pointer-events: none;
-    `;
-    document.body.appendChild(carInfoDiv);
-
-    // Texture selection display
-    const textureInfoDiv = document.createElement('div');
-    textureInfoDiv.className = "game-ui";
-    textureInfoDiv.id = "texture-info";
-    textureInfoDiv.style.cssText = `
-        color: white; font-size: 16px; position: absolute; top: 120px; left: 20px; 
-        text-shadow: 2px 2px 4px black; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
-        z-index: 1000; pointer-events: none;
-    `;
-    document.body.appendChild(textureInfoDiv);
-
-    // Update displays
-    updateCarInfo();
-    updateTextureInfo();
-
-    // Instructions
-    const instructionsDiv = document.createElement('div');
-    instructionsDiv.className = "game-ui";
-    instructionsDiv.innerHTML = 'Drive to the green goal!<br>W/S: Accelerate/Brake, A/D: Steer, Space: Handbrake<br>Q/R: Switch Car, T/Y: Switch Color, E: Engine Sound, C: Reset Camera, ESC: Pause Menu';
-    instructionsDiv.style.cssText = `
-        color: white; font-size: 16px; position: absolute; bottom: 20px; left: 50%; 
-        transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
-        background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
-        z-index: 1000; pointer-events: none;
-    `;
-    document.body.appendChild(instructionsDiv);
-
-    // Driving status indicator
-    const driveStatusDiv = document.createElement('div');
-    driveStatusDiv.className = "game-ui";
-    driveStatusDiv.id = "drive-status";
-    driveStatusDiv.textContent = 'Drive Mode: ON';
-    driveStatusDiv.style.cssText = `
-        color: #00ff00; font-size: 18px; position: absolute; top: 60px; right: 20px; 
-        text-shadow: 2px 2px 4px black; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
-        z-index: 1000; pointer-events: none;
-    `;
-    document.body.appendChild(driveStatusDiv);
-
-    // Speed indicator
-    const speedDiv = document.createElement('div');
-    speedDiv.className = "game-ui";
-    speedDiv.id = "speed-display";
-    speedDiv.textContent = 'Speed: 0 km/h';
-    speedDiv.style.cssText = `
-        color: white; font-size: 18px; position: absolute; top: 100px; right: 20px; 
-        text-shadow: 2px 2px 4px black; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
-        z-index: 1000; pointer-events: none;
-    `;
-    document.body.appendChild(speedDiv);
-}
-
-function updateDriveStatus() {
-    const driveStatusDiv = document.getElementById('drive-status');
-    if (driveStatusDiv) {
-        driveStatusDiv.textContent = 'Drive Mode: ON';
-        driveStatusDiv.style.color = '#00ff00';
+    
+    if (lightingSystem) {
+        lightingSystem.createHeadlights(carWrapper);
+        
+        // Create gas station lights if any were detected
+        if (data.gasStationLights) {
+            lightingSystem.createGasStationLights(data.gasStationLights);
+        }
+    }
+    
+    if (carPhysicsSystem) {
+        carPhysicsSystem.createPhysicsBody(carWrapper);
+        carBody = carPhysicsSystem.getPhysicsBody();
+        carHelper = carPhysicsSystem.getCollisionHelper();
+        carPhysicsOffset = carPhysicsSystem.getPhysicsOffset();
+    }
+    
+    environmentSystem.createEnvironmentPhysics(collidersVisible);
+    setupCollisionListeners();
+    
+    if (cameraSystem) {
+        cameraSystem.setEnvironmentObjects(environmentObjects);
     }
 }
 
-function updateSpeedDisplay() {
-    const speedDiv = document.getElementById('speed-display');
-    if (speedDiv && isDriving) {
-        const speedKmh = Math.abs(currentSpeed * 80).toFixed(0); // Convert to km/h (roughly 1.6x mph)
-        speedDiv.textContent = `Speed: ${speedKmh} km/h`;
-        speedDiv.style.color = currentSpeed > 0.1 ? '#ff4444' : 'white'; // Adjusted threshold for new speed scale
-    } else if (speedDiv) {
-        speedDiv.textContent = 'Speed: 0 km/h';
-        speedDiv.style.color = 'white';
-    }
-}
-
-function switchCar(newCarIndex) {
-    if (newCarIndex === currentCarIndex || newCarIndex >= availableCars.length) {
+function setupCollisionListeners() {
+    if (!carBody) {
+        console.warn('Car body not ready for collision listeners');
         return;
     }
     
-    console.log(`Switching from car ${currentCarIndex} to car ${newCarIndex}`);
-    
-    // Remove old car model from scene
-    if (player) {
-        scene.remove(player);
-        player = null;
-    }
-    
-    // Reset car loaded state
-    carLoaded = false;
-    carModel = null;
-    currentCarIndex = newCarIndex;
-    currentTextureIndex = 0;
-    
-    // Update displays
-    updateCarInfo();
-    updateTextureInfo();
-    
-    // Load new car model
-    loadCarModel(newCarIndex);
+    carBody.addEventListener('collide', function(event) {
+        const otherBody = event.body;
+        
+        if (otherBody === groundBody) {
+            return;
+        }
+        
+        const contact = event.contact;
+        const collisionPoint = new THREE.Vector3(
+            contact.bi.position.x,
+            contact.bi.position.y,
+            contact.bi.position.z
+        );
+        
+        const velocity = new THREE.Vector3(
+            carBody.velocity.x,
+            carBody.velocity.y,
+            carBody.velocity.z
+        );
+        
+        const speed = velocity.length();
+        
+        if (speed > 3) {
+            let color = 0xffaa00;
+            if (speed > 8) {
+                color = 0xff0000;
+            } else if (speed > 5) {
+                color = 0xff6600;
+            }
+            
+            if (effectsSystem) {
+                effectsSystem.createCollisionParticles(collisionPoint, velocity, color);
+                const shakeIntensity = Math.min(speed / 10, 1.5);
+                effectsSystem.triggerScreenShake(shakeIntensity);
+                effectsSystem.triggerImpactFlash(speed);
+            }
+        }
+    });
 }
 
-function updateCarInfo() {
-    const carInfoDiv = document.getElementById('car-info');
-    if (!carInfoDiv) return;
-    
-    const currentCar = availableCars[currentCarIndex];
-    if (currentCar) {
-        carInfoDiv.innerHTML = `
-            <div><strong>Car:</strong> ${currentCar.name}</div>
-            <div><strong>Q/R:</strong> Switch Car</div>
-        `;
-    }
-}
-
-function updateTextureInfo() {
-    const textureInfoDiv = document.getElementById('texture-info');
-    if (!textureInfoDiv) return;
-    
-    const currentCar = availableCars[currentCarIndex];
-    if (currentCar && currentCar.textures) {
-        const currentTexture = currentCar.textures[currentTextureIndex];
-        const textureName = currentTexture.replace('.png', '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        textureInfoDiv.innerHTML = `
-            <div><strong>Color:</strong> ${textureName}</div>
-            <div><strong>T/Y:</strong> Switch Color</div>
-        `;
-    }
-}
-
-function getCurrentTextureIndex() {
-    return currentTextureIndex;
-}
-
-function applyInitialTexture() {
-    if (!carModel || !availableCars[currentCarIndex]) return;
-    
-    const currentCar = availableCars[currentCarIndex];
-    if (!currentCar.textures || currentCar.textures.length === 0) return;
-    
-    switchTexture(currentTextureIndex);
-}
-
-function switchTexture(textureIndex) {
-    if (!carModel || !availableCars[currentCarIndex]) return;
-    
-    const currentCar = availableCars[currentCarIndex];
-    if (textureIndex >= currentCar.textures.length) return;
-    
-    currentTextureIndex = textureIndex;
-    const textureName = currentCar.textures[textureIndex];
-    
-    // Update display
-    updateTextureInfo();
-    
-    // Load and apply new texture
-    const textureLoader = new THREE.TextureLoader();
-    textureLoader.load(`assets/textures/cars/${textureName}`, (texture) => {
-        // Apply texture to all materials in the car model
-        carModel.traverse((child) => {
-            if (child.isMesh && child.material) {
-                if (Array.isArray(child.material)) {
-                    child.material.forEach(material => {
-                        material.map = texture;
-                        material.needsUpdate = true;
-                    });
-                } else {
-                    child.material.map = texture;
-                    child.material.needsUpdate = true;
+function setupInputCallbacks() {
+    inputSystem.setCallbacks({
+        onSpeedChange: (speed) => {
+            if (carPhysicsSystem) {
+                carPhysicsSystem.setSpeed(speed);
+            }
+        },
+        onDirectionChange: (direction) => {
+            if (carPhysicsSystem) {
+                carPhysicsSystem.setDirection(direction);
+            }
+        },
+        onBoostStart: () => {
+            if (carPhysicsSystem) {
+                carPhysicsSystem.startBoost();
+            }
+        },
+        onBoostEnd: () => {
+            if (carPhysicsSystem) {
+                carPhysicsSystem.stopBoost();
+            }
+        },
+        onCameraToggle: () => {
+            if (cameraSystem) {
+                const newMode = cameraSystem.toggleCameraMode();
+                if (uiSystem) {
+                    uiSystem.updateCameraModeDisplay(newMode);
                 }
             }
-        });
-    }, undefined, (error) => {
-        console.error('Error loading texture:', error);
-    });
-}
-
-function setupAudio() {
-    // Create audio listener
-    audioListener = new THREE.AudioListener();
-    camera.add(audioListener);
-    
-    // Load engine sound
-    const audioLoader = new THREE.AudioLoader();
-    audioLoader.load('assets/audio/cars/Car_Engine_Loop.ogg', (buffer) => {
-        engineSound = new THREE.Audio(audioListener);
-        engineSound.setBuffer(buffer);
-        engineSound.setLoop(true);
-        engineSound.setVolume(0.3);
-        console.log('Engine sound loaded');
-    }, undefined, (error) => {
-        console.error('Error loading engine sound:', error);
-    });
-}
-
-function startEngine() {
-    if (engineSound && !isEngineRunning) {
-        engineSound.play();
-        isEngineRunning = true;
-        console.log('Engine started');
-    }
-}
-
-function stopEngine() {
-    if (engineSound && isEngineRunning) {
-        engineSound.stop();
-        isEngineRunning = false;
-        console.log('Engine stopped');
-    }
-}
-
-// Input system
-export function setupLevelInput() {
-    // Remove existing listeners first to prevent duplicates
-    document.removeEventListener("keydown", handleKeyDown);
-    document.removeEventListener("keyup", handleKeyUp);
-    document.removeEventListener("pointerlockchange", onPointerLockChange);
-    document.removeEventListener("mousemove", onMouseMove);
-    
-    // Add event listeners
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("keyup", handleKeyUp);
-    document.addEventListener("pointerlockchange", onPointerLockChange);
-    
-    // Pointer lock on click - remove existing listener first
-    renderer.domElement.removeEventListener("click", requestLock);
-    renderer.domElement.addEventListener("click", requestLock);
-    
-    // If already pointer locked, attach the mousemove listener immediately
-    if (document.pointerLockElement === renderer.domElement) {
-        document.addEventListener("mousemove", onMouseMove);
-    }
-    
-    // Store handlers for cleanup
-    scene.userData.keyDownHandler = handleKeyDown;
-    scene.userData.keyUpHandler = handleKeyUp;
-    scene.userData.pointerLockHandler = onPointerLockChange;
-    scene.userData.mouseMoveHandler = onMouseMove;
-    scene.userData.lockClickHandler = requestLock;
-}
-
-
-function requestLock() {
-    if (document.pointerLockElement !== renderer.domElement) {
-        renderer.domElement.requestPointerLock();
-    }
-}
-
-function handleKeyDown(e) {
-    if (e.code === "Space") {
-        spaceHeld = true;
-    } else if (e.code === "Escape") {
-        // Show pause menu using ESC key
+        },
+        onHeadlightsToggle: () => {
+            if (lightingSystem && lightingSystem.isNight()) {
+                lightingSystem.toggleHeadlights();
+            }
+        },
+        onCollidersToggle: () => {
+            toggleColliders();
+        },
+        onPause: () => {
         if (window.showPauseMenu) {
             window.showPauseMenu(2);
         } else {
-            // Fallback to direct return if pause menu not available
             returnToMainCallback();
         } 
-    // F key toggle removed - always in driving mode
-    } else if (e.code === "KeyE") {
-        if (isEngineRunning) {
-            stopEngine();
-        } else {
-            startEngine();
         }
-    } else if (e.code === "KeyC") {
-        // Reset camera to default position
-        cameraYaw = 0;
-        cameraPitch = 0;
-    } else if (e.code === "KeyQ") {
-        const newCarIndex = currentCarIndex > 0 ? currentCarIndex - 1 : availableCars.length - 1;
-        switchCar(newCarIndex);
-    } else if (e.code === "KeyR") {
-        const newCarIndex = currentCarIndex < availableCars.length - 1 ? currentCarIndex + 1 : 0;
-        switchCar(newCarIndex);
-    } else if (e.code === "KeyT") {
-        const currentCar = availableCars[currentCarIndex];
-        if (currentCar && currentCar.textures) {
-            const currentTextureIndex = getCurrentTextureIndex();
-            const newTextureIndex = currentTextureIndex > 0 ? currentTextureIndex - 1 : currentCar.textures.length - 1;
-            switchTexture(newTextureIndex);
-        }
-    } else if (e.code === "KeyY") {
-        const currentCar = availableCars[currentCarIndex];
-        if (currentCar && currentCar.textures) {
-            const currentTextureIndex = getCurrentTextureIndex();
-            const newTextureIndex = currentTextureIndex < currentCar.textures.length - 1 ? currentTextureIndex + 1 : 0;
-            switchTexture(newTextureIndex);
-        }
-    } else {
-        keys[e.key.toLowerCase()] = true;
-    }
+    });
 }
 
-function handleKeyUp(e) {
-    if (e.code === "Space") {
-        spaceHeld = false;
-        spaceLocked = false;
-    // F key handling removed - always in driving mode
-    } else {
-        keys[e.key.toLowerCase()] = false;
+function toggleColliders() {
+    collidersVisible = !collidersVisible;
+    
+    console.log(`🔲 Colliders ${collidersVisible ? 'visible' : 'hidden'}`);
+    
+    if (carHelper) {
+        carHelper.visible = collidersVisible;
     }
-}
-
-function onPointerLockChange() {
-    if (document.pointerLockElement === renderer.domElement) {
-        document.addEventListener("mousemove", onMouseMove);
-    } else {
-        document.removeEventListener("mousemove", onMouseMove);
+    
+    if (groundHelper) {
+        groundHelper.visible = collidersVisible;
     }
-}
-
-function onMouseMove(e) {
-    // Update camera offset from car
-    cameraYaw -= e.movementX * MOUSE_SENS;
-    cameraPitch += e.movementY * MOUSE_SENS;
     
-    // Limit camera pitch to prevent flipping
-    const maxPitch = PI_2 - 0.1;
-    const minPitch = -maxPitch;
-    cameraPitch = Math.max(minPitch, Math.min(maxPitch, cameraPitch));
-}
-
-// toggleDriving function removed - always in driving mode
-
-function updatePlayer() {
-    if (!player || !carLoaded) return;
-
-    const prevPos = player.position.clone();
-
-    // ----------------------------
-    // DRIVING MODE
-    // ----------------------------
-    if (isDriving) {
-        // Handle car rotation (A/D keys) - FIXED STEERING
-        let turnMultiplier = 1.0;
-        
-        // Reduce steering effectiveness at high speeds for realism, but never eliminate it
-        if (Math.abs(currentSpeed) > 0.1) {
-            turnMultiplier = Math.max(0.3, 1.0 - Math.abs(currentSpeed) * 0.8);
+    environmentObjects.forEach(envObj => {
+        if (envObj.object.userData.physicsHelper) {
+            envObj.object.userData.physicsHelper.visible = collidersVisible;
         }
-        
-        if (keys["a"] || keys["arrowleft"]) {
-            carRotation += TURN_SPEED * turnMultiplier;
-        }
-        if (keys["d"] || keys["arrowright"]) {
-            carRotation -= TURN_SPEED * turnMultiplier;
-        }
-        
-        // Apply car rotation to the player
-        player.rotation.y = carRotation;
-        
-        // Acceleration and braking
-        if (keys["w"] || keys["arrowup"]) {
-            currentSpeed += CAR_ACCELERATION;
-            currentSpeed = Math.min(currentSpeed, DRIVE_SPEED);
-        } else if (keys["s"] || keys["arrowdown"]) {
-            currentSpeed -= CAR_ACCELERATION;
-            currentSpeed = Math.max(currentSpeed, -DRIVE_SPEED * 0.5); // Reverse is slower
-        } else {
-            // Natural deceleration when no keys pressed
-            currentSpeed *= 0.95;
-            if (Math.abs(currentSpeed) < 0.01) currentSpeed = 0;
-        }
-        
-        // Handbrake (space bar) - also helps with turning
-        if (spaceHeld) {
-            currentSpeed *= 0.8; // Quick deceleration
-            // Allow sharper turns when handbraking
-            turnMultiplier *= 1.5;
-        }
-        
-        // Calculate movement direction based on car rotation
-        const moveX = Math.sin(carRotation) * currentSpeed;
-        const moveZ = Math.cos(carRotation) * currentSpeed;
-        
-        // Apply movement
-        player.position.x += moveX;
-        player.position.z += moveZ;
-        
-        // Keep car on ground
-        player.position.y = 0.1; // Much lower position to sit properly on ground
-
-        // Update speed display
-        updateSpeedDisplay();
-    }
-
-    // Collision detection
-    const playerBox = new THREE.Box3().setFromObject(player);
-    for (const box of collisionBoxes) {
-        if (playerBox.intersectsBox(box)) {
-            player.position.copy(prevPos);
-            currentSpeed = -currentSpeed * 0.5; // Bounce back when hitting buildings
-            break;
-        }
-    }
-
-    // Boundary check
-    if (player.position.x < -95 || player.position.x > 95 || 
-        player.position.z < -95 || player.position.z > 95) {
-        player.position.copy(prevPos);
-        currentSpeed = -currentSpeed * 0.5;
-    }
-
-    // Update camera after movement
-    updateCamera();
-}
-
-function updateCamera() {
-    if (!player) return;
+    });
     
-    // Third-person car camera with mouse control
-    const cameraDistance = 10;
-    const cameraHeight = 5;
-    
-    // Calculate camera position with mouse offset
-    const totalYaw = carRotation + cameraYaw;
-    const behindX = Math.sin(totalYaw) * cameraDistance;
-    const behindZ = Math.cos(totalYaw) * cameraDistance;
-    
-    // Apply camera pitch for height adjustment
-    const pitchOffset = Math.sin(cameraPitch) * cameraDistance * 0.3;
-    
-    camera.position.x = player.position.x - behindX;
-    camera.position.z = player.position.z - behindZ;
-    camera.position.y = player.position.y + cameraHeight + pitchOffset;
-    
-    // Look at the car with slight pitch adjustment
-    const lookAtY = player.position.y + 2 + Math.sin(cameraPitch) * 2;
-    camera.lookAt(player.position.x, lookAtY, player.position.z);
-}
-
-function checkGoal() {
-    if (!player) return;
-    
-    const playerBox = new THREE.Box3().setFromObject(player);
-    const goal = scene.getObjectByName('goal');
-    
-    if (goal) {
-        const goalBox = new THREE.Box3().setFromObject(goal);
-        if (playerBox.intersectsBox(goalBox)) {
-            alert('Congratulations! You won the race!');
-            returnToMainCallback();
-        }
+    // Update button text to show current state
+    const toggleBtn = document.getElementById('toggle-colliders');
+    if (toggleBtn) {
+        toggleBtn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
     }
 }
 
 // Level update function called by main.js animation loop
 export function updateLevel() {
-    if (window.__stats) window.__stats.begin();
-    updatePlayer();
-    checkGoal();
-    if (window.__stats) window.__stats.end();
+    const currentTime = performance.now();
+    const deltaTime = (currentTime - (uiSystem ? uiSystem.lastFrameTime : performance.now())) / 1000;
+    if (uiSystem) {
+        uiSystem.lastFrameTime = currentTime;
+    }
+    
+    if (cameraSystem && carWrapper) {
+        cameraSystem.update(deltaTime, carWrapper, carPhysicsOffset);
+    }
+    
+    if (world) {
+        world.step(timeStep);
+    }
+    
+    if (carPhysicsSystem && carWrapper) {
+        carPhysicsSystem.update(carWrapper, frontWheelsGroup);
+        
+        if (lightingSystem) {
+            lightingSystem.updateShadowCamera(carWrapper);
+        }
+    }
+    
+    if (inputSystem) {
+        inputSystem.update();
+    }
+    
+    if (carPhysicsSystem) {
+        carPhysicsSystem.updateBoost(deltaTime);
+    }
+    
+    if (deliverySystem) {
+        deliverySystem.update(deltaTime, carWrapper);
+    }
+    
+    if (effectsSystem && carPhysicsSystem && carWrapper) {
+        const isBoosting = carPhysicsSystem.getIsBoosting();
+        
+        // Trigger boost activation effect when boost starts
+        if (isBoosting && !wasBoostingLastFrame) {
+            effectsSystem.triggerBoostActivation(carWrapper.position, carWrapper.quaternion);
+        }
+        
+        wasBoostingLastFrame = isBoosting;
+        
+        // Update effects with boost trail particles and wheel swoosh
+        effectsSystem.update(deltaTime, {
+            isBoosting: isBoosting,
+            carPosition: carWrapper.position,
+            carRotation: carWrapper.quaternion,
+            carWrapper: carWrapper
+        });
+    }
+    
+    if (uiSystem && deliverySystem && cameraSystem && carPhysicsSystem) {
+        const gameState = {
+            carDirection: carPhysicsSystem.getDirection(),
+            carWrapper: carWrapper,
+            carBody: carPhysicsSystem.getPhysicsBody(),
+            boostAmount: carPhysicsSystem.getBoostAmount(),
+            maxBoost: carPhysicsSystem.getMaxBoost(),
+            isBoosting: carPhysicsSystem.getIsBoosting(),
+            cameraAngle: cameraSystem.getCameraMode(),
+            isUserControllingCamera: cameraSystem.isUserControlling(),
+            cameraResetInProgress: cameraSystem.isResettingCamera(),
+            deliveryState: deliverySystem.getState(),
+            pickupLocation: deliverySystem.getPickupLocation(),
+            deliveryLocation: deliverySystem.getDeliveryLocation()
+        };
+        uiSystem.update(deltaTime, gameState);
+    }
 }
 
 // Cleanup function
 export function cleanupLevel() {
-    // Remove level-specific UI elements
-    const uiElements = document.querySelectorAll('.game-ui');
-    uiElements.forEach(el => {
-        // Only remove elements that are not part of the main menu system
-        const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
-        if (!isMainMenuElement) {
-            el.remove();
-        }
-    });
+    // Hide Level 2 UI elements
+    hideLevel2UI();
     
-    // Remove event listeners
-    document.removeEventListener("keydown", handleKeyDown);
-    document.removeEventListener("keyup", handleKeyUp);
-    document.removeEventListener("pointerlockchange", onPointerLockChange);
-    document.removeEventListener("mousemove", onMouseMove);
+    // Remove global functions
+    delete window.toggleDayNight;
     
-    // Remove click handler from canvas
-    if (renderer && renderer.domElement) {
-         renderer.domElement.removeEventListener("click", requestLock);
-    }
+    // Clean up systems
+    if (effectsSystem) effectsSystem.cleanup();
+    if (uiSystem) uiSystem.cleanup();
+    if (inputSystem) inputSystem.cleanup();
+    if (deliverySystem) deliverySystem.cleanup();
+    if (lightingSystem) lightingSystem.cleanup();
+    if (cameraSystem) cameraSystem.cleanup();
+    if (carPhysicsSystem) carPhysicsSystem.cleanup();
+    if (environmentSystem) environmentSystem.cleanup();
     
-    // Clear collision data
-    collisionBoxes = [];
+    // Clear references
+    effectsSystem = null;
+    uiSystem = null;
+    inputSystem = null;
+    deliverySystem = null;
+    lightingSystem = null;
+    cameraSystem = null;
+    carPhysicsSystem = null;
+    environmentSystem = null;
+    carWrapper = null;
+    frontWheelsGroup = null;
+    groundObject = null;
+    environmentObjects = [];
+    carBody = null;
+    carHelper = null;
+    carPhysicsOffset = null;
+    controls = null;
+    world = null;
+    groundBody = null;
+    groundHelper = null;
     
-    // Clean up audio
-    if (engineSound) {
-        engineSound.stop();
-        engineSound = null;
-    }
-    if (audioListener) {
-        audioListener = null;
-    }
-    
-    // Clean up models
-    buildingModel = null;
-    buildingLoaded = false;
-    carModel = null;
-    carLoaded = false;
+    // Reset boost tracking
+    wasBoostingLastFrame = false;
 }
