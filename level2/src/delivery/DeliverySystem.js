@@ -33,13 +33,154 @@ export class DeliverySystem {
         // Zone objects
         this.pickupZone = null;
         this.deliveryZone = null;
+        
+        // Imported zones from model
+        this.importedPickupZone = null;
+        this.importedDropoffZone = null;
+        this.usingImportedZones = false;
+        
+        // Zone helpers (visual outlines)
+        this.pickupZoneHelper = null;
+        this.deliveryZoneHelper = null;
     }
     
     /**
      * Initialize delivery zones and add to scene
+     * @param {Object} options - Optional configuration
+     * @param {Array} options.pickupZones - Imported pickup zones from model
+     * @param {Array} options.dropoffZones - Imported dropoff zones from model
      */
-    init() {
-        this.createDeliveryZones();
+    init(options = {}) {
+        if (options.pickupZones && options.pickupZones.length > 0 && 
+            options.dropoffZones && options.dropoffZones.length > 0) {
+            this.setupImportedZones(options.pickupZones, options.dropoffZones);
+        } else {
+            this.createDeliveryZones();
+        }
+    }
+    
+    /**
+     * Setup imported zones from the model as detectors
+     * @param {Array} pickupZones - Array of pickup zone objects
+     * @param {Array} dropoffZones - Array of dropoff zone objects
+     */
+    setupImportedZones(pickupZones, dropoffZones) {
+        console.log('🎯 Setting up imported delivery zones as detectors...');
+        this.usingImportedZones = true;
+        
+        // Use the first pickup zone
+        this.importedPickupZone = pickupZones[0];
+        this.pickupZone = this.importedPickupZone;
+        
+        // Use the first dropoff zone
+        this.importedDropoffZone = dropoffZones[0];
+        this.deliveryZone = this.importedDropoffZone;
+        
+        // Setup pickup zone as detector
+        this.setupZoneAsDetector(this.pickupZone, 0x00ff00, true);
+        
+        // Setup dropoff zone as detector (hidden initially)
+        this.setupZoneAsDetector(this.deliveryZone, 0x0088ff, false);
+        
+        // Update locations based on zone positions
+        this.pickupLocation = {
+            x: this.pickupZone.position.x,
+            z: this.pickupZone.position.z
+        };
+        this.deliveryLocation = {
+            x: this.deliveryZone.position.x,
+            z: this.deliveryZone.position.z
+        };
+        
+        // Calculate radius from zone bounding box
+        const pickupBBox = new THREE.Box3().setFromObject(this.pickupZone);
+        const pickupSize = pickupBBox.getSize(new THREE.Vector3());
+        this.deliveryRadius = Math.max(pickupSize.x, pickupSize.z) / 2;
+        
+        // Create visual outlines for the zones
+        this.createZoneOutline(this.pickupZone, 0x00ff00, true);
+        this.createZoneOutline(this.deliveryZone, 0x0088ff, false);
+        
+        console.log(`✅ Pickup zone at (${this.pickupLocation.x.toFixed(2)}, ${this.pickupLocation.z.toFixed(2)})`);
+        console.log(`✅ Dropoff zone at (${this.deliveryLocation.x.toFixed(2)}, ${this.deliveryLocation.z.toFixed(2)})`);
+        console.log(`✅ Detection radius: ${this.deliveryRadius.toFixed(2)}`);
+    }
+    
+    /**
+     * Setup a zone object as a detector (no physics, just visual trigger)
+     * @param {THREE.Object3D} zone - Zone object
+     * @param {number} color - Hex color for emissive material
+     * @param {boolean} visible - Initial visibility
+     */
+    setupZoneAsDetector(zone, color, visible) {
+        zone.visible = visible;
+        
+        // Traverse and setup materials for detector visualization
+        zone.traverse((node) => {
+            if (node.isMesh) {
+                // Make the material transparent and emissive for detector effect
+                if (node.material) {
+                    const materials = Array.isArray(node.material) ? node.material : [node.material];
+                    materials.forEach(mat => {
+                        mat.transparent = true;
+                        mat.opacity = 0.5;
+                        mat.emissive = new THREE.Color(color);
+                        mat.emissiveIntensity = 0.3;
+                        mat.depthWrite = false;
+                        mat.needsUpdate = true;
+                    });
+                }
+                node.renderOrder = 2; // Render after ground
+            }
+        });
+        
+        console.log(`✓ Zone "${zone.name}" configured as detector (color: ${color.toString(16)})`);
+    }
+    
+    /**
+     * Create visual outline for a zone
+     * @param {THREE.Object3D} zone - Zone object
+     * @param {number} color - Hex color for outline
+     * @param {boolean} visible - Initial visibility
+     */
+    createZoneOutline(zone, color, visible) {
+        // Calculate bounding box for the zone
+        const bbox = new THREE.Box3().setFromObject(zone);
+        const size = bbox.getSize(new THREE.Vector3());
+        const center = bbox.getCenter(new THREE.Vector3());
+        
+        // Expand the outline to match the expanded detection area
+        const expandedSize = new THREE.Vector3(
+            size.x + 4,  // Expand X by 4 (2 on each side)
+            size.y + 20, // Expand Y by 20 (10 on each side) - taller trigger
+            size.z + 4   // Expand Z by 4 (2 on each side)
+        );
+        
+        // Create wireframe box as outline
+        const outlineGeometry = new THREE.BoxGeometry(expandedSize.x, expandedSize.y, expandedSize.z);
+        const outlineMaterial = new THREE.MeshBasicMaterial({
+            color: color,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.8,
+            linewidth: 2
+        });
+        
+        const outline = new THREE.Mesh(outlineGeometry, outlineMaterial);
+        outline.position.copy(center);
+        outline.visible = visible;
+        outline.renderOrder = 3; // Render on top
+        
+        this.scene.add(outline);
+        
+        // Store reference based on which zone
+        if (zone === this.pickupZone) {
+            this.pickupZoneHelper = outline;
+        } else if (zone === this.deliveryZone) {
+            this.deliveryZoneHelper = outline;
+        }
+        
+        console.log(`✓ Created outline for zone "${zone.name}" (expanded for better detection)`);
     }
     
     /**
@@ -111,26 +252,55 @@ export class DeliverySystem {
         
         const carPos = carWrapper.position;
         
-        // Check distance to pickup zone
-        const distToPickup = Math.sqrt(
-            (carPos.x - this.pickupLocation.x) ** 2 + 
-            (carPos.z - this.pickupLocation.z) ** 2
-        );
+        // Check if car is in pickup zone (use bounding box for imported zones)
+        let inPickupZone = false;
+        let inDeliveryZone = false;
         
-        // Check distance to delivery zone
-        const distToDelivery = Math.sqrt(
-            (carPos.x - this.deliveryLocation.x) ** 2 + 
-            (carPos.z - this.deliveryLocation.z) ** 2
-        );
+        if (this.usingImportedZones && this.pickupZone) {
+            inPickupZone = this.isCarInZone(carWrapper, this.pickupZone);
+        } else {
+            // Fallback to distance-based detection for created zones
+            const distToPickup = Math.sqrt(
+                (carPos.x - this.pickupLocation.x) ** 2 + 
+                (carPos.z - this.pickupLocation.z) ** 2
+            );
+            inPickupZone = distToPickup < this.deliveryRadius;
+        }
+        
+        if (this.usingImportedZones && this.deliveryZone) {
+            inDeliveryZone = this.isCarInZone(carWrapper, this.deliveryZone);
+        } else {
+            // Fallback to distance-based detection for created zones
+            const distToDelivery = Math.sqrt(
+                (carPos.x - this.deliveryLocation.x) ** 2 + 
+                (carPos.z - this.deliveryLocation.z) ** 2
+            );
+            inDeliveryZone = distToDelivery < this.deliveryRadius;
+        }
+        
+        // Update outline colors based on detection
+        if (this.pickupZoneHelper && this.deliveryState !== 'has_package' && this.deliveryState !== 'delivered') {
+            this.pickupZoneHelper.material.color.setHex(inPickupZone ? 0xffff00 : 0x00ff00);
+            this.pickupZoneHelper.material.opacity = inPickupZone ? 1.0 : 0.6;
+        }
+        
+        if (this.deliveryZoneHelper && this.deliveryState === 'has_package') {
+            this.deliveryZoneHelper.material.color.setHex(inDeliveryZone ? 0xffff00 : 0x0088ff);
+            this.deliveryZoneHelper.material.opacity = inDeliveryZone ? 1.0 : 0.6;
+        }
         
         // State machine
         if (this.deliveryState === 'idle' || this.deliveryState === 'picking_up') {
-            if (distToPickup < this.deliveryRadius) {
+            if (inPickupZone) {
                 this.deliveryState = 'picking_up';
                 this.pickupTimer += deltaTime;
                 
                 // Pulsing effect on zone
-                this.pickupZone.material.opacity = 0.3 + Math.sin(Date.now() * 0.01) * 0.2;
+                if (this.usingImportedZones) {
+                    this.updateZoneOpacity(this.pickupZone, 0.3 + Math.sin(Date.now() * 0.01) * 0.2);
+                } else {
+                    this.pickupZone.material.opacity = 0.3 + Math.sin(Date.now() * 0.01) * 0.2;
+                }
                 
                 const remaining = Math.max(0, this.pickupRequired - this.pickupTimer);
                 if (this.uiSystem) {
@@ -144,6 +314,11 @@ export class DeliverySystem {
                     this.deliveryState = 'has_package';
                     this.pickupZone.visible = false;
                     this.deliveryZone.visible = true;
+                    
+                    // Show delivery zone outline, hide pickup zone outline
+                    if (this.pickupZoneHelper) this.pickupZoneHelper.visible = false;
+                    if (this.deliveryZoneHelper) this.deliveryZoneHelper.visible = true;
+                    
                     this.pickupTimer = 0;
                     if (this.uiSystem) {
                         this.uiSystem.updateDeliveryStatus('Go to blue zone!', '#00ff00');
@@ -153,15 +328,23 @@ export class DeliverySystem {
                 // Left the zone
                 this.deliveryState = 'idle';
                 this.pickupTimer = 0;
-                this.pickupZone.material.opacity = 0.5;
+                if (this.usingImportedZones) {
+                    this.updateZoneOpacity(this.pickupZone, 0.5);
+                } else {
+                    this.pickupZone.material.opacity = 0.5;
+                }
                 if (this.uiSystem) {
                     this.uiSystem.updateDeliveryStatus('Go to green zone', '#64b5f6');
                 }
             }
         } else if (this.deliveryState === 'has_package') {
-            if (distToDelivery < this.deliveryRadius) {
+            if (inDeliveryZone) {
                 this.deliveryState = 'delivered';
-                this.deliveryZone.material.color.setHex(0xffff00);
+                if (this.usingImportedZones) {
+                    this.updateZoneColor(this.deliveryZone, 0xffff00);
+                } else {
+                    this.deliveryZone.material.color.setHex(0xffff00);
+                }
                 if (this.uiSystem) {
                     this.uiSystem.updateDeliveryStatus('Delivered! 🎉', '#00ff00');
                 }
@@ -172,7 +355,16 @@ export class DeliverySystem {
                     this.pickupTimer = 0;
                     this.pickupZone.visible = true;
                     this.deliveryZone.visible = false;
-                    this.deliveryZone.material.color.setHex(0x0088ff);
+                    
+                    // Show pickup zone outline, hide delivery zone outline
+                    if (this.pickupZoneHelper) this.pickupZoneHelper.visible = true;
+                    if (this.deliveryZoneHelper) this.deliveryZoneHelper.visible = false;
+                    
+                    if (this.usingImportedZones) {
+                        this.updateZoneColor(this.deliveryZone, 0x0088ff);
+                    } else {
+                        this.deliveryZone.material.color.setHex(0x0088ff);
+                    }
                     if (this.uiSystem) {
                         this.uiSystem.updateDeliveryStatus('Go to green zone', '#64b5f6');
                     }
@@ -232,6 +424,67 @@ export class DeliverySystem {
     }
     
     /**
+     * Check if car is inside a zone using bounding box detection
+     * @param {THREE.Object3D} carWrapper - Car object
+     * @param {THREE.Object3D} zone - Zone object
+     * @returns {boolean} True if car is in zone
+     */
+    isCarInZone(carWrapper, zone) {
+        // Get bounding boxes
+        const carBBox = new THREE.Box3().setFromObject(carWrapper);
+        const zoneBBox = new THREE.Box3().setFromObject(zone);
+        
+        // Expand the zone bounding box to make detection more generous
+        // Expand horizontally (X and Z) by 2 units and vertically (Y) by 10 units
+        const expansion = new THREE.Vector3(2, 10, 2);
+        zoneBBox.expandByVector(expansion);
+        
+        // Check if car's center point is inside the expanded zone bounding box
+        const carCenter = carBBox.getCenter(new THREE.Vector3());
+        
+        // Also check if car position is within the zone (ignore Y axis for more lenient detection)
+        const carPos = carWrapper.position;
+        const isInXZ = carPos.x >= zoneBBox.min.x && carPos.x <= zoneBBox.max.x &&
+                       carPos.z >= zoneBBox.min.z && carPos.z <= zoneBBox.max.z;
+        
+        return isInXZ || zoneBBox.containsPoint(carCenter);
+    }
+    
+    /**
+     * Update zone opacity (for imported zones)
+     * @param {THREE.Object3D} zone - Zone object
+     * @param {number} opacity - Opacity value (0-1)
+     */
+    updateZoneOpacity(zone, opacity) {
+        zone.traverse((node) => {
+            if (node.isMesh && node.material) {
+                const materials = Array.isArray(node.material) ? node.material : [node.material];
+                materials.forEach(mat => {
+                    mat.opacity = opacity;
+                    mat.needsUpdate = true;
+                });
+            }
+        });
+    }
+    
+    /**
+     * Update zone color (for imported zones)
+     * @param {THREE.Object3D} zone - Zone object
+     * @param {number} color - Hex color
+     */
+    updateZoneColor(zone, color) {
+        zone.traverse((node) => {
+            if (node.isMesh && node.material) {
+                const materials = Array.isArray(node.material) ? node.material : [node.material];
+                materials.forEach(mat => {
+                    mat.emissive.setHex(color);
+                    mat.needsUpdate = true;
+                });
+            }
+        });
+    }
+    
+    /**
      * Reset delivery mission
      */
     reset() {
@@ -239,11 +492,19 @@ export class DeliverySystem {
         this.pickupTimer = 0;
         if (this.pickupZone) {
             this.pickupZone.visible = true;
-            this.pickupZone.material.opacity = 0.5;
+            if (this.usingImportedZones) {
+                this.updateZoneOpacity(this.pickupZone, 0.5);
+            } else {
+                this.pickupZone.material.opacity = 0.5;
+            }
         }
         if (this.deliveryZone) {
             this.deliveryZone.visible = false;
-            this.deliveryZone.material.color.setHex(0x0088ff);
+            if (this.usingImportedZones) {
+                this.updateZoneColor(this.deliveryZone, 0x0088ff);
+            } else {
+                this.deliveryZone.material.color.setHex(0x0088ff);
+            }
         }
         if (this.uiSystem) {
             this.uiSystem.updateDeliveryStatus('Go to green zone', '#64b5f6');
@@ -254,17 +515,40 @@ export class DeliverySystem {
      * Cleanup delivery system
      */
     cleanup() {
-        if (this.pickupZone) {
-            this.scene.remove(this.pickupZone);
-            this.pickupZone.geometry.dispose();
-            this.pickupZone.material.dispose();
-            this.pickupZone = null;
+        // Clean up zone helpers
+        if (this.pickupZoneHelper) {
+            this.scene.remove(this.pickupZoneHelper);
+            this.pickupZoneHelper.geometry.dispose();
+            this.pickupZoneHelper.material.dispose();
+            this.pickupZoneHelper = null;
         }
-        if (this.deliveryZone) {
-            this.scene.remove(this.deliveryZone);
-            this.deliveryZone.geometry.dispose();
-            this.deliveryZone.material.dispose();
+        if (this.deliveryZoneHelper) {
+            this.scene.remove(this.deliveryZoneHelper);
+            this.deliveryZoneHelper.geometry.dispose();
+            this.deliveryZoneHelper.material.dispose();
+            this.deliveryZoneHelper = null;
+        }
+        
+        // Only clean up created zones, not imported ones
+        if (!this.usingImportedZones) {
+            if (this.pickupZone) {
+                this.scene.remove(this.pickupZone);
+                this.pickupZone.geometry.dispose();
+                this.pickupZone.material.dispose();
+                this.pickupZone = null;
+            }
+            if (this.deliveryZone) {
+                this.scene.remove(this.deliveryZone);
+                this.deliveryZone.geometry.dispose();
+                this.deliveryZone.material.dispose();
+                this.deliveryZone = null;
+            }
+        } else {
+            // Just clear references for imported zones
+            this.pickupZone = null;
             this.deliveryZone = null;
+            this.importedPickupZone = null;
+            this.importedDropoffZone = null;
         }
     }
 }

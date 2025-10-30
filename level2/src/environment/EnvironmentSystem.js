@@ -29,7 +29,13 @@ export class EnvironmentSystem {
         this.groundObject = null;
         this.buildings = [];
         this.fences = [];
+        this.gasStations = [];
+        this.gasStationLights = [];
         this.environmentObjects = [];
+        
+        // Delivery zones
+        this.pickupZones = [];
+        this.dropoffZones = [];
         
         // Car components
         this.carBodyGroup = null;
@@ -97,7 +103,11 @@ export class EnvironmentSystem {
                                'Headlight', 'Backlight'];
         
         const environmentObjectNames = ['Ground', 'Building', 'Fence', 'Road', 
-                                       'Wall', 'Obstacle', 'Tree', 'Prop', 'Sign'];
+                                       'Wall', 'Obstacle', 'Tree', 'Prop', 'Sign',
+                                       'GasStation', 'Gas_Station', 'Gas', 'Station'];
+        
+        const zoneObjectNames = ['Pick Zone', 'Dropoff Zone', 'PickZone', 'DropoffZone', 
+                                'Pickup_Zone', 'Dropoff_Zone', 'PickupZone', 'DropoffZone'];
         
         // Categorize objects
         const childrenToMove = [];
@@ -110,9 +120,21 @@ export class EnvironmentSystem {
             
             const isCarComponent = carObjectNames.some(name => childName.includes(name));
             const isEnvironmentObject = environmentObjectNames.some(name => childName.includes(name));
+            const isZone = zoneObjectNames.some(name => childName.includes(name));
             
             if (isCarComponent) {
                 this.carWrapper.add(child);
+            } else if (isZone) {
+                // Handle delivery zones separately - don't add to environment group
+                this.environmentGroup.add(child);
+                
+                if (childName.toLowerCase().includes('pick')) {
+                    this.pickupZones.push(child);
+                    console.log(`✓ Found pickup zone: ${childName}`);
+                } else if (childName.toLowerCase().includes('drop')) {
+                    this.dropoffZones.push(child);
+                    console.log(`✓ Found dropoff zone: ${childName}`);
+                }
             } else if (isEnvironmentObject || childName.includes('Ground')) {
                 this.environmentGroup.add(child);
                 
@@ -123,6 +145,9 @@ export class EnvironmentSystem {
                     this.buildings.push(child);
                 } else if (childName.includes('Fence')) {
                     this.fences.push(child);
+                } else if (childName.includes('GasStation') || childName.includes('Gas_Station') || 
+                          childName.includes('Gas') || childName.includes('Station')) {
+                    this.gasStations.push(child);
                 }
                 
                 // Add to generic environment objects array (for physics)
@@ -153,6 +178,7 @@ export class EnvironmentSystem {
         this.setupGround();
         this.setupBuildings();
         this.setupFences();
+        this.setupGasStations();
         
         // Add the car model back to scene
         this.scene.add(this.carModel);
@@ -179,7 +205,10 @@ export class EnvironmentSystem {
                 carWrapper: this.carWrapper,
                 groundObject: this.groundObject,
                 environmentObjects: this.environmentObjects,
-                frontWheelsGroup: this.frontWheelsGroup
+                frontWheelsGroup: this.frontWheelsGroup,
+                gasStationLights: this.gasStationLights,
+                pickupZones: this.pickupZones,
+                dropoffZones: this.dropoffZones
             });
         }
     }
@@ -289,6 +318,91 @@ export class EnvironmentSystem {
                 }
             });
         });
+    }
+    
+    /**
+     * Setup gas stations and detect lights
+     */
+    setupGasStations() {
+        if (this.gasStations.length === 0) {
+            console.log('ℹ No gas stations found in model');
+            return;
+        }
+        
+        console.log(`✓ Found ${this.gasStations.length} gas station(s)`);
+        
+        this.gasStations.forEach((gasStation, index) => {
+            console.log(`Setting up gas station ${index + 1}: ${gasStation.name}`);
+            
+            // Setup shadows and textures
+            gasStation.traverse((node) => {
+                if (node.isMesh) {
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                    this.fixTextures(node);
+                }
+            });
+            
+            // Detect lights in gas station
+            this.detectGasStationLights(gasStation);
+        });
+        
+        console.log(`✓ Detected ${this.gasStationLights.length} light(s) in gas station(s)`);
+    }
+    
+    /**
+     * Detect lights within a gas station object
+     * @param {THREE.Object3D} gasStation - Gas station object
+     */
+    detectGasStationLights(gasStation) {
+        gasStation.traverse((node) => {
+            const nodeName = (node.name || '').toLowerCase();
+            
+            // Check if this node is a light (by name or specific mesh properties)
+            const isLight = nodeName.includes('light') || 
+                           nodeName.includes('lamp') || 
+                           nodeName.includes('bulb') ||
+                           nodeName.includes('glow');
+            
+            if (isLight && node.isMesh) {
+                // Get world position of the light
+                const worldPos = new THREE.Vector3();
+                node.getWorldPosition(worldPos);
+                
+                // Store light information
+                const lightInfo = {
+                    mesh: node,
+                    position: worldPos,
+                    name: node.name,
+                    // Try to get color from material if available
+                    color: this.getLightColorFromMesh(node)
+                };
+                
+                this.gasStationLights.push(lightInfo);
+                console.log(`  ✓ Found light: ${node.name} at position (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}, ${worldPos.z.toFixed(2)})`);
+            }
+        });
+    }
+    
+    /**
+     * Get light color from mesh material
+     * @param {THREE.Mesh} mesh - Light mesh
+     * @returns {number} Hex color
+     */
+    getLightColorFromMesh(mesh) {
+        if (mesh.material) {
+            const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            for (let mat of materials) {
+                if (mat.color) {
+                    return mat.color.getHex();
+                }
+                if (mat.emissive) {
+                    return mat.emissive.getHex();
+                }
+            }
+        }
+        // Default to warm white if no color found
+        return 0xfff4e6;
     }
     
     /**
@@ -533,6 +647,14 @@ export class EnvironmentSystem {
      */
     getBackWheelsGroup() {
         return this.backWheelsGroup;
+    }
+    
+    /**
+     * Get gas station lights
+     * @returns {Array}
+     */
+    getGasStationLights() {
+        return this.gasStationLights;
     }
     
     /**

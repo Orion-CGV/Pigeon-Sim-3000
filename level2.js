@@ -105,9 +105,8 @@ function setupLevel() {
     setupInputCallbacks();
     inputSystem.init();
     
-    // Initialize Delivery System
+    // Initialize Delivery System (will be initialized later with zones from model)
     deliverySystem = new DeliverySystem(scene, uiSystem);
-    deliverySystem.init();
     
     // Initialize Lighting System
     lightingSystem = new LightingSystem(scene, uiSystem);
@@ -356,6 +355,21 @@ function onEnvironmentModelLoaded(data) {
     environmentObjects = data.environmentObjects;
     frontWheelsGroup = data.frontWheelsGroup;
     
+    // Initialize delivery zones with imported zones if available
+    if (deliverySystem) {
+        if (data.pickupZones && data.pickupZones.length > 0 && 
+            data.dropoffZones && data.dropoffZones.length > 0) {
+            console.log('✅ Using imported pickup and dropoff zones from model');
+            deliverySystem.init({
+                pickupZones: data.pickupZones,
+                dropoffZones: data.dropoffZones
+            });
+        } else {
+            console.log('ℹ No zones found in model, creating default zones');
+            deliverySystem.init();
+        }
+    }
+    
     const groundBBox = environmentSystem.setupGround();
     if (groundBBox) {
         const groundTopY = groundBBox.max.y;
@@ -388,6 +402,11 @@ function onEnvironmentModelLoaded(data) {
     
     if (lightingSystem) {
         lightingSystem.createHeadlights(carWrapper);
+        
+        // Create gas station lights if any were detected
+        if (data.gasStationLights) {
+            lightingSystem.createGasStationLights(data.gasStationLights);
+        }
     }
     
     if (carPhysicsSystem) {

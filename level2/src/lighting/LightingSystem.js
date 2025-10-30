@@ -37,6 +37,9 @@ export class LightingSystem {
         this.headlightMesh = null;
         this.backlightMesh = null;
         
+        // Gas station lights
+        this.gasStationLights = [];
+        
         // State
         this.isNightMode = false;
     }
@@ -47,6 +50,7 @@ export class LightingSystem {
     init() {
         this.setupLighting();
         this.setupSky();
+        this.setupSceneBackground();
     }
     
     /**
@@ -81,6 +85,17 @@ export class LightingSystem {
         this.pointLight = new THREE.PointLight(0x64b5f6, 1.5, 100);
         this.pointLight.position.set(0, 15, 0);
         this.scene.add(this.pointLight);
+    }
+    
+    /**
+     * Setup scene background and fog
+     */
+    setupSceneBackground() {
+        // Initialize background color (day mode by default)
+        this.scene.background = new THREE.Color(0x87CEEB);
+        
+        // Initialize fog
+        this.scene.fog = new THREE.Fog(0x87CEEB, 50, 300);
     }
     
     /**
@@ -314,8 +329,11 @@ export class LightingSystem {
             // Update scene background and fog
             this.scene.background.setHex(0x000000);
             this.scene.fog.color.setHex(0x000000);
-            this.scene.fog.near = 10;
-            this.scene.fog.far = 50;
+            this.scene.fog.near = 80;
+            this.scene.fog.far = 200;
+            
+            // Increase gas station light intensity at night
+            this.updateGasStationLightIntensity(true);
             
         } else {
             // Day mode: bright, warm colors
@@ -345,6 +363,9 @@ export class LightingSystem {
             this.scene.fog.color.setHex(0x87CEEB);
             this.scene.fog.near = 50;
             this.scene.fog.far = 300;
+            
+            // Decrease gas station light intensity during day
+            this.updateGasStationLightIntensity(false);
         }
         
         const btn = document.getElementById('toggle-daynight');
@@ -386,6 +407,104 @@ export class LightingSystem {
     }
     
     /**
+     * Create gas station lights from detected light positions
+     * @param {Array} lightInfoArray - Array of light information objects
+     */
+    createGasStationLights(lightInfoArray) {
+        if (!lightInfoArray || lightInfoArray.length === 0) {
+            console.log('ℹ No gas station lights to create');
+            return;
+        }
+        
+        console.log(`Creating ${lightInfoArray.length} gas station light(s)...`);
+        
+        lightInfoArray.forEach((lightInfo, index) => {
+            // Determine light color (use mesh color or default warm white)
+            const lightColor = lightInfo.color || 0xfff4e6;
+            
+            // Create a spotlight that points downward (gas station canopy lighting)
+            // SpotLight(color, intensity, distance, angle, penumbra, decay)
+            const spotLight = new THREE.SpotLight(
+                lightColor,  // color
+                8,           // high intensity for focused lighting
+                15,          // moderate range - focused on gas station area
+                Math.PI / 3, // 60 degree cone angle
+                0.3,         // soft edges
+                1.5          // decay rate
+            );
+            spotLight.position.copy(lightInfo.position);
+            spotLight.castShadow = true;
+            
+            // Create a target for the spotlight to point downward
+            const target = new THREE.Object3D();
+            target.position.set(
+                lightInfo.position.x,
+                lightInfo.position.y - 10,  // Point straight down
+                lightInfo.position.z
+            );
+            this.scene.add(target);
+            spotLight.target = target;
+            
+            // Shadow settings - focused for downward lighting
+            spotLight.shadow.mapSize.width = 1024;
+            spotLight.shadow.mapSize.height = 1024;
+            spotLight.shadow.camera.near = 0.5;
+            spotLight.shadow.camera.far = 15;
+            spotLight.shadow.bias = -0.001;
+            spotLight.shadow.normalBias = 0.02;
+            
+            // Add to scene
+            this.scene.add(spotLight);
+            
+            // Make the light mesh emissive so it glows
+            if (lightInfo.mesh && lightInfo.mesh.material) {
+                const materials = Array.isArray(lightInfo.mesh.material) ? 
+                                lightInfo.mesh.material : [lightInfo.mesh.material];
+                
+                materials.forEach(mat => {
+                    if (mat.type === 'MeshStandardMaterial') {
+                        mat.emissive = new THREE.Color(lightColor);
+                        mat.emissiveIntensity = 2;
+                        mat.needsUpdate = true;
+                    }
+                });
+            }
+            
+            // Store reference
+            this.gasStationLights.push({
+                light: spotLight,
+                target: target,
+                info: lightInfo
+            });
+            
+            console.log(`  ✓ Created downward spotlight ${index + 1}/${lightInfoArray.length}: ${lightInfo.name}`);
+        });
+        
+        console.log(`✓ All gas station lights created and active`);
+    }
+    
+    /**
+     * Toggle gas station lights on/off
+     * @param {boolean} on - True to turn on, false to turn off
+     */
+    toggleGasStationLights(on) {
+        this.gasStationLights.forEach(({light}) => {
+            light.visible = on;
+        });
+    }
+    
+    /**
+     * Update gas station light intensity based on time of day
+     * @param {boolean} isNight - True if night mode
+     */
+    updateGasStationLightIntensity(isNight) {
+        const intensity = isNight ? 12 : 8;
+        this.gasStationLights.forEach(({light}) => {
+            light.intensity = intensity;
+        });
+    }
+    
+    /**
      * Cleanup lighting system
      */
     cleanup() {
@@ -406,6 +525,14 @@ export class LightingSystem {
             this.skyDome.geometry.dispose();
             this.skyDome.material.dispose();
         }
+        // Cleanup gas station lights
+        this.gasStationLights.forEach(({light, target}) => {
+            this.scene.remove(light);
+            if (target) {
+                this.scene.remove(target);
+            }
+        });
+        this.gasStationLights = [];
     }
 }
 
