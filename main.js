@@ -202,7 +202,7 @@ function initMainMenu() {
                 // Position player so bottom is on ground (y = height/2)
                 player.position.set(3, 0.5, -9); 
                 // Set initial scale
-                player.scale.set(1, 1, 1); 
+                player.scale.set(1.5, 1.5, 1.5); 
                 // Enable shadows for all meshes in player model
                 player.traverse((child) => {
                     // Check if child is a mesh
@@ -283,128 +283,173 @@ function initMainMenu() {
         console.error('Error setting up player:', error);
     }
 
-    // ---------- Ground ----------
-    console.log('Creating ground...');
-    try {
-        // Create flat plane geometry for ground (width, height)
-        const groundGeom = new THREE.PlaneGeometry(80, 80);
-        // Create gray material that responds to lighting
-        const groundMat = new THREE.MeshStandardMaterial({ color: 0x808080, side: THREE.DoubleSide });
-        // Create ground mesh from geometry and material
-        const ground = new THREE.Mesh(groundGeom, groundMat);
-        // Rotate plane 90 degrees to make it horizontal (default is vertical)
-        ground.rotation.x = -Math.PI / 2;
-        // Position ground at y=0
-        ground.position.y = 0;
-        // Enable ground to receive shadows
-        ground.receiveShadow = true;
-        // Add ground to scene
+    // ---------- Ground (now a GLB model) ----------
+console.log('Loading basement GLB as ground...');
+try {
+    const loader = new GLTFLoader();
 
-        const groundBoxHelper = new THREE.BoxHelper(ground, 0xffff00); // Yellow color
-        groundBoxHelper.name = 'groundBoxHelper';
-        scene.add(groundBoxHelper);
-        
-        // Store reference to box helper for updates
-        scene.userData.groundBoxHelper = groundBoxHelper;
+    // Load the basement model that will act as the floor / environment
+    loader.load(
+        './the_basement.glb',               // <-- your model
+        (gltf) => {
+            const basement = gltf.scene;
 
-        scene.add(ground);
+            // Give it a name for debugging / future reference
+            basement.name = 'basement';
 
-        const groundBox = new THREE.Box3().setFromObject(ground);
-        groundBox.name = 'groundBox';
-        scene.userData.groundBox = groundBox;
+            // OPTIONAL: scale / position tweaks
+            basement.scale.set(1, 1, 1);
+            basement.position.set(0, 0, 0);
 
-        console.log('Ground created and added to scene');
-    } catch (error) {
-        console.error('Error creating ground:', error);
-    }
+            // Enable shadows for every mesh inside the model
+            basement.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
 
-    // ---------- Arcade placeholders ----------
-    console.log('Creating arcade machines...');
-    try {
-        // Arrays to store arcade machines and their labels
-        const arcades = [];
-        const arcadeLabels = [];
-        // Colors for the three arcade machines (red, blue, yellow)
-        const arcadeColors = [0xff0000, 0x0000ff, 0xffff00];
-        // Names to display on each machine
-        const arcadeNames = ["Level 1", "Level 2", "Level 3"];
-        // Color names for interaction prompts
-        const arcadeColorNames = ["Red", "Blue", "Yellow"];
+                    // Fix possible missing .layers (same as arcades)
+                    if (child.layers === undefined) {
+                        child.layers = new THREE.Layers();
+                    }
+                }
+            });
 
-        // Create three arcade machines
-        for (let i = 0; i < 3; i++) {
-            // Create taller box geometry for arcade machine (1x2x1 units)
-            const g = new THREE.BoxGeometry(1, 2, 1);
-            // Create colored material that responds to lighting
-            const m = new THREE.MeshStandardMaterial({ color: arcadeColors[i] });
-            // Create arcade machine mesh
-            const arcade = new THREE.Mesh(g, m);
-            // Position arcades in a row: (-3,0,-10), (0,0,-10), (3,0,-10)
-            arcade.position.set(i * 3 - 3, 1, -10);
-            // Store level number (1, 2, or 3) in userData for easy access
-            arcade.userData.level = i + 1;
-            // Store color name for interaction prompts
-            arcade.userData.colorName = arcadeColorNames[i];
-            // Give each arcade a unique name
-            arcade.name = `arcade-${i + 1}`;
-            // Enable shadows for arcade
-            arcade.castShadow = true;
-            arcade.receiveShadow = true;
-            // Add arcade to scene
-            scene.add(arcade);
-            // Store arcade in array
-            arcades.push(arcade);
+            // Also set layers on the root object
+            if (basement.layers === undefined) {
+                basement.layers = new THREE.Layers();
+            }
 
-            // Add BoxHelper to visualize arcade bounding box
-            const arcadeBoxHelper = new THREE.BoxHelper(arcade, 0x00ff00); // Green color
-            arcadeBoxHelper.name = `arcadeBoxHelper-${i + 1}`;
-            scene.add(arcadeBoxHelper);
+            // Add to the scene
+            scene.add(basement);
 
-            // Store reference to arcade box helper for updates
-            scene.userData.arcadeBoxHelpers = scene.userData.arcadeBoxHelpers || [];
-            scene.userData.arcadeBoxHelpers.push(arcadeBoxHelper);
+            // ---------- Debug BoxHelper ----------
+            const basementBoxHelper = new THREE.BoxHelper(basement, 0xffff00); // yellow
+            basementBoxHelper.name = 'basementBoxHelper';
+            scene.add(basementBoxHelper);
+            scene.userData.groundBoxHelper = basementBoxHelper;   // keep reference
 
-            // Create text label for arcade machine
-            const textDiv = document.createElement('div');
-            // Add class for easy cleanup
-            textDiv.className = 'arcade-label';
-            // Set label text content
-            textDiv.textContent = arcadeNames[i];
-            // Style the label
-            textDiv.style.color = 'white';
-            textDiv.style.fontFamily = 'Arial, sans-serif';
-            textDiv.style.fontSize = '16px';
-            textDiv.style.fontWeight = 'bold';
-            textDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
-            textDiv.style.pointerEvents = 'none';
-            textDiv.style.textAlign = 'center';
-            textDiv.style.whiteSpace = 'nowrap';
-            
-            // Create CSS2D object from the div
-            const label = new CSS2DObject(textDiv);
-            // Position label above arcade machine
-            label.position.set(0, 1.5, 0);
-            // Add label as child of arcade (so it moves with arcade)
-            arcade.add(label);
-            // Store label in array
-            arcadeLabels.push(label);
+            // ---------- Collision Box ----------
+            const groundBox = new THREE.Box3().setFromObject(basement);
+            // Shrink a tiny bit so the player doesn’t “stick” on edges
+            groundBox.expandByVector(new THREE.Vector3(-0.05, -0.05, -0.05));
+            groundBox.name = 'groundBox';
+            scene.userData.groundBox = groundBox;
 
-            // Compute collision box for arcade (excluding label)
-            const arcadeBox = new THREE.Box3().setFromObject(arcade, false); // false to skip children (labels)
-            // Add small tolerance to collision box
-            arcadeBox.expandByVector(new THREE.Vector3(-0.05, -0.05, -0.05)); 
-            // Initialize arcadeBoxes array if it doesn't exist
-            scene.userData.arcadeBoxes = scene.userData.arcadeBoxes || [];
-            // Add collision box to array
-            scene.userData.arcadeBoxes.push(arcadeBox);
+            console.log('Basement GLB loaded and added as ground');
+        },
+        (xhr) => {
+            console.log(`Loading the_basement.glb: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
+        },
+        (error) => {
+            console.error('Error loading the_basement.glb:', error);
         }
+    );
 
-        // Store arcades in scene for easy access
-        scene.userData.arcades = arcades;
-        console.log('Arcade machines created and added to scene');
-    } catch (error) {
-        console.error('Error creating arcade machines:', error);
+    console.log('Basement GLB loading initiated');
+} catch (error) {
+    console.error('Error setting up basement ground:', error);
+}
+
+   // ---------- Arcade placeholders ----------
+console.log('Creating arcade machines...');
+try {
+    // Arrays to store arcade machines and their labels
+    const arcades = [];
+    const arcadeLabels = [];
+    // Names to display on each machine
+    const arcadeNames = ["Level 1", "Level 2", "Level 3"];
+    // Color names for interaction prompts
+    const arcadeColorNames = ["Red", "Blue", "Yellow"];
+    // GLB file names (must be placed in the same folder as this script)
+    const arcadeGLB = ["./arcade_1.glb", "./arcade_2.glb", "./arcade_3.glb"];
+
+    const loader = new GLTFLoader();
+
+    // Create three arcade machines by loading the GLB files
+    for (let i = 0; i < 3; i++) {
+        loader.load(
+            arcadeGLB[i],
+            (gltf) => {
+                const arcade = gltf.scene;
+
+                // Position arcades in a row: (-3,0,-10), (0,0,-10), (3,0,-10)
+                arcade.position.set(i * 3 - 3, 0, -10);
+
+                // Store level number (1, 2, or 3) in userData
+                arcade.userData.level = i + 1;
+                arcade.userData.colorName = arcadeColorNames[i];
+
+                // Give each arcade a unique name
+                arcade.name = `arcade-${i + 1}`;
+
+                // Enable shadows for all meshes inside the model
+               // Inside loader.load() success callback, after `const arcade = gltf.scene;`
+arcade.traverse((child) => {
+    if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        // Fix: Ensure layers exists
+        if (child.layers === undefined) {
+            child.layers = new THREE.Layers();
+        }
     }
+});
+
+// Also set on root
+if (arcade.layers === undefined) {
+    arcade.layers = new THREE.Layers();
+}
+
+                // Add to scene
+                scene.add(arcade);
+                arcades[i] = arcade;               // keep reference in correct order
+                scene.userData.arcades = arcades; // update scene reference
+
+                // ---------- BoxHelper (visual debug) ----------
+                const arcadeBoxHelper = new THREE.BoxHelper(arcade, 0x00ff00);
+                arcadeBoxHelper.name = `arcadeBoxHelper-${i + 1}`;
+                scene.add(arcadeBoxHelper);
+
+                scene.userData.arcadeBoxHelpers = scene.userData.arcadeBoxHelpers || [];
+                scene.userData.arcadeBoxHelpers[i] = arcadeBoxHelper;
+
+                // ---------- Label ----------
+                const textDiv = document.createElement('div');
+                textDiv.className = 'arcade-label';
+                textDiv.textContent = arcadeNames[i];
+                textDiv.style.color = 'white';
+                textDiv.style.fontFamily = 'Arial, sans-serif';
+                textDiv.style.fontSize = '16px';
+                textDiv.style.fontWeight = 'bold';
+                textDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
+                textDiv.style.pointerEvents = 'none';
+                textDiv.style.textAlign = 'center';
+                textDiv.style.whiteSpace = 'nowrap';
+
+                const label = new CSS2DObject(textDiv);
+                label.position.set(0, 1.5, 0);               // adjust if model height differs
+                arcade.add(label);
+                arcadeLabels[i] = label;
+
+                // ---------- Collision Box ----------
+                const arcadeBox = new THREE.Box3().setFromObject(arcade, false);
+                arcadeBox.expandByVector(new THREE.Vector3(-0.05, -0.05, -0.05));
+                scene.userData.arcadeBoxes = scene.userData.arcadeBoxes || [];
+                scene.userData.arcadeBoxes[i] = arcadeBox;
+            },
+            (xhr) => {
+                console.log(`Loading ${arcadeGLB[i]}: ` + (xhr.loaded / xhr.total * 100) + '%');
+            },
+            (error) => {
+                console.error(`Error loading ${arcadeGLB[i]}:`, error);
+            }
+        );
+    }
+
+    console.log('Arcade GLB loading initiated');
+} catch (error) {
+    console.error('Error creating arcade machines:', error);
+}
 
     // ---------- Interaction System ----------
     // Set up system for detecting when player looks at arcade machines
@@ -682,41 +727,61 @@ function setupInteractionSystem() {
 }
 
 // Checks if player is looking at an interactive object and close enough to interact
+// Checks if player is looking at an interactive object and close enough to interact
 function checkInteractions() {
     // Only check interactions in main menu, not during levels
     if (currentLevel !== 'main') return;
     
-    // Get interaction system components from scene
-    const { raycaster, mouse, interactionPrompt, arcades } = scene.userData;
+    const { raycaster, mouse, interactionPrompt } = scene.userData;
     
-    // Raycast from the center of the screen (where crosshair is)
-    raycaster.setFromCamera(mouse, camera); 
-    // Find all arcade machines that the ray intersects
-    const intersects = raycaster.intersectObjects(arcades);
+    // SAFETY: Ensure arcades array exists
+    const arcades = scene.userData.arcades;
+    if (!arcades || arcades.length === 0) {
+        interactionPrompt.style.opacity = "0";
+        scene.userData.currentInteractable = null;
+        return;
+    }
     
-    // Get player object from scene
+    // Raycast from center of screen
+    raycaster.setFromCamera(mouse, camera);
+
+    // SAFE: Filter out objects without .layers to prevent Three.js crash
+    const validArcades = arcades.filter(arcade => arcade.layers !== undefined);
+    
+    // If no valid arcades, skip raycast
+    if (validArcades.length === 0) {
+        interactionPrompt.style.opacity = "0";
+        scene.userData.currentInteractable = null;
+        return;
+    }
+
+    // Perform raycast (recursive = true)
+    const intersects = raycaster.intersectObjects(validArcades, true);
+
     const player = scene.getObjectByName('player');
     
-    // Check if ray hit something and player exists
     if (intersects.length > 0 && player) {
-        // Get the closest intersected arcade
-        const closestArcade = intersects[0].object;
-        // Calculate distance between player and arcade
-        const distance = player.position.distanceTo(closestArcade.position);
+        const hitObject = intersects[0].object;
         
-        // If player is within interaction distance
+        // Traverse up to find root arcade (named arcade-1, arcade-2, etc.)
+        let arcade = hitObject;
+        while (arcade && !arcade.name.startsWith('arcade-')) {
+            arcade = arcade.parent;
+        }
+        
+        if (!arcade || !arcade.userData.level) return;
+
+        const distance = player.position.distanceTo(arcade.position);
+        
         if (distance <= 3) {
-            // Update prompt to show which machine player can interact with
-            interactionPrompt.textContent = `E to interact with ${closestArcade.userData.colorName} machine`;
-            // Make prompt visible
+            interactionPrompt.textContent = `E to interact with ${arcade.userData.colorName} machine`;
             interactionPrompt.style.opacity = "1";
-            // Store current interactable for handling E key press
-            scene.userData.currentInteractable = closestArcade;
+            scene.userData.currentInteractable = arcade;
             return;
         }
     }
     
-    // No valid interactable found, hide prompt and clear current interactable
+    // No interaction
     interactionPrompt.style.opacity = "0";
     scene.userData.currentInteractable = null;
 }
