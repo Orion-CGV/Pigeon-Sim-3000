@@ -29,6 +29,9 @@ let bullets = [];                      // active Bullet instances
 let movableBoxes = [];                 // all sci-fi cubes
 let selectedBox = null;                // currently dragged cube
 let dragDistance = 8;                  // distance from camera
+const MIN_CUBE_DISTANCE = 5;           // Minimum distance between cube and player
+const MAX_CUBE_DISTANCE = 20;          // Maximum distance for cube dragging
+const SCROLL_SENSITIVITY = 5;        // How fast scroll changes distance
 let lastValidBoxPos = new THREE.Vector3();
 
 class Bullet {
@@ -89,7 +92,7 @@ function createMovableBox(position) {
             );
 
             const body = new CANNON.Body({
-                mass: 20,                     
+                mass: 200,                     
                 shape,
                 linearDamping: 0.9,
                 angularDamping: 0.9
@@ -1882,6 +1885,12 @@ function checkBulletCollisions(bullet, i) {
     const bb = new THREE.Box3().setFromObject(bullet.mesh);
     for (const box of movableBoxes) {
         if (bb.intersectsBox(new THREE.Box3().setFromObject(box))) {
+            // If we're deselecting a cube, clear its velocity
+            if (selectedBox === box) {
+                const body = box.userData.physicsBody;
+                body.velocity.set(0, body.velocity.y, 0); // Clear X/Z velocity, keep Y for gravity
+            }
+            
             selectedBox = (selectedBox === box) ? null : box;
             if (selectedBox) dragDistance = 8;
             bullet.destroy();
@@ -1933,6 +1942,20 @@ if (selectedBox && document.pointerLockElement === renderer.domElement) {
 
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
+    
+    // Calculate the target position with minimum distance constraint
+    const playerPos = player.position.clone();
+    const cubePos = new THREE.Vector3(body.position.x, body.position.y, body.position.z);
+    const currentDistance = playerPos.distanceTo(cubePos);
+    
+    // Ensure minimum distance
+    if (currentDistance < MIN_CUBE_DISTANCE) {
+        // Push the cube away from the player
+        const awayDirection = new THREE.Vector3().subVectors(cubePos, playerPos).normalize();
+        const minDistancePos = playerPos.clone().add(awayDirection.multiplyScalar(MIN_CUBE_DISTANCE));
+        dragDistance = camera.position.distanceTo(minDistancePos);
+    }
+    
     const target = camera.position.clone().add(dir.multiplyScalar(dragDistance));
 
     const current = new THREE.Vector3(body.position.x, body.position.y, body.position.z);
@@ -2170,9 +2193,37 @@ function initShooting() {
         bullets.push(new Bullet(start, dir));
     });
     renderer.domElement.addEventListener('contextmenu', e => {
-        e.preventDefault();
-        if (selectedBox) { selectedBox = null; console.log('Deselected'); }
-    });
+    e.preventDefault();
+    if (selectedBox) { 
+        // Clear velocity when deselecting via right-click
+        const body = selectedBox.userData.physicsBody;
+        body.velocity.set(0, body.velocity.y, 0); // Clear X/Z velocity, keep Y for gravity
+        selectedBox = null; 
+        console.log('Deselected'); 
+    }
+});
+    
+    // Add mouse wheel event listener for cube distance control
+    renderer.domElement.addEventListener('wheel', handleMouseWheel);
+}
+
+// ── Mouse wheel handler for cube distance control ───────────────
+function handleMouseWheel(event) {
+    if (!selectedBox || document.pointerLockElement !== renderer.domElement) return;
+    
+    event.preventDefault();
+    
+    // Scroll down (negative delta) brings cube closer
+    // Scroll up (positive delta) pushes cube away
+    const delta = -event.deltaY * 0.001; // Normalize and invert for intuitive control
+    
+    // Update drag distance with scroll sensitivity
+    dragDistance += delta * SCROLL_SENSITIVITY;
+    
+    // Clamp the distance to min and max values
+    dragDistance = Math.max(MIN_CUBE_DISTANCE, Math.min(MAX_CUBE_DISTANCE, dragDistance));
+    
+    console.log(`Cube distance: ${dragDistance.toFixed(2)}`);
 }
 
 // ── Bullet update & collision ───────────────────────────────────
@@ -2193,6 +2244,9 @@ export function cleanupLevel() {
     // remove pointer-lock listener
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     document.removeEventListener('mousemove', onMouseMove);
+    
+    // remove wheel listener
+    renderer.domElement.removeEventListener('wheel', handleMouseWheel);
 
     // physics world
     if (world) while (world.bodies.length) world.remove(world.bodies[0]);
@@ -2234,4 +2288,3 @@ function updateCamera() {
 
 // Make functions available for the main game loop
 window.returnToMainMenuFromLevel3 = returnCallback;
-
