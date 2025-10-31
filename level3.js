@@ -7,8 +7,29 @@ let scene, camera, renderer, labelRenderer;
 let world;
 let returnCallback;
 
-let cubeMixers = [];   // { cube, mixer, action, wasPlaying }
+let secondDoorOpenable = false;
+let platesOccupied = {
+    plate13: false,
+    plate11: false, 
+    plate1: false
+};
+let plateTimers = {
+    plate13: null,
+    plate11: null,
+    plate1: null
+};
+let firstDoorOpenable = false;
+let cubeOnPlateTimer = null;
 
+// ADD THIS LINE - Define platePositions at module level
+let platePositions = {
+    plate13: new THREE.Vector3(44.49, 3, 15),
+    plate11: new THREE.Vector3(44.49, 4, 10),  
+    plate1: new THREE.Vector3(38.01, 5, 48)
+};
+
+let cubeMixers = [];   // { cube, mixer, action, wasPlaying }
+let doorBodies = []; // Array to store door physics bodies
 // ── UI & INPUT ───────────────────────────────────────────────────────
 const DOOR_INTERACT_DISTANCE = 5;          // max distance to interact
 const MOUSE_SENS = 0.002;                  // mouse look sensitivity
@@ -23,15 +44,15 @@ let player = null;                         // reference to the physics box mesh
 // ── BULLETS & MOVABLE CUBES ───────────────────────────────────────
 const BULLET_SPEED = 60;               // units/second
 const BULLET_MAX_DISTANCE = 100;       // units
-const BOX_SIZE = 2;                    // size of the sci-fi cube model (scale later)
+const BOX_SIZE = 1;                    // size of the sci-fi cube model (scale later)
 
 let bullets = [];                      // active Bullet instances
 let movableBoxes = [];                 // all sci-fi cubes
 let selectedBox = null;                // currently dragged cube
 let dragDistance = 8;                  // distance from camera
 const MIN_CUBE_DISTANCE = 5;           // Minimum distance between cube and player
-const MAX_CUBE_DISTANCE = 20;          // Maximum distance for cube dragging
-const SCROLL_SENSITIVITY = 5;        // How fast scroll changes distance
+const MAX_CUBE_DISTANCE = 30;          // Maximum distance for cube dragging
+const SCROLL_SENSITIVITY = 10;        // How fast scroll changes distance
 let lastValidBoxPos = new THREE.Vector3();
 
 class Bullet {
@@ -101,8 +122,11 @@ function createMovableBox(position) {
             world.addBody(body);
 
             // link mesh ↔ body
-            cube.userData.physicsBody = body;
-            body.userData.mesh = cube;      // optional, handy for debugging
+            if (cube && body) {
+                cube.userData.physicsBody = body;
+                body.userData = body.userData || {};
+                body.userData.mesh = cube;      // optional, handy for debugging
+            }
 
             // ── ANIMATION SETUP (unchanged) ───────────────────────────
             const mixer = new THREE.AnimationMixer(cube);
@@ -130,11 +154,16 @@ function createMovableBox(position) {
 
 function createPuzzleElements() {
     // Staircase cube (ground floor)
-    createMovableBox(new THREE.Vector3(43, 1, 0));
+    createMovableBox(new THREE.Vector3(46, 5, 0));
 
-    // Bridge cubes (near gap)
-    createMovableBox(new THREE.Vector3(-4, BOX_SIZE/2, -12));
-    createMovableBox(new THREE.Vector3( 2, BOX_SIZE/2, -12));
+    // hall 1
+    createMovableBox(new THREE.Vector3(40, 1, -30));
+    createMovableBox(new THREE.Vector3( 40, 1, 0));
+    createMovableBox(new THREE.Vector3( 40, 1, 10));
+    // hall 3
+    createMovableBox(new THREE.Vector3(14, 1, -30));
+    createMovableBox(new THREE.Vector3( 20, 1, 0));
+    createMovableBox(new THREE.Vector3( 19, 1, 10));
 }
 
 // Initialize the level
@@ -1715,11 +1744,99 @@ wall63Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
 world.addBody(wall63Body);
 wall63Mesh.userData.physicsBody = wall63Body;
 
+// Define positions for the 13 models (you can tweak these coordinates)
+const modelPositions = [
+    new THREE.Vector3(38.01, 5, 48),   // Model 1
+    new THREE.Vector3(44.49, 3, 0),   // Model 2
+    new THREE.Vector3(39.5, 3.5, -49.49),   // Model 3
+    new THREE.Vector3(38.01, 1, 0),   // Model 4
+    new THREE.Vector3(38.01, 2, 38),     // Model 5
+    new THREE.Vector3(39.5, 4, 49.49),    // Model 6
+    new THREE.Vector3(48, 4, -49.49),    // Model 7
+    new THREE.Vector3(38.01, 1.5, 20),    // Model 8
+    new THREE.Vector3(43.5, 3, -49.49),    // Model 9
+    new THREE.Vector3(49.49, 5, -4.2),   // Model 10 (elevated)
+    new THREE.Vector3(44.49, 4, 10),    // Model 11 (elevated)
+    new THREE.Vector3(44, 3.5, 49.49),   // Model 12 (higher)
+    new THREE.Vector3(44.49, 3, 15)     // Model 13 (higher)
+];
+
+// Array of model names
+const modelNames = [
+    'one', 'two', 'three', 'four', 'five', 'six', 'seven', 
+    'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen'
+];
+
+// Load and place the 13 models
+for (let i = 0; i < 13; i++) {
+    const loader = new GLTFLoader();
+    const modelName = modelNames[i];
+    
+    loader.load(
+        `./${modelName}.glb`,
+        (gltf) => {
+            const model = gltf.scene;
+            model.position.copy(modelPositions[i]);
+            
+            if(modelNames[i] === 'six' || modelNames[i] === 'twelve'){
+                model.rotation.y = Math.PI;
+            }
+            if(modelNames[i] === 'one' || modelNames[i] === 'four' || modelNames[i] === 'five' || modelNames[i] === 'eight'){
+                model.rotation.y = Math.PI/2;
+            }
+            if(modelNames[i] === 'ten' || modelNames[i] === 'two' || modelNames[i] === 'eleven' || modelNames[i] === 'thirteen'){
+                model.rotation.y = -Math.PI/2;
+            }
+             
+            // Enable shadows
+            model.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            
+            scene.add(model);
+            const plate = new CANNON.Body({
+                shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.01)),
+                mass: 0
+            });
+            if(modelNames[i] === 'six' || modelNames[i] === 'twelve'){
+                plate.position.copy(model.position);
+                plate.quaternion.setFromEuler(0,Math.PI, 0);
+            }
+            if(modelNames[i] === 'one' || modelNames[i] === 'four' || modelNames[i] === 'five' || modelNames[i] === 'eight'){
+                plate.position.copy(model.position);
+                plate.quaternion.setFromEuler(0,Math.PI / 2, 0);
+            }
+            if(modelNames[i] === 'ten' || modelNames[i] === 'two' || modelNames[i] === 'eleven' || modelNames[i] === 'thirteen'){
+                plate.position.copy(model.position);
+                plate.quaternion.setFromEuler(0,-Math.PI / 2, 0);
+            }
+            world.addBody(plate);
+            // Store reference for synchronization
+            if (model && plate) {
+                model.userData.physicsBody = plate;  // Link model to physics body
+                plate.userData = plate.userData || {};
+                plate.userData.mesh = model;         // Link physics body to model
+            }
+            console.log(`Model ${modelName}.glb loaded at position:`, modelPositions[i]);
+        },
+        undefined,
+        (error) => {
+            console.error(`Error loading model ${modelName}.glb:`, error);
+        }
+    );
+}
+
+
+
+
         // Night sky background
     scene.background = new THREE.Color(0x001133);
     
     // Add directional light
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
     directionalLight.position.set(10, 20, 10);
     directionalLight.target.position.set(0, 0, 0);
     directionalLight.castShadow = true;
@@ -1737,7 +1854,7 @@ wall63Mesh.userData.physicsBody = wall63Body;
     console.log('Directional light added at position (10, 20, 10)');
 
     // Add ambient light
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.3); // Soft gray light with low intensity
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.7); // Soft gray light with low intensity
     scene.add(ambientLight);
     console.log('Ambient light added with color 0x404040 and intensity 0.3');
 
@@ -1865,15 +1982,15 @@ function addTestObjects() {
     boxMesh = new THREE.Mesh(boxGeo, boxMat);
 
     // SPAWN ON PLATFORM
-    boxMesh.position.set(46, 3, 0);  // Center of first green platform
+    boxMesh.position.set(46.5, 3, 0);  // Center of first green platform
     boxMesh.castShadow = true;
     scene.add(boxMesh);
 
     boxBody = new CANNON.Body({
         mass: 100,
         shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
-        linearDamping: 0.3,
-        angularDamping: 0.9
+        linearDamping: 0.9,
+        angularDamping: 1
     });
     boxBody.position.copy(boxMesh.position);
     world.addBody(boxBody);
@@ -1936,6 +2053,97 @@ cubeMixers.forEach(entry => {
     entry.mixer.update(delta);
 });
 
+// ── CHECK CUBE ON FIRST PLATE ──────────────────────────────────
+if (!firstDoorOpenable) {
+    let cubeOnPlate = false;
+    
+    for (const box of movableBoxes) {
+        const boxPos = box.position;
+        const platePos = new THREE.Vector3(47.5, 0, 15);
+        
+        // Check if cube is on the plate (within XZ range and close to plate height)
+        const distanceXZ = Math.sqrt(
+            Math.pow(boxPos.x - platePos.x, 2) + 
+            Math.pow(boxPos.z - platePos.z, 2)
+        );
+        const heightDiff = Math.abs(boxPos.y - platePos.y);
+        
+        // If cube is within 2 units in XZ and resting on plate (height < 2)
+        if (distanceXZ < 2 && heightDiff < 2 && box.userData.physicsBody.velocity.length() < 0.1) {
+            cubeOnPlate = true;
+            break;
+        }
+    }
+    
+    if (cubeOnPlate) {
+        if (!cubeOnPlateTimer) {
+            // Start timer when cube first lands on plate
+            cubeOnPlateTimer = setTimeout(() => {
+                firstDoorOpenable = true;
+                console.log("First door is now openable!");
+                cubeOnPlateTimer = null;
+            }, 3000); // 3 seconds
+        }
+    } else {
+        // Reset timer if cube leaves plate
+        if (cubeOnPlateTimer) {
+            clearTimeout(cubeOnPlateTimer);
+            cubeOnPlateTimer = null;
+        }
+    }
+}
+
+// ── CHECK CUBES ON SECOND DOOR PLATES ──────────────────────────
+if (!secondDoorOpenable) {
+    // Check each plate
+    Object.keys(platePositions).forEach(plateKey => {
+        const platePos = platePositions[plateKey];
+        let cubeOnThisPlate = false;
+        
+        for (const box of movableBoxes) {
+            const boxPos = box.position;
+            
+            // Check if cube is on the plate (within XZ range and close to plate height)
+            const distanceXZ = Math.sqrt(
+                Math.pow(boxPos.x - platePos.x, 2) + 
+                Math.pow(boxPos.z - platePos.z, 2)
+            );
+            const heightDiff = Math.abs(boxPos.y - platePos.y);
+            
+            // If cube is within 2 units in XZ and resting on plate (height < 2)
+            if (distanceXZ < 2 && heightDiff < 2 && box.userData.physicsBody.velocity.length() < 0.1) {
+                cubeOnThisPlate = true;
+                break;
+            }
+        }
+        
+        if (cubeOnThisPlate) {
+            if (!plateTimers[plateKey]) {
+                // Start timer when cube first lands on plate
+                plateTimers[plateKey] = setTimeout(() => {
+                    platesOccupied[plateKey] = true;
+                    console.log(`Plate ${plateKey} is now occupied!`);
+                    plateTimers[plateKey] = null;
+                    
+                    // Check if all plates are occupied
+                    checkSecondDoorUnlock();
+                }, 3000); // 3 seconds
+            }
+        } else {
+            // Reset timer if cube leaves plate
+            if (plateTimers[plateKey]) {
+                clearTimeout(plateTimers[plateKey]);
+                plateTimers[plateKey] = null;
+            }
+            // Reset plate status if cube leaves
+            if (platesOccupied[plateKey]) {
+                platesOccupied[plateKey] = false;
+                console.log(`Plate ${plateKey} is no longer occupied`);
+            }
+        }
+    });
+}
+
 // ── DRAG SELECTED CUBE (now moves the CANNON body) ─────────────────
 if (selectedBox && document.pointerLockElement === renderer.domElement) {
     const body = selectedBox.userData.physicsBody;
@@ -1983,8 +2191,8 @@ if (selectedBox && document.pointerLockElement === renderer.domElement) {
     const move = new THREE.Vector3();
     if (keys['KeyW']) move.z -= 1;
     if (keys['KeyS']) move.z += 1;
-    if (keys['KeyA']) move.x -= 1;
-    if (keys['KeyD']) move.x += 1;
+    if (keys['KeyA']) move.x += 1;
+    if (keys['KeyD']) move.x -= 1;
     if (move.lengthSq() > 0) {
         move.normalize().multiplyScalar(speed);
         // apply in world space (rotate by yaw)
@@ -2035,9 +2243,38 @@ scene.traverse(obj => {
         }
     });
 
-    // ── UI PROMPT ─────────────────────────────────────────────────────
-    const targeted = getTargetedDoor();
-    doorPromptDiv.style.display = targeted ? 'block' : 'none';
+// ── UI PROMPT ─────────────────────────────────────────────────────
+const targeted = getTargetedDoor();
+doorPromptDiv.style.display = targeted ? 'block' : 'none';
+
+// Show messages for locked doors
+if (!firstDoorOpenable && doors[0] && !doors[0].isOpen) {
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    raycaster.set(camera.position, direction);
+    raycaster.far = DOOR_INTERACT_DISTANCE;
+    const hits = raycaster.intersectObject(doors[0].model, true);
+    
+    if (hits.length > 0 && camera.position.distanceTo(doors[0].model.position) <= DOOR_INTERACT_DISTANCE) {
+        doorPromptDiv.textContent = 'Place cube on plate to unlock';
+        doorPromptDiv.style.display = 'block';
+    }
+}
+
+// Show message for second door when not openable
+if (!secondDoorOpenable && doors[1] && !doors[1].isOpen) {
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    raycaster.set(camera.position, direction);
+    raycaster.far = DOOR_INTERACT_DISTANCE;
+    const hits = raycaster.intersectObject(doors[1].model, true);
+    
+    if (hits.length > 0 && camera.position.distanceTo(doors[1].model.position) <= DOOR_INTERACT_DISTANCE) {
+        const occupiedCount = Object.values(platesOccupied).filter(Boolean).length;
+        doorPromptDiv.textContent = `Place cubes on plates (${occupiedCount}/3 occupied)`;
+        doorPromptDiv.style.display = 'block';
+    }
+}
 
     // ── CAMERA ───────────────────────────────────────────────────────
     updateCamera();
@@ -2095,6 +2332,69 @@ function createBuilding() {
                         }
                         
                         scene.add(door);
+                        if (index === 1 || index === 2 || index === 3 || index === 4 || index === 5 || index === 6 || index === 7) {
+                            const doorgeo = new THREE.BoxGeometry(3.2, 5, 2); 
+const doormat = new THREE.MeshBasicMaterial({
+    color: 0x800000,          // maroon – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const doormesh = new THREE.Mesh(doorgeo, doormat);
+doormesh.position.set(
+        door.position.x,
+        door.position.y + 5/2,  // Add half the height (2.5)
+        door.position.z
+    );      
+doormesh.receiveShadow = true;
+scene.add(doormesh);
+                            const doorBody = new CANNON.Body({
+                                shape: new CANNON.Box(new CANNON.Vec3(3.2/2, 5/2, 1)),
+                                mass: 0
+                            });
+                            // Position physics body at the same height
+    doorBody.position.set(
+        door.position.x,
+        door.position.y + 5/2,  // Add half the height (2.5)
+        door.position.z
+    );
+                            doorBody.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+                            world.addBody(doorBody);
+                            doormesh.userData.physicsBody = doorBody;
+
+                            // Store reference in array
+    doorBodies[index] = doorBody;
+                        }
+                        else{
+                            const doorgeo = new THREE.BoxGeometry(1.25, 2.5, 2); 
+const doormat = new THREE.MeshBasicMaterial({
+    color: 0x800000,          // maroon – distinct
+    side: THREE.DoubleSide,
+    wireframe: true
+});
+const doormesh = new THREE.Mesh(doorgeo, doormat);
+doormesh.position.set(
+        door.position.x,
+        door.position.y + 2.5/2,  // Add half the height (2.5)
+        door.position.z
+    );       
+doormesh.receiveShadow = true;
+scene.add(doormesh);
+                            const doorBody = new CANNON.Body({
+                                shape: new CANNON.Box(new CANNON.Vec3(1.25/2, 2.5/2, 1)),
+                                mass: 0
+                            });
+                            // Position physics body at the same height
+    doorBody.position.set(
+        door.position.x,
+        door.position.y + 2.5/2,  // Add half the height (2.5)
+        door.position.z
+    );
+                            world.addBody(doorBody);
+                            doormesh.userData.physicsBody = doorBody;
+
+                            // Store reference in array
+    doorBodies[index] = doorBody;
+                        }
 
                         // Enable shadows for door meshes
                         door.traverse((child) => {
@@ -2153,7 +2453,27 @@ function createBuilding() {
             console.error('Error loading map.glb:', error);
         }
     );
+    const firstPlateGeo = new THREE.BoxGeometry(3.2, 0.2, 2); 
+    const firstPlateMat = new THREE.MeshBasicMaterial({
+        color: 0x800000,          // maroon – distinct
+        side: THREE.DoubleSide,
+    });
+    const firstPlateMesh = new THREE.Mesh(firstPlateGeo, firstPlateMat);
+    firstPlateMesh.position.set(47.5, 0, 15);      
+    firstPlateMesh.receiveShadow = true;
+    scene.add(firstPlateMesh);
+                            const firstPlateBody = new CANNON.Body({
+                                shape: new CANNON.Box(new CANNON.Vec3(3.2/2, 0.2/2, 1)),
+                                mass: 0
+                            });
+                            // Position physics body at the same height
+    firstPlateBody.position.set(47.5, 0, 15);
+                            firstPlateBody.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+                            world.addBody(firstPlateBody);
+                            firstPlateMesh.userData.physicsBody = firstPlateBody;
 }
+
+
 function getTargetedDoor() {
     const direction = new THREE.Vector3();
     camera.getWorldDirection(direction);
@@ -2165,12 +2485,26 @@ function getTargetedDoor() {
         if (hits.length > 0) {
             const dist = camera.position.distanceTo(door.model.position);
             if (dist <= DOOR_INTERACT_DISTANCE && !door.isOpen) {
+                const doorIndex = doors.indexOf(door);
+                
+                // For first door (index 0), check if it's openable
+                if (doorIndex === 0 && !firstDoorOpenable) {
+                    return null; // First door not openable yet
+                }
+                
+                // For second door (index 1), check if it's openable
+                if (doorIndex === 1 && !secondDoorOpenable) {
+                    return null; // Second door not openable yet
+                }
+                
                 return door;
             }
         }
     }
     return null;
 }
+
+
 function initInput() {
     document.addEventListener('keydown', e => {
         if (e.code === 'KeyE') {
@@ -2178,7 +2512,14 @@ function initInput() {
             if (door && door.action && !door.isOpen) {
                 door.action.reset().play();
                 door.isOpen = true;
-                // stop at half-way (see animation update below)
+                
+                // Remove the physics body for this door
+                const doorIndex = doors.indexOf(door);
+                if (doorBodies[doorIndex]) {
+                    world.removeBody(doorBodies[doorIndex]);
+                    doorBodies[doorIndex] = null; // Clear the reference
+                    console.log(`Door ${doorIndex} physics body removed`);
+                }
             }
         }
     });
@@ -2247,10 +2588,34 @@ export function cleanupLevel() {
     
     // remove wheel listener
     renderer.domElement.removeEventListener('wheel', handleMouseWheel);
-
+// Remove door bodies
+    doorBodies.forEach((body, index) => {
+        if (body) {
+            world.removeBody(body);
+        }
+    });
+    // Reset second door puzzle
+    secondDoorOpenable = false;
+    platesOccupied = {
+        plate13: false,
+        plate11: false, 
+        plate1: false
+    };
+    
+    // Clear all plate timers
+    Object.keys(plateTimers).forEach(plateKey => {
+        if (plateTimers[plateKey]) {
+            clearTimeout(plateTimers[plateKey]);
+            plateTimers[plateKey] = null;
+        }
+    });
+    doorBodies = [];
     // physics world
-    if (world) while (world.bodies.length) world.remove(world.bodies[0]);
-
+    if (world){
+        while (world.bodies.length > 0){
+            world.removeBody(world.bodies[0]);
+        }
+    }
     bullets.forEach(b => b.destroy());
 bullets = [];
 movableBoxes = [];
@@ -2288,3 +2653,14 @@ function updateCamera() {
 
 // Make functions available for the main game loop
 window.returnToMainMenuFromLevel3 = returnCallback;
+function checkSecondDoorUnlock() {
+    const allPlatesOccupied = platesOccupied.plate13 && platesOccupied.plate11 && platesOccupied.plate1;
+    
+    if (allPlatesOccupied && !secondDoorOpenable) {
+        secondDoorOpenable = true;
+        console.log("SECOND DOOR UNLOCKED! All plates are occupied!");
+    } else if (!allPlatesOccupied && secondDoorOpenable) {
+        secondDoorOpenable = false;
+        console.log("Second door locked - plates are no longer all occupied");
+    }
+}
