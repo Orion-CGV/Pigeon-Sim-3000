@@ -1,6 +1,6 @@
 import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
 import { createLevel } from "../environment/level1.js";
-import { createPlayer } from "../models/player.js";
+import { createPlayer, updatePlayer } from "../models/player.js";
 import { setupInput, input } from "../input/inputHandler.js";
 import { updateWalking } from "../physics/movement.js";
 import { updateFlying } from "../physics/flight.js";
@@ -677,6 +677,16 @@ _updateCamera() {
             targetPos.y = this.player.position.y + 0.6;
             this.crosshair3D.position.copy(targetPos);
             this.crosshair3D.lookAt(this.camera.position);
+        }
+
+        // Update procedural player animation (if provided)
+        try {
+            if (typeof updatePlayer === 'function') {
+                updatePlayer(this.player, now * 0.001, { isFlying: this.isFlying });
+            }
+        } catch (e) {
+            // don't break the game loop if update fails
+            console.warn('updatePlayer failed:', e);
         }
 
         // Render main scene
