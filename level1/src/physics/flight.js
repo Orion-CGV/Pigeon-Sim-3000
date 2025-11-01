@@ -24,7 +24,13 @@ export function updateFlying(player, camera, scene, delta, state = {}) {
     camera.getWorldDirection(direction);
     direction.normalize();
 
-    // Forward/backwards
+    // In a third-person setup the camera looks toward the player, so camera
+    // forward points at the player. The player 'forward' input should move
+    // away from the camera (in the direction the camera is facing), therefore
+    // negate the camera direction to get the correct movement vector.
+    direction.negate();
+
+    // Forward/backwards (now in camera-facing direction)
     if (input.forward !== 0) {
         player.position.addScaledVector(direction, input.forward * speed * frameScale);
     }
