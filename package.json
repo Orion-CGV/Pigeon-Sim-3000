@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "cannon-es": "^0.20.0"
+  }
+}

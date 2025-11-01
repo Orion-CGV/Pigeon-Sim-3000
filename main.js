@@ -2,69 +2,86 @@
 import * as THREE from 'three';
 // Import CSS2D renderer for HTML labels that stay facing the camera
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+// Import GLTFLoader for loading GLB files
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ---------- Scene / Camera / Renderer ----------
 // Global variables to store our 3D environment components
-let scene,     // The 3D scene that contains all objects
-	camera,    // The virtual camera that defines our view
-	renderer,  // The WebGL renderer that draws the 3D scene
-	labelRenderer; // Special renderer for HTML text labels
-
+let scene;     // The 3D scene that contains all objects
+let camera;    // The virtual camera that defines our view
+let renderer;  // The WebGL renderer that draws the 3D scene
+let labelRenderer; // Special renderer for HTML text labels
+const clock = new THREE.Clock(); // Clock for tracking time between frames
 // Performance HUD (stats.js)
-let stats = null;
+let stats = null; // Stats.js object for performance monitoring
 
 // Create the stats HUD if available (loaded via CDN in index.html)
 function ensureStats() {
-	if (typeof window === 'undefined') return;
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined') return;
 
-	// If already created, nothing to do
-	if (stats) return;
+    // If already created, nothing to do
+    if (stats) return;
 
-	// If Stats is available, create it now
-	if (window.Stats) {
-		stats = new window.Stats();
-		stats.showPanel(0); // 0: FPS
-		document.body.appendChild(stats.dom);
-		stats.dom.style.position = 'fixed';
-		stats.dom.style.left = '0px';
-		stats.dom.style.top = '0px';
-		stats.dom.style.zIndex = '2002';
-		window.__stats = stats; // expose globally for levels
-		return;
-	}
+    // If Stats is available, create it now
+    if (window.Stats) {
+        // Create new Stats object
+        stats = new window.Stats();
+        // Show FPS panel (0: FPS, 1: MS, 2: MB)
+        stats.showPanel(0); 
+        // Add stats DOM element to document body
+        document.body.appendChild(stats.dom);
+        // Position stats in top-left corner
+        stats.dom.style.position = 'fixed';
+        stats.dom.style.left = '0px';
+        stats.dom.style.top = '0px';
+        // Set high z-index to ensure it's on top
+        stats.dom.style.zIndex = '2002';
+        // Expose globally for access from levels
+        window.__stats = stats; 
+        return;
+    }
 
-	// Fallback: try to load from an alternate CDN once
-	if (!window.__statsLoadAttempted) {
-		window.__statsLoadAttempted = true;
-		const script = document.createElement('script');
-		script.src = 'https://unpkg.com/stats.js@0.17.0/build/stats.min.js';
-		script.async = true;
-		script.onload = () => {
-			// Try again after script loads
-			try { ensureStats(); } catch (e) { /* noop */ }
-		};
-		script.onerror = () => {
-			console.warn('Failed to load stats.js from fallback CDN');
-		};
-		document.head.appendChild(script);
-	}
+    // Fallback: try to load from an alternate CDN once
+    if (!window.__statsLoadAttempted) {
+        // Mark that we've attempted to load stats
+        window.__statsLoadAttempted = true;
+        // Create script element for stats.js
+        const script = document.createElement('script');
+        // Set CDN URL for stats.js
+        script.src = 'https://unpkg.com/stats.js@0.17.0/build/stats.min.js';
+        // Load script asynchronously
+        script.async = true;
+        // On successful load, try to create stats again
+        script.onload = () => {
+            // Try again after script loads
+            try { ensureStats(); } catch (e) { /* noop */ }
+        };
+        // Handle loading errors
+        script.onerror = () => {
+            console.warn('Failed to load stats.js from fallback CDN');
+        };
+        // Add script to document head
+        document.head.appendChild(script);
+    }
 }
 
 // ---------- Game State ----------
 // Tracks which level we're currently in
 let currentLevel = 'main'; // Can be 'main', 'level1', 'level2', 'level3'
 // Tracks whether we're in Story Mode (3D hub world)
-let isInStoryMode = false;
+let isInStoryMode = false; // Flag for 3D hub world vs HTML menu
 
 // Initializes the main menu/hub world where player selects levels
 function initMainMenu() {
-    // Set Story Mode flag
+    // Set Story Mode flag to true (we're entering 3D hub world)
     isInStoryMode = true;
     
     // Clean up any existing scene first
     if (scene) {
         // Clear all objects from the scene
         while(scene.children.length > 0) {
+            // Remove each child object from scene
             scene.remove(scene.children[0]);
         }
     }
@@ -76,8 +93,13 @@ function initMainMenu() {
         renderer = new THREE.WebGLRenderer({ antialias: true });
         // Set renderer size to match browser window
         renderer.setSize(window.innerWidth, window.innerHeight);
+        // Enable shadow mapping for realistic shadows
+        renderer.shadowMap.enabled = true;
+        // Use soft shadow mapping for better quality shadows
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
         // Add the renderer's canvas element to the webpage
         document.body.appendChild(renderer.domElement);
+        // Ensure stats HUD is created
         ensureStats();
     }
     // Check if CSS label renderer doesn't exist yet
@@ -107,9 +129,54 @@ function initMainMenu() {
 
     // Start the animation loop that updates and renders the scene continuously
     gameLoopActive = true;
+    // Set animation loop to our animate function
     renderer.setAnimationLoop(animate);
     // Make sure stats HUD exists and is visible
     ensureStats();
+    
+    // Debug logging
+    console.log('initMainMenu completed');
+    console.log('Scene children count:', scene.children.length);
+    console.log('Scene children:', scene.children.map(child => child.name || child.type));
+    console.log('Renderer canvas:', renderer.domElement);
+    console.log('Game loop active:', gameLoopActive);
+
+    // ---------- Lighting ----------
+    console.log('Creating lighting...');
+    try {
+        // Add ambient light for soft, even illumination
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // White light, 40% intensity
+        // Name the light for easy identification
+        ambientLight.name = 'ambientLight';
+        // Add ambient light to scene
+        scene.add(ambientLight);
+
+        // Add directional light to simulate sunlight
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6); // White light, 60% intensity
+        // Position light above and to the side
+        directionalLight.position.set(10, 20, 10); 
+        // Name the light for easy identification
+        directionalLight.name = 'directionalLight';
+        // Enable shadows for directional light
+        directionalLight.castShadow = true;
+        // Configure shadow properties for better quality
+        directionalLight.shadow.mapSize.width = 1024; // Shadow map resolution
+        directionalLight.shadow.mapSize.height = 1024;
+        // Set shadow camera bounds
+        directionalLight.shadow.camera.left = -20;
+        directionalLight.shadow.camera.right = 20;
+        directionalLight.shadow.camera.top = 20;
+        directionalLight.shadow.camera.bottom = -20;
+        // Set shadow camera near and far planes
+        directionalLight.shadow.camera.near = 0.1;
+        directionalLight.shadow.camera.far = 50;
+        // Add directional light to scene
+        scene.add(directionalLight);
+
+        console.log('Lighting created and added to scene');
+    } catch (error) {
+        console.error('Error creating lighting:', error);
+    }
 
     // ---------- Resize ----------
     // Add event listener to handle browser window resizing
@@ -118,113 +185,271 @@ function initMainMenu() {
     // ---------- Player ----------
     console.log('Creating player...');
     try {
-        // Define player dimensions
-        const PLAYER_SIZE = { x: 1, y: 1, z: 1 };
-        // Create box geometry for player (width, height, depth)
-        const playerGeometry = new THREE.BoxGeometry(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z);
-        // Create green material for player
-        const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        // Combine geometry and material into a mesh (visible 3D object)
-        const player = new THREE.Mesh(playerGeometry, playerMaterial);
-        // Position player so its bottom sits on ground (y = height/2)
-        player.position.y = PLAYER_SIZE.y / 2;
-        // Give player a name for easy reference later
-        player.name = 'player';
-        // Add player to the scene
-        scene.add(player);
-        console.log('Player created and added to scene');
-    } catch (error) {
-        console.error('Error creating player:', error);
-    }
+        // Create GLTF loader for 3D models
+        const loader = new GLTFLoader();
 
-    // ---------- Ground ----------
-    console.log('Creating ground...');
-    try {
-        // Create flat plane geometry for ground (width, height)
-        const groundGeom = new THREE.PlaneGeometry(80, 80);
-        // Create gray material that renders both sides of the plane
-        const groundMat = new THREE.MeshBasicMaterial({ color: 0x808080, side: THREE.DoubleSide });
-        // Create ground mesh
-        const ground = new THREE.Mesh(groundGeom, groundMat);
-        // Rotate plane 90 degrees to make it horizontal (default is vertical)
-        ground.rotation.x = -Math.PI / 2;
-        // Position ground at y=0
-        ground.position.y = 0;
-        // Add ground to scene
-        scene.add(ground);
-        console.log('Ground created and added to scene');
-    } catch (error) {
-        console.error('Error creating ground:', error);
-    }
+        // Load the idle model (base character model)
+        loader.load(
+            // Path to character idle animation model
+            './character_idle.glb',
+            // Success callback
+            (gltf) => {
+                // Get the 3D scene from loaded GLTF
+                const player = gltf.scene;
 
-    // ---------- Arcade placeholders ----------
-    console.log('Creating arcade machines...');
-    try {
-        // Arrays to store arcade machines and their labels
-        const arcades = [];
-        const arcadeLabels = [];
-        // Colors for the three arcade machines (red, blue, yellow)
-        const arcadeColors = [0xff0000, 0x0000ff, 0xffff00];
-        // Names to display on each machine
-        const arcadeNames = ["Level 1", "Level 2", "Level 3"];
-        // Color names for interaction prompts
-        const arcadeColorNames = ["Red", "Blue", "Yellow"];
+                // Name the player object for easy access
+                player.name = 'player';
+                // Position player so bottom is on ground (y = height/2)
+                player.position.set(3, 0.5, -9); 
+                // Set initial scale
+                player.scale.set(1.5, 1.5, 1.5); 
+                // Enable shadows for all meshes in player model
+                player.traverse((child) => {
+                    // Check if child is a mesh
+                    if (child.isMesh) {
+                        // Enable mesh to cast shadows
+                        child.castShadow = true;
+                        // Enable mesh to receive shadows
+                        child.receiveShadow = true;
+                    }
+                });
 
-        // Create three arcade machines
-        for (let i = 0; i < 3; i++) {
-        // Create taller box geometry for arcade machine (1x2x1 units)
-        const g = new THREE.BoxGeometry(1, 2, 1);
-        // Create colored material using current arcade color
-        const m = new THREE.MeshBasicMaterial({ color: arcadeColors[i] });
-        // Create arcade machine mesh
-        const arcade = new THREE.Mesh(g, m);
-        // Position arcades in a row: (-3,0,-10), (0,0,-10), (3,0,-10)
-        arcade.position.set(i * 3 - 3, 1, -10);
-        // Store level number (1, 2, or 3) in userData for easy access
-        arcade.userData.level = i + 1;
-        // Store color name for interaction prompts
-        arcade.userData.colorName = arcadeColorNames[i];
-        // Give each arcade a unique name
-        arcade.name = `arcade-${i + 1}`;
-        // Add arcade to scene
-        scene.add(arcade);
-        // Store arcade in array
-        arcades.push(arcade);
-
-        // Create text label for arcade machine
-        const textDiv = document.createElement('div');
-        // Add class for easy cleanup later
-        textDiv.className = 'arcade-label';
-        // Set text content to level name
-        textDiv.textContent = arcadeNames[i];
-        // Style the text label
-        textDiv.style.color = 'white';
-        textDiv.style.fontFamily = 'Arial, sans-serif';
-        textDiv.style.fontSize = '16px';
-        textDiv.style.fontWeight = 'bold';
-        textDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)'; // Add shadow for readability
-        textDiv.style.pointerEvents = 'none'; // Don't block mouse events
-        textDiv.style.textAlign = 'center';
-        textDiv.style.whiteSpace = 'nowrap'; // Prevent text wrapping
+                // Add BoxHelper to visualize player bounding box
+                const playerBoxHelper = new THREE.BoxHelper(player, 0xffff00); // Yellow color
+                playerBoxHelper.name = 'playerBoxHelper';
+                scene.add(playerBoxHelper);
         
-        // Create CSS2D object from the div (will always face camera)
-        const label = new CSS2DObject(textDiv);
-        // Position label above the arcade machine
-        label.position.set(0, 1.5, 0);
-        // Attach label to arcade machine (moves with it)
-        arcade.add(label);
-        // Store label in array
-        arcadeLabels.push(label);
+                // Store reference to box helper for updates
+                scene.userData.playerBoxHelper = playerBoxHelper;
+
+                // Add player to scene
+                scene.add(player);
+
+                // Set up animation mixer if animations exist
+                if (gltf.animations.length > 0) {
+                    // Create animation mixer for player
+                    const playerMixer = new THREE.AnimationMixer(player);
+                    // Store mixer in scene userData for access
+                    scene.userData.playerMixer = playerMixer;
+
+                    // Store idle animation
+                    const idleAction = playerMixer.clipAction(gltf.animations[0]);
+                    // Play idle animation
+                    idleAction.play();
+                    // Store current and idle actions
+                    scene.userData.currentAction = idleAction;
+                    scene.userData.idleAction = idleAction;
+
+                    // Load walk animation separately
+                    loader.load(
+                        // Path to character walk animation model
+                        './character_walk.glb',
+                        // Success callback for walk animation
+                        (walkGltf) => {
+                            // Check if walk animations exist
+                            if (walkGltf.animations.length > 0) {
+                                // Create walk animation action
+                                const walkAction = playerMixer.clipAction(walkGltf.animations[0]);
+                                // Set walk animation to loop repeatedly
+                                walkAction.setLoop(THREE.LoopRepeat);
+                                // Store walk action in scene userData
+                                scene.userData.walkAction = walkAction;
+                            }
+                        },
+                        // Progress callback (undefined - not used)
+                        undefined,
+                        // Error callback
+                        (error) => {
+                            console.error('Error loading walk animation:', error);
+                        }
+                    );
+                }
+
+                console.log('Player model and animations loaded');
+            },
+            // Progress callback
+            (xhr) => {
+                // Log loading progress
+                console.log('Loading character: ' + (xhr.loaded / xhr.total) * 100 + '% loaded');
+            },
+            // Error callback
+            (error) => {
+                console.error('Error loading character_idle.glb:', error);
+            }
+        );
+
+        console.log('Player creation initiated (loading async)');
+    } catch (error) {
+        console.error('Error setting up player:', error);
     }
 
-        // Store arcades in scene for easy access from other functions
-        scene.userData.arcades = arcades;
-        // Precompute collision boxes for all arcades (optimization)
-        scene.userData.arcadeBoxes = arcades.map(a => new THREE.Box3().setFromObject(a));
-        console.log('Arcade machines created and added to scene');
-    } catch (error) {
-        console.error('Error creating arcade machines:', error);
+    // ---------- Ground (now a GLB model) ----------
+console.log('Loading basement GLB as ground...');
+try {
+    const loader = new GLTFLoader();
+
+    // Load the basement model that will act as the floor / environment
+    loader.load(
+        './the_basement.glb',               // <-- your model
+        (gltf) => {
+            const basement = gltf.scene;
+
+            // Give it a name for debugging / future reference
+            basement.name = 'basement';
+
+            // OPTIONAL: scale / position tweaks
+            basement.scale.set(1, 1, 1);
+            basement.position.set(0, 0, 0);
+
+            // Enable shadows for every mesh inside the model
+            basement.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+
+                    // Fix possible missing .layers (same as arcades)
+                    if (child.layers === undefined) {
+                        child.layers = new THREE.Layers();
+                    }
+                }
+            });
+
+            // Also set layers on the root object
+            if (basement.layers === undefined) {
+                basement.layers = new THREE.Layers();
+            }
+
+            // Add to the scene
+            scene.add(basement);
+
+            // ---------- Debug BoxHelper ----------
+            const basementBoxHelper = new THREE.BoxHelper(basement, 0xffff00); // yellow
+            basementBoxHelper.name = 'basementBoxHelper';
+            scene.add(basementBoxHelper);
+            scene.userData.groundBoxHelper = basementBoxHelper;   // keep reference
+
+            // ---------- Collision Box ----------
+            const groundBox = new THREE.Box3().setFromObject(basement);
+            // Shrink a tiny bit so the player doesn’t “stick” on edges
+            groundBox.expandByVector(new THREE.Vector3(-0.05, -0.05, -0.05));
+            groundBox.name = 'groundBox';
+            scene.userData.groundBox = groundBox;
+
+            console.log('Basement GLB loaded and added as ground');
+        },
+        (xhr) => {
+            console.log(`Loading the_basement.glb: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
+        },
+        (error) => {
+            console.error('Error loading the_basement.glb:', error);
+        }
+    );
+
+    console.log('Basement GLB loading initiated');
+} catch (error) {
+    console.error('Error setting up basement ground:', error);
+}
+
+   // ---------- Arcade placeholders ----------
+console.log('Creating arcade machines...');
+try {
+    // Arrays to store arcade machines and their labels
+    const arcades = [];
+    const arcadeLabels = [];
+    // Names to display on each machine
+    const arcadeNames = ["Level 1", "Level 2", "Level 3"];
+    // Color names for interaction prompts
+    const arcadeColorNames = ["Red", "Blue", "Yellow"];
+    // GLB file names (must be placed in the same folder as this script)
+    const arcadeGLB = ["./arcade_1.glb", "./arcade_2.glb", "./arcade_3.glb"];
+
+    const loader = new GLTFLoader();
+
+    // Create three arcade machines by loading the GLB files
+    for (let i = 0; i < 3; i++) {
+        loader.load(
+            arcadeGLB[i],
+            (gltf) => {
+                const arcade = gltf.scene;
+
+                // Position arcades in a row: (-3,0,-10), (0,0,-10), (3,0,-10)
+                arcade.position.set(i * 3 - 3, 0, -10);
+
+                // Store level number (1, 2, or 3) in userData
+                arcade.userData.level = i + 1;
+                arcade.userData.colorName = arcadeColorNames[i];
+
+                // Give each arcade a unique name
+                arcade.name = `arcade-${i + 1}`;
+
+                // Enable shadows for all meshes inside the model
+               // Inside loader.load() success callback, after `const arcade = gltf.scene;`
+arcade.traverse((child) => {
+    if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        // Fix: Ensure layers exists
+        if (child.layers === undefined) {
+            child.layers = new THREE.Layers();
+        }
     }
+});
+
+// Also set on root
+if (arcade.layers === undefined) {
+    arcade.layers = new THREE.Layers();
+}
+
+                // Add to scene
+                scene.add(arcade);
+                arcades[i] = arcade;               // keep reference in correct order
+                scene.userData.arcades = arcades; // update scene reference
+
+                // ---------- BoxHelper (visual debug) ----------
+                const arcadeBoxHelper = new THREE.BoxHelper(arcade, 0x00ff00);
+                arcadeBoxHelper.name = `arcadeBoxHelper-${i + 1}`;
+                scene.add(arcadeBoxHelper);
+
+                scene.userData.arcadeBoxHelpers = scene.userData.arcadeBoxHelpers || [];
+                scene.userData.arcadeBoxHelpers[i] = arcadeBoxHelper;
+
+                // ---------- Label ----------
+                const textDiv = document.createElement('div');
+                textDiv.className = 'arcade-label';
+                textDiv.textContent = arcadeNames[i];
+                textDiv.style.color = 'white';
+                textDiv.style.fontFamily = 'Arial, sans-serif';
+                textDiv.style.fontSize = '16px';
+                textDiv.style.fontWeight = 'bold';
+                textDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
+                textDiv.style.pointerEvents = 'none';
+                textDiv.style.textAlign = 'center';
+                textDiv.style.whiteSpace = 'nowrap';
+
+                const label = new CSS2DObject(textDiv);
+                label.position.set(0, 1.5, 0);               // adjust if model height differs
+                arcade.add(label);
+                arcadeLabels[i] = label;
+
+                // ---------- Collision Box ----------
+                const arcadeBox = new THREE.Box3().setFromObject(arcade, false);
+                arcadeBox.expandByVector(new THREE.Vector3(-0.05, -0.05, -0.05));
+                scene.userData.arcadeBoxes = scene.userData.arcadeBoxes || [];
+                scene.userData.arcadeBoxes[i] = arcadeBox;
+            },
+            (xhr) => {
+                console.log(`Loading ${arcadeGLB[i]}: ` + (xhr.loaded / xhr.total * 100) + '%');
+            },
+            (error) => {
+                console.error(`Error loading ${arcadeGLB[i]}:`, error);
+            }
+        );
+    }
+
+    console.log('Arcade GLB loading initiated');
+} catch (error) {
+    console.error('Error creating arcade machines:', error);
+}
 
     // ---------- Interaction System ----------
     // Set up system for detecting when player looks at arcade machines
@@ -256,9 +481,11 @@ function loadLevel(levelNumber) {
     
     // 3. Ensure scene, camera, and renderers are properly initialized
     if (!scene) {
+        // Create new scene if it doesn't exist
         scene = new THREE.Scene();
     }
     if (!camera) {
+        // Create new camera if it doesn't exist
         camera = new THREE.PerspectiveCamera(
             75, // Field of view in degrees
             window.innerWidth / window.innerHeight, // Aspect ratio
@@ -267,17 +494,28 @@ function loadLevel(levelNumber) {
         );
     }
     if (!renderer) {
+        // Create new WebGL renderer if it doesn't exist
         renderer = new THREE.WebGLRenderer({ antialias: true });
+        // Set renderer size to window size
         renderer.setSize(window.innerWidth, window.innerHeight);
+        // Enable shadow mapping
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        // Add renderer canvas to document
         document.body.appendChild(renderer.domElement);
+        // Ensure stats HUD exists
         ensureStats();
     }
     if (!labelRenderer) {
+        // Create new CSS2D renderer if it doesn't exist
         labelRenderer = new CSS2DRenderer();
+        // Set label renderer size to window size
         labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        // Style label renderer DOM element
         labelRenderer.domElement.style.position = 'absolute';
         labelRenderer.domElement.style.top = '0px';
         labelRenderer.domElement.style.pointerEvents = 'none';
+        // Add label renderer DOM to document
         document.body.appendChild(labelRenderer.domElement);
     }
     
@@ -286,14 +524,17 @@ function loadLevel(levelNumber) {
     
     // 5. Hide HTML menu screens when loading a level (so level UI is visible)
     if (window.hideAllMenuScreens) {
+        // Call global function to hide menus
         window.hideAllMenuScreens();
     }
     
     // 6. Show the canvas elements
     if (renderer && renderer.domElement) {
+        // Show WebGL canvas
         renderer.domElement.style.display = 'block';
     }
     if (labelRenderer && labelRenderer.domElement) {
+        // Show label canvas
         labelRenderer.domElement.style.display = 'block';
     }
     
@@ -318,6 +559,7 @@ function loadLevel(levelNumber) {
                 }
             };
             
+            // Call level initialization function with required parameters
             levelModule.initLevel(scene, camera, renderer, labelRenderer, returnCallback);
             
             // Start the animation loop for the level
@@ -327,6 +569,7 @@ function loadLevel(levelNumber) {
         .catch(err => {
             // Handle errors if level fails to load
             console.error(`Failed to load level ${levelNumber}:`, err);
+            // Show error message to user
             alert(`Level ${levelNumber} failed to load. Check console for details.`);
             // Return to main menu on error
             returnToMainMenu();
@@ -337,16 +580,18 @@ function loadLevel(levelNumber) {
 function returnToMainMenu() {
     // Clean up the current level
     cleanupCurrentLevel();
-    // Update game state
+    // Update game state to main menu
     currentLevel = 'main';
     // Reset Story Mode flag (we're going back to HTML menu)
     isInStoryMode = false;
     
     // Hide the canvas elements
     if (renderer && renderer.domElement) {
+        // Hide WebGL canvas
         renderer.domElement.style.display = 'none';
     }
     if (labelRenderer && labelRenderer.domElement) {
+        // Hide label canvas
         labelRenderer.domElement.style.display = 'none';
     }
     
@@ -355,6 +600,7 @@ function returnToMainMenu() {
     
     // Show main menu
     if (window.showMainMenu) {
+        // Call global function to show main menu
         window.showMainMenu();
     }
 }
@@ -363,7 +609,7 @@ function returnToMainMenu() {
 function returnToMainMenuFromStory() {
     // Clean up the current level
     cleanupCurrentLevel();
-    // Update game state
+    // Update game state to main menu
     currentLevel = 'main';
     // Keep Story Mode flag set (we're staying in 3D hub world)
     
@@ -379,52 +625,65 @@ function returnToMainMenuFromStory() {
 
 // Cleans up resources when leaving a level or the game
 function cleanupCurrentLevel() {
+    // Stop and clear animation mixer
+    if (scene.userData.playerMixer) {
+        // Stop all animations
+        scene.userData.playerMixer.stopAllAction();
+        // Clear mixer reference
+        scene.userData.playerMixer = null;
+    }
+    // Clear animation references
+    scene.userData.playerAnimations = null;
+    scene.userData.currentAnimation = null;
+    scene.userData.currentAction = null;
+
     // 1. Call level-specific cleanup (if it exists)
-    // Some levels might have custom cleanup logic
     if (currentLevelModule && currentLevelModule.cleanupLevel) {
+        // Call level's cleanup function
         currentLevelModule.cleanupLevel();
-        currentLevelModule = null; // Clear reference
+        // Clear module reference
+        currentLevelModule = null; 
     }
 
     // 2. Stop the current animation loop
-    // Prevents multiple animation loops running simultaneously
     if (renderer) {
+        // Clear animation loop
         renderer.setAnimationLoop(null);
     }
     
-    // 3. Remove all event listeners (should be removed by the level's cleanup, but good to ensure)
-    // Clean up any lingering input listeners
+    // 3. Remove all event listeners
     document.removeEventListener("keydown", handleKeyDown);
     document.removeEventListener("keyup", handleKeyUp);
     document.removeEventListener("pointerlockchange", onPointerLockChange);
     document.removeEventListener("mousemove", onMouseMove);
-    window.removeEventListener("resize", onWindowResize); // Remove global listener
+    window.removeEventListener("resize", onWindowResize);
 
-    // 4. Clear the CSS2D Renderer's DOM (Fix for persistent labels)
-    // Remove any HTML labels left over from previous level
+    // 4. Clear the CSS2D Renderer's DOM
     if (labelRenderer) {
+        // Get label renderer DOM element
         const domElement = labelRenderer.domElement;
-        // Remove all child elements from label container
+        // Remove all child elements from label DOM
         while (domElement.firstChild) {
             domElement.removeChild(domElement.firstChild);
         }
     }
     
     // 5. Clear the THREE.js scene
-    // Remove all 3D objects from the scene
     if (scene) {
+        // Remove all objects from scene
         while(scene.children.length > 0) { 
             scene.remove(scene.children[0]); 
         }
     }
     
     // 6. Clear any level-specific UI elements with class 'game-ui'
-    // Only remove UI elements that are not part of the main menu system
     const uiElements = document.querySelectorAll('.game-ui');
+    // Loop through all game UI elements
     uiElements.forEach(el => {
-        // Only remove elements that are not part of the main menu screens
+        // Check if element is part of main menu (not level-specific)
         const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
         if (!isMainMenuElement) {
+            // Remove level-specific UI elements
             el.remove();
         }
     });
@@ -440,6 +699,7 @@ function setupInteractionSystem() {
 
     // Create interaction prompt (className 'game-ui' for easy cleanup)
     const interactionPrompt = document.createElement("div");
+    // Add class for easy identification and cleanup
     interactionPrompt.className = "game-ui";
     // Style the prompt with CSS text for better performance
     interactionPrompt.style.cssText = `
@@ -448,21 +708,26 @@ function setupInteractionSystem() {
         text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; z-index: 10; 
         text-align: center; opacity: 0; transition: opacity 0.3s ease;
     `;
+    // Set default prompt text
     interactionPrompt.textContent = "E to interact";
+    // Add prompt to document
     document.body.appendChild(interactionPrompt);
 
     // Crosshair (className 'game-ui' for easy cleanup)
     const crosshair = document.createElement("div");
+    // Add class for easy identification and cleanup
     crosshair.className = "game-ui";
+    // Style crosshair
     crosshair.style.cssText = `
         position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; 
         margin-left: -10px; margin-top: -10px; pointer-events: none; z-index: 10;
     `;
-    // Create crosshair using HTML elements (horizontal and vertical lines)
+    // Create crosshair using HTML divs
     crosshair.innerHTML = `
         <div style="position:absolute;top:9px;left:0;width:20px;height:2px;background:white"></div>
         <div style="position:absolute;top:0;left:9px;width:2px;height:20px;background:white"></div>
     `;
+    // Add crosshair to document
     document.body.appendChild(crosshair);
 
     // Store interaction system data in scene for easy access
@@ -473,40 +738,61 @@ function setupInteractionSystem() {
 }
 
 // Checks if player is looking at an interactive object and close enough to interact
+// Checks if player is looking at an interactive object and close enough to interact
 function checkInteractions() {
     // Only check interactions in main menu, not during levels
     if (currentLevel !== 'main') return;
     
-    // Get interaction system components from scene
-    const { raycaster, mouse, interactionPrompt, arcades } = scene.userData;
+    const { raycaster, mouse, interactionPrompt } = scene.userData;
     
-    // Raycast from the center of the screen (where crosshair is)
-    raycaster.setFromCamera(mouse, camera); 
-    // Find all arcade machines that the ray intersects
-    const intersects = raycaster.intersectObjects(arcades);
+    // SAFETY: Ensure arcades array exists
+    const arcades = scene.userData.arcades;
+    if (!arcades || arcades.length === 0) {
+        interactionPrompt.style.opacity = "0";
+        scene.userData.currentInteractable = null;
+        return;
+    }
     
-    // Get player object from scene
+    // Raycast from center of screen
+    raycaster.setFromCamera(mouse, camera);
+
+    // SAFE: Filter out objects without .layers to prevent Three.js crash
+    const validArcades = arcades.filter(arcade => arcade.layers !== undefined);
+    
+    // If no valid arcades, skip raycast
+    if (validArcades.length === 0) {
+        interactionPrompt.style.opacity = "0";
+        scene.userData.currentInteractable = null;
+        return;
+    }
+
+    // Perform raycast (recursive = true)
+    const intersects = raycaster.intersectObjects(validArcades, true);
+
     const player = scene.getObjectByName('player');
     
-    // Check if ray hit something and player exists
     if (intersects.length > 0 && player) {
-        const closestArcade = intersects[0].object;
-        // Check both raycast hit and proximity (player must be close enough)
-        const distance = player.position.distanceTo(closestArcade.position);
+        const hitObject = intersects[0].object;
         
-        // If player is within interaction distance
+        // Traverse up to find root arcade (named arcade-1, arcade-2, etc.)
+        let arcade = hitObject;
+        while (arcade && !arcade.name.startsWith('arcade-')) {
+            arcade = arcade.parent;
+        }
+        
+        if (!arcade || !arcade.userData.level) return;
+
+        const distance = player.position.distanceTo(arcade.position);
+        
         if (distance <= 3) {
-            // Update prompt to show which machine player can interact with
-            interactionPrompt.textContent = `E to interact with ${closestArcade.userData.colorName} machine`;
-            // Make prompt visible
+            interactionPrompt.textContent = `E to interact with ${arcade.userData.colorName} machine`;
             interactionPrompt.style.opacity = "1";
-            // Store current interactable for handling E key press
-            scene.userData.currentInteractable = closestArcade;
+            scene.userData.currentInteractable = arcade;
             return;
         }
     }
     
-    // No valid interactable found, hide prompt and clear current interactable
+    // No interaction
     interactionPrompt.style.opacity = "0";
     scene.userData.currentInteractable = null;
 }
@@ -565,6 +851,7 @@ function setupInputSystem() {
     renderer.domElement.addEventListener("click", () => {
         // Only request lock if not already locked
         if (document.pointerLockElement !== renderer.domElement) {
+            // Request pointer lock on renderer canvas
             renderer.domElement.requestPointerLock();
         }
     });
@@ -574,11 +861,14 @@ function setupInputSystem() {
 function handleKeyDown(e) {
     // Check for ESC key to show pause menu
     if (e.code === "Escape") {
+        // Prevent default browser behavior
         e.preventDefault();
+        // Debug logging
         console.log('ESC key pressed, currentLevel:', currentLevel);
         console.log('isGamePaused function available:', !!window.isGamePaused);
         console.log('showPauseMenu function available:', !!window.showPauseMenu);
         
+        // Check if game is already paused
         if (window.isGamePaused && window.isGamePaused()) {
             // If already paused, resume
             console.log('Resuming game...');
@@ -586,6 +876,7 @@ function handleKeyDown(e) {
         } else {
             // Show pause menu
             console.log('Showing pause menu...');
+            // Determine which type of pause menu to show based on current level
             if (currentLevel === 'main') {
                 console.log('Pausing main menu');
                 window.showPauseMenu('main');
@@ -604,6 +895,7 @@ function handleKeyDown(e) {
     
     // Check for space bar specifically (for jumping)
     if (e.code === "Space") {
+        // Set space held flag
         spaceHeld = true;
     } else {
         // Store any other key in keys object using lowercase key name
@@ -615,6 +907,7 @@ function handleKeyDown(e) {
 function handleKeyUp(e) {
     // Check for space bar release
     if (e.code === "Space") {
+        // Clear space held flag
         spaceHeld = false;
         spaceLocked = false; // Reset jump lock when space is released
     } else {
@@ -653,79 +946,218 @@ function onMouseMove(e) {
 const speed = 0.15;        // Horizontal movement speed (units per frame)
 const gravity = -0.03;     // Gravity acceleration (units per frame squared)
 const jumpStrength = 0.45; // Initial upward velocity when jumping
-let velocityY = 0;         // Current vertical velocity
+let velocityY = -1;         // Current vertical velocity
 
-// Updates player position and physics
+// Animation state management
+function setAnimation(action) {
+    // Get animation components from scene
+    const { playerMixer, currentAction } = scene.userData;
+    // Return if no mixer or same action already playing
+    if (!playerMixer || currentAction === action) return;
+
+    // Fade out current animation if exists
+    if (currentAction) {
+        currentAction.fadeOut(0.2);
+    }
+
+    // Fade in and play new animation
+    action.reset().fadeIn(0.2).play();
+    // Store new current action
+    scene.userData.currentAction = action;
+}
+
+// Plays the specified animation if it's not already playing
+function playAnimation(state) {
+    // Get animation components from scene
+    const { playerMixer, idleAction, walkAction, currentAnimation } = scene.userData;
+    // Return if no mixer
+    if (!playerMixer) return;
+
+    // Only change animation if the state is different
+    if (currentAnimation !== state) {
+        // Check for walk state and walk action exists
+        if (state === 'walk' && walkAction) {
+            // Set walk animation
+            setAnimation(walkAction);
+            // Store current animation state
+            scene.userData.currentAnimation = 'walk';
+        } else {
+            // Set idle animation as default
+            setAnimation(idleAction);
+            // Store current animation state
+            scene.userData.currentAnimation = 'idle';
+        }
+    }
+}
+
+// Updates player position, physics, and animations
 function updatePlayer() {
     // Only update player in main menu, not during levels
     if (currentLevel !== 'main') return;
-    
+
     // Get player object from scene
     const player = scene.getObjectByName('player');
+    // Return if no player found
     if (!player) return;
 
-    // Movement vectors (reused to avoid creating new objects every frame)
-    const _forward = new THREE.Vector3();
-    const _right = new THREE.Vector3();
-    const _moveDir = new THREE.Vector3();
+    // Get delta time for frame-rate-independent movement
+    const delta = clock.getDelta();
 
-    // Calculate forward direction based on current yaw (horizontal rotation)
-    _forward.set(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
-    // Calculate right direction (perpendicular to forward)
-    _right.crossVectors(_forward, new THREE.Vector3(0, 1, 0)).normalize();
+    // Update animation mixer
+    if (scene.userData.playerMixer) {
+        // Update animation mixer with delta time
+        scene.userData.playerMixer.update(delta);
+    }
 
-    // Reset movement direction
-    _moveDir.set(0, 0, 0);
-    // Add movement based on key presses
-    if (keys["w"] || keys["arrowup"]) _moveDir.add(_forward);    // Move forward
-    if (keys["s"] || keys["arrowdown"]) _moveDir.sub(_forward);  // Move backward
-    if (keys["d"] || keys["arrowright"]) _moveDir.add(_right);   // Strafe right
-    if (keys["a"] || keys["arrowleft"]) _moveDir.sub(_right);    // Strafe left
+    // Update BoxHelper to match player's current position and rotation
+    if (scene.userData.playerBoxHelper) {
+        scene.userData.playerBoxHelper.update();
+    }
 
-    // Normalize movement vector if moving (prevents faster diagonal movement)
-    if (_moveDir.lengthSq() > 0) _moveDir.normalize();
+    if (scene.userData.arcadeBoxHelpers) {
+        scene.userData.arcadeBoxHelpers.forEach(helper => {
+            helper.update();
+        });
+    }
+
+    // Movement vectors
+    const forward = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const moveDir = new THREE.Vector3();
+
+    // Calculate forward and right vectors based on yaw
+    forward.set(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
+    right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+    // Compute movement direction
+    moveDir.set(0, 0, 0);
+    // Add forward movement for W or up arrow
+    if (keys["w"] || keys["arrowup"]) moveDir.add(forward);
+    // Add backward movement for S or down arrow
+    if (keys["s"] || keys["arrowdown"]) moveDir.sub(forward);
+    // Add right movement for D or right arrow
+    if (keys["d"] || keys["arrowright"]) moveDir.add(right);
+    // Add left movement for A or left arrow
+    if (keys["a"] || keys["arrowleft"]) moveDir.sub(right);
+
+    // Determine player state for animations
+    let playerState = 'idle';
+    // Check if player is moving
+    const isMoving = moveDir.lengthSq() > 0;
+    if (isMoving) {
+        // Set state to walk if moving
+        playerState = 'walk';
+    }
+    // Check for jump input and conditions
+    if (spaceHeld && !spaceLocked && player.position.y <= 0.5) {
+        // Set state to jump if jumping
+        playerState = 'jump';
+    }
+
+    // Play appropriate animation
+    playAnimation(playerState);
 
     // Store previous position for collision detection
     const prevPos = player.position.clone();
-    // Apply horizontal movement
-    player.position.x += _moveDir.x * speed;
-    player.position.z += _moveDir.z * speed;
 
-    // Simple collision detection
-    // Create bounding box around player for collision testing
-    const playerBox = new THREE.Box3().setFromObject(player);
-    // Get arcade collision boxes from scene
-    const { arcadeBoxes } = scene.userData;
-    
-    // Check collision with arcade machines if they exist
-    if (arcadeBoxes) {
-        for (let box of arcadeBoxes) {
-            if (playerBox.intersectsBox(box)) {
-                // Collision detected - revert horizontal movement
-                player.position.x = prevPos.x;
-                player.position.z = prevPos.z;
-                break; // Only need to handle first collision
+    // Apply movement if moving
+    const moveSpeed = 500; // Match reference code
+    if (isMoving) {
+        // Normalize movement direction
+        moveDir.normalize();
+        // Calculate movement in x and z directions
+        const moveX = moveDir.x * moveSpeed * delta;
+        const moveZ = moveDir.z * moveSpeed * delta;
+
+        // Test movement in x and z separately for directional collision
+        const playerBox = new THREE.Box3().setFromObject(player);
+        // Shrink playerBox slightly to add tolerance
+        playerBox.expandByVector(new THREE.Vector3(-0.1, -0.1, -0.1));
+
+        // Test x movement
+        player.position.x += moveX;
+        let collisionDetected = false;
+        const { arcadeBoxes} = scene.userData;
+        
+        // Check collision with arcade boxes
+        if (arcadeBoxes) {
+            for (let box of arcadeBoxes) {
+                // Update player box and check intersection
+                if (playerBox.setFromObject(player).intersectsBox(box)) {
+                    // Log collision details
+                    console.log(`Collision with arcade box at (${box.min.x.toFixed(2)}, ${box.min.y.toFixed(2)}, ${box.min.z.toFixed(2)}) to (${box.max.x.toFixed(2)}, ${box.max.y.toFixed(2)}, ${box.max.z.toFixed(2)})`);
+                    // Revert x position on collision
+                    player.position.x = prevPos.x;
+                    player.position.z = prevPos.z;
+                    collisionDetected = true;
+                    break;
+                }
             }
+        }
+
+        // Test z movement (only if x movement didn't collide, or test independently)
+        if (!collisionDetected) {
+            // Apply z movement
+            player.position.z += moveZ;
+            // Update player box for new position
+            playerBox.setFromObject(player); 
+            // Check collision with arcade boxes
+            if (arcadeBoxes) {
+                for (let box of arcadeBoxes) {
+                    if (playerBox.intersectsBox(box)) {
+                        // Log collision details
+                        console.log(`Collision with arcade box at (${box.min.x.toFixed(2)}, ${box.min.y.toFixed(2)}, ${box.min.z.toFixed(2)}) to (${box.max.x.toFixed(2)}, ${box.max.y.toFixed(2)}, ${box.max.z.toFixed(2)})`);
+                        // Revert z position on collision
+                        player.position.z = prevPos.z;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Rotate character to face movement direction
+        if (moveDir.length() > 0.001) {
+            // Calculate target angle from movement direction
+            const targetAngle = Math.atan2(moveDir.x, moveDir.z);
+            // Set player rotation to face movement direction
+            player.rotation.y = targetAngle;
         }
     }
 
     // Apply gravity to vertical velocity
-    velocityY += gravity;
-    // Apply vertical movement
-    player.position.y += velocityY;
+    // velocityY += gravity;
+    // Apply vertical velocity to player position
+    player.position.y = player.position.y + velocityY;
+    console.log(velocityY);
 
-    // Ground collision detection
-    if (player.position.y <= 0.5) {
-        // Snap player to ground level
-        player.position.y = 0.5;
-        // Stop vertical movement
+
+    // Check collision with ground
+    const { groundBox } = scene.userData;
+    const playerBox = new THREE.Box3().setFromObject(player);
+    let collisionDetected = false;
+        if (groundBox) {
+                // Update player box and check intersection
+                if (playerBox.setFromObject(player).intersectsBox(groundBox)) {
+                    // Log collision details
+                    console.log(`Collision with ground`);
+                    // Revert x position on collision
+                    player.position.y = prevPos.y;
+                    collisionDetected = true;
+                }
+        }
+
+
+    // Ground collision and jump
+    if (player.position.y <= 0.01) {
+        // Snap player to ground
+        player.position.y = 0.01;
+        // Reset vertical velocity
         velocityY = 0;
-        
-        // Handle jumping if space is pressed and not locked
+        // Check for jump input
         if (spaceHeld && !spaceLocked) {
-            // Apply upward velocity for jump
+            // Apply jump strength to vertical velocity
             velocityY = jumpStrength;
-            // Lock jumping to prevent auto-repeat
+            // Lock jump to prevent auto-repeat
             spaceLocked = true;
         }
     }
@@ -736,7 +1168,7 @@ function updatePlayer() {
 
 // Updates camera position to follow player with third-person view
 function updateCamera(player) {
-    const cameraDistance = 8;        // How far behind player the camera stays
+    const cameraDistance = 3;        // How far behind player the camera stays
     const cameraHeightOffset = 1.8;  // How high above player the camera is
     const cosPitch = Math.cos(pitch); // Used for vertical camera positioning
 
@@ -755,7 +1187,6 @@ function updateCamera(player) {
 }
 
 // ---------- Window Resize ----------
-// Handles browser window resizing to maintain proper aspect ratio
 function onWindowResize() {
     // Update camera aspect ratio to match new window dimensions
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -767,46 +1198,54 @@ function onWindowResize() {
 }
 
 // ---------- Animation Loop ----------
-// Main game loop that runs continuously (called ~60 times per second)
 function animate() {
+    // Begin stats measurement
     if (stats) stats.begin();
-    // Only continue if game is not paused
+    // Check if game loop is active and game is not paused
     if (gameLoopActive && !window.isGamePaused()) {
-        // Only update player and interactions in main menu
+        // Update animation mixer if exists
+        if (scene.userData.playerMixer) {
+            scene.userData.playerMixer.update(clock.getDelta());
+        }
+
+        // Update main menu specific logic
         if (currentLevel === 'main') {
-            updatePlayer();        // Update player position and physics
-            checkInteractions();   // Check if player can interact with anything
-            handleInteraction();   // Handle interaction if E key is pressed
+            updatePlayer();
+            checkInteractions();
+            handleInteraction();
         }
         
-        // Update the current level (if it has an update function)
+        // Update level-specific logic if exists
         if (currentLevelModule && currentLevelModule.updateLevel) {
             currentLevelModule.updateLevel();
         }
         
-        // Render the 3D scene using WebGL
+        // Render the 3D scene
         renderer.render(scene, camera);
-        // Render HTML labels on top of 3D scene
+        // Render labels if label renderer exists
         if (labelRenderer) {
             labelRenderer.render(scene, camera);
         }
     } else {
-        // Still render even when paused to maintain visual state
+        // Still render scene even when paused (for pause menu background)
         renderer.render(scene, camera);
+        // Render labels even when paused
         if (labelRenderer) {
             labelRenderer.render(scene, camera);
         }
     }
+    // End stats measurement
     if (stats) stats.end();
 }
 
-
 // ---------- Pause System ----------
-let gameLoopActive = false;
+let gameLoopActive = false; // Flag to control animation loop
 
 // Function to pause the game loop
 window.pauseGameLoop = function() {
+    // Set game loop inactive
     gameLoopActive = false;
+    // Stop animation loop
     if (renderer) {
         renderer.setAnimationLoop(null);
     }
@@ -814,7 +1253,9 @@ window.pauseGameLoop = function() {
 
 // Function to resume the game loop
 window.resumeGameLoop = function() {
+    // Set game loop active
     gameLoopActive = true;
+    // Restart animation loop
     if (renderer) {
         renderer.setAnimationLoop(animate);
     }

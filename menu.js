@@ -197,59 +197,73 @@ window.showInstructions = function() {
     }
 };
 
-// Function to start story mode
-window.startStoryMode = function() {
+// Function to start story mode (WITH CUTSCENE)
+// -------------------------------------------------------------------
+//  STORY MODE – CUTSCENE WITH SOUND
+// -------------------------------------------------------------------
+window.startStoryMode = function () {
     hideAllMenuScreens();
-    
-    // Wait for main.js to be ready, then start the story mode
-    const waitForMain = () => {
-        if (window.initMainMenu) {
-            window.initMainMenu();
-            
-            // Ensure the canvas is visible after initialization
-            setTimeout(() => {
-                
-                // Try to find the renderer in the DOM if not available globally
-                let canvas = null;
-                if (window.renderer && window.renderer.domElement) {
-                    canvas = window.renderer.domElement;
-                } else {
-                    // Try to find canvas in DOM
-                    canvas = document.querySelector('canvas[data-engine*="three"]');
-                }
-                
-                if (canvas) {
-                    canvas.style.display = 'block';
-                    canvas.style.visibility = 'visible';
-                    canvas.style.zIndex = '1';
-                    canvas.style.position = 'absolute';
-                    canvas.style.top = '0px';
-                    canvas.style.left = '0px';
-                    canvas.style.width = '100%';
-                    canvas.style.height = '100%';
-                    
-                }
-                
-                // Try to find label renderer
-                let labelCanvas = null;
-                if (window.labelRenderer && window.labelRenderer.domElement) {
-                    labelCanvas = window.labelRenderer.domElement;
-                } else {
-                    // Try to find label canvas in DOM
-                    labelCanvas = document.querySelector('div[style*="position: absolute"][style*="top: 0px"]');
-                }
-                
-                if (labelCanvas) {
-                    labelCanvas.style.display = 'block';
-                    labelCanvas.style.zIndex = '2';
-                }
-            }, 100);
-        } else {
-            setTimeout(waitForMain, 100);
-        }
+
+    const screen   = document.getElementById('story-cutscene');
+    const video    = document.getElementById('cutscene-video');
+    const progress = document.getElementById('cutscene-progress-bar');
+    const skipBtn  = document.getElementById('skip-cutscene');
+    const unmuteBtn= document.getElementById('unmute-cutscene');
+
+    if (!screen || !video) {
+        console.warn('Cutscene elements missing – loading 3D directly');
+        window.initMainMenu?.();
+        return;
+    }
+
+    // ---- 1. Show the cutscene ------------------------------------------------
+    screen.classList.remove('hidden');
+
+    // ---- 2. Reset + start muted (autoplay policy) ---------------------------
+    video.currentTime = 0;
+    video.muted = true;
+    progress.style.width = '0%';
+
+    const playPromise = video.play();
+    if (playPromise) playPromise.catch(() => console.log('autoplay blocked'));
+
+    // ---- 3. Progress bar ----------------------------------------------------
+    const update = () => {
+        const pct = (video.currentTime / video.duration) * 100;
+        progress.style.width = `${pct}%`;
     };
-    
-    waitForMain();
+    video.addEventListener('timeupdate', update);
+
+    // ---- 4. UNMUTE BUTTON ---------------------------------------------------
+    const unmute = () => {
+        video.muted = false;
+        unmuteBtn.textContent = 'Sound On';
+        unmuteBtn.disabled = true;
+        unmuteBtn.style.opacity = '0.6';
+    };
+    unmuteBtn.onclick = unmute;
+    // Also unmute on any click on the video itself
+    video.onclick = () => { if (video.muted) unmute(); };
+
+    // ---- 5. SKIP (any click, S key, button) ---------------------------------
+    const finish = () => {
+        screen.classList.add('ended', 'hidden');
+        video.pause();
+        video.removeEventListener('timeupdate', update);
+        document.removeEventListener('keydown', keyHandler);
+        // → start the 3D hub world
+        window.initMainMenu?.();
+    };
+
+    skipBtn.onclick = finish;
+    video.onclick = (e) => { if (e.target === video) finish(); };
+    screen.onclick = (e) => { if (e.target === screen) finish(); };
+
+    const keyHandler = (e) => { if (e.key.toLowerCase() === 's') finish(); };
+    document.addEventListener('keydown', keyHandler);
+
+    // ---- 6. Auto-finish when video ends ------------------------------------
+    video.onended = () => setTimeout(finish, 400);
 };
 
 // Function to hide all menu screens

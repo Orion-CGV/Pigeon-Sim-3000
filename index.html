@@ -8,7 +8,8 @@
     {
       "imports": {
         "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+        "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/",
+        "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/+esm"
       }
     }
     </script>
@@ -468,5 +469,24 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js"></script>
     <script src="menu.js"></script>
     <script type="module" src="main.js"></script>
+    <!-- Story Mode Cutscene -->
+<div id="story-cutscene" class="cutscene-screen hidden">
+    <video id="cutscene-video"
+           src="cutscene 1.mp4"
+           preload="auto"
+           playsinline
+           webkit-playsinline
+           muted>               <!-- start muted (required for autoplay) -->
+        Your browser does not support the video tag.
+    </video>
+    <div class="cutscene-overlay">
+    <button id="skip-cutscene" class="cutscene-skip-btn">Skip (S)</button>
+    <button id="unmute-cutscene" class="cutscene-unmute-btn">Unmute</button>
+    <div class="cutscene-hint">Click video or press S to skip • Tap Unmute for sound</div>
+</div>
+    <div class="cutscene-progress">
+        <div id="cutscene-progress-bar"></div>
+    </div>
+</div>
 </body>
 </html>

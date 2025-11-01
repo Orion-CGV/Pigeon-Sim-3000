@@ -1049,3 +1049,114 @@ canvas {
         transform: translateY(-100px);
     }
 }
+
+/* Story Cutscene Styles */
+.cutscene-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    z-index: 1002;
+    display: flex;
+    align-items: stretch;
+    opacity: 1;
+    transition: opacity 0.5s ease-out;
+    cursor: pointer;
+}
+
+.cutscene-screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#cutscene-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Ensures video fills screen without distortion */
+}
+
+.cutscene-overlay {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    transition: opacity 0.3s ease-out 1s; /* Fade in after 1s */
+    pointer-events: auto;
+}
+
+.cutscene-screen:hover .cutscene-overlay,
+.cutscene-screen.ended .cutscene-overlay {
+    opacity: 1;
+}
+
+.cutscene-skip-btn {
+    background: rgba(0, 255, 0, 0.9);
+    border: none;
+    color: #000;
+    padding: 12px 24px;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 5px 15px rgba(0, 255, 0, 0.4);
+    transition: all 0.3s ease;
+}
+
+.cutscene-skip-btn:hover {
+    background: #00ff00;
+    transform: scale(1.05);
+    box-shadow: 0 8px 20px rgba(0, 255, 0, 0.6);
+}
+
+.cutscene-hint {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    text-align: center;
+}
+
+.cutscene-progress {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    overflow: hidden;
+    opacity: 0.7;
+}
+
+#cutscene-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #00ff00, #87CEEB);
+    width: 0%;
+    border-radius: 2px;
+    transition: width 0.1s ease;
+}
+
+.cutscene-screen.ended #cutscene-video {
+    opacity: 0;
+    transition: opacity 0.5s ease-out;
+}
+
+.cutscene-unmute-btn {
+    background: rgba(255,255,255,.9);
+    border: none;
+    color: #000;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.3);
+    transition: all .2s;
+}
+.cutscene-unmute-btn:hover { transform: scale(1.05); }
