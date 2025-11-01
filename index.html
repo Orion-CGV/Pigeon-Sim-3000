@@ -13,9 +13,56 @@
       }
     }
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.2/dist/gsap.min.js"></script>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="level2/style.css">
 </head>
 <body>
+    <!-- Level 2 Racing Game UI -->
+    <div id="impact-flash"></div>
+    
+    <!-- Direction Info HUD -->
+    <div id="direction-info" class="game-ui" style="display: none;">
+        <div>FPS: <span id="fps">60</span></div>
+        <div>Direction: <span id="wheel-direction">Straight</span></div>
+        <div>Heading: <span id="car-heading">0°</span></div>
+        <div>Speed: <span id="car-speed">0.0</span></div>
+        <div id="headlights-ui" style="display: none;">Headlights: <span id="headlights-status">OFF</span></div>
+        <div>
+            Boost: <span id="boost-status">OFF</span>
+            <div class="boost-bar-container">
+                <div class="boost-bar-fill" id="boost-bar-fill"></div>
+            </div>
+            <span id="boost-percentage">100%</span>
+        </div>
+        <div>Camera: <span id="camera-mode">Behind Car</span></div>
+        <div>Delivery: <span id="delivery-status">Find Yellow Zone</span></div>
+    </div>
+    
+    <!-- Day/Night Toggle Button -->
+    <button id="toggle-daynight" class="toggle-btn game-ui" onclick="if(window.toggleDayNight) window.toggleDayNight()" style="display: none;">
+        Toggle Day/Night (H)
+    </button>
+    
+    <!-- Minimap -->
+    <div id="minimap-container" class="game-ui" style="display: none;">
+        <canvas id="minimap" width="200" height="200"></canvas>
+        <canvas id="minimap-overlay" width="200" height="200"></canvas>
+    </div>
+    
+    <!-- Mobile Controls -->
+    <div id="mobile-controls" class="game-ui">
+        <div id="joystick-container">
+            <div id="joystick-base"></div>
+            <div id="joystick-stick"></div>
+        </div>
+        <div id="mobile-buttons">
+            <div class="mobile-btn" id="mobile-boost">⚡</div>
+            <div class="mobile-btn" id="mobile-camera">📷</div>
+        </div>
+    </div>
+
     <!-- Intro Screen -->
     <div id="intro-screen">
         <div class="arcade-icon">🕹️</div>
@@ -125,8 +172,8 @@
                 
                 <div class="level-card" onclick="startLevel(2)">
                     <div class="level-icon">🏎️</div>
-                    <h3 class="level-title">City Racing</h3>
-                    <p class="level-description">Drive through the city in your custom car. Switch cars with Q/R, change colors with T/Y, and race to the goal.</p>
+                    <h3 class="level-title">Arcade Racing</h3>
+                    <p class="level-description">Drive a sports car through a 3D city! Collect packages from the yellow zone and deliver them to the purple zone. Features realistic physics, boost, and dynamic day/night cycle.</p>
                     <div class="level-difficulty">Difficulty: Medium</div>
                 </div>
                 
@@ -368,8 +415,8 @@
                 </div>
                 
                 <div class="instruction-section">
-                    <h3>🏎️ Level 2 - City Racing</h3>
-                    <p>Drive through the city in your custom car. Use W/S to accelerate/brake, A/D to steer, Q/R to switch cars, T/Y to change colors, E to toggle engine sound, and Space for handbrake.</p>
+                    <h3>🏎️ Level 2 - Arcade Racing</h3>
+                    <p>Drive a sports car through a 3D city with realistic physics! Use W/S to accelerate/brake, A/D to steer, Space for boost, Q to cycle camera views, L for headlights (night only), and H for day/night toggle. Collect packages from yellow zones and deliver to purple zones!</p>
                 </div>
                 
                 <div class="instruction-section">
