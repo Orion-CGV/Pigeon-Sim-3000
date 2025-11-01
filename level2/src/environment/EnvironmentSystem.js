@@ -105,7 +105,10 @@ export class EnvironmentSystem {
         
         const environmentObjectNames = ['Ground', 'Building', 'Fence', 'Road', 
                                        'Wall', 'Obstacle', 'Tree', 'Prop', 'Sign',
-                                       'GasStation', 'Gas_Station', 'Gas', 'Station'];
+                                       'GasStation', 'Gas_Station', 'Gas', 'Station',
+                                       'Grass', 'Leaves', 'Leaf',
+                                       'Roof', 'Rocks', 'Rock', 'Pole', 'Log',
+                                       'Tree_Collider'];
         
         const zoneObjectNames = ['Pick Zone', 'Dropoff Zone', 'PickZone', 'DropoffZone', 
                                 'Pickup_Zone', 'Dropoff_Zone', 'PickupZone', 'DropoffZone',
@@ -536,15 +539,41 @@ export class EnvironmentSystem {
             'Fence': 0xffff00,
             'Wall': 0xff00ff,
             'Tree': 0x00ff00,
+            'Tree_Collider': 0x006600,
             'Road': 0x888888,
             'Obstacle': 0xff8800,
             'Sign': 0xffffff,
             'Prop': 0xff0088,
+            'Grass': 0x88ff88,
+            'Leaves': 0x88ff88,
+            'Leaf': 0x88ff88,
+            'Roof': 0x00ffff,
+            'Rocks': 0x888888,
+            'Rock': 0x888888,
+            'Pole': 0xffff00,
+            'Log': 0x8b4513,
             'Unknown': 0xff0000
         };
         
         this.environmentObjects.forEach((envObj) => {
             const obj = envObj.object;
+            const objName = obj.name || '';
+            
+            // Skip physics for decorative/non-solid objects (they don't have collision)
+            if (objName.toLowerCase().includes('grass') || 
+                objName.toLowerCase().includes('leaves') || 
+                objName.toLowerCase().includes('leaf') ||
+                objName.toLowerCase().includes('gas_text') ||
+                objName.toLowerCase().includes('_text') ||
+                objName.toLowerCase().includes('bulb') ||
+                objName.toLowerCase().includes('light_bulb') ||
+                objName.toLowerCase().includes('rocks') ||
+                objName.toLowerCase().includes('rock') ||
+                objName.toLowerCase().includes('log') ||
+                (objName.toLowerCase().includes('tree') && !objName.toLowerCase().includes('tree_collider'))) {
+                return;
+            }
+            
             const bbox = new THREE.Box3().setFromObject(obj);
             const size = bbox.getSize(new THREE.Vector3());
             const center = bbox.getCenter(new THREE.Vector3());
@@ -558,6 +587,11 @@ export class EnvironmentSystem {
             });
             
             body.position.set(center.x, center.y, center.z);
+            
+            // Store object name in physics body for collision filtering
+            body.userData = body.userData || {};
+            body.userData.objectName = envObj.name;
+            
             this.world.addBody(body);
             
             // Create visual helper
