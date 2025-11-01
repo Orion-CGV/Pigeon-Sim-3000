@@ -30,12 +30,20 @@ let platePositions = {
 
 let cubeMixers = [];   // { cube, mixer, action, wasPlaying }
 let doorBodies = []; // Array to store door physics bodies
+
+// ── GOAL CONDITION VARIABLE ─────────────────────────────────────
+let goalReached = false; //
+
 // ── UI & INPUT ───────────────────────────────────────────────────────
 const DOOR_INTERACT_DISTANCE = 5;          // max distance to interact
 const MOUSE_SENS = 0.002;                  // mouse look sensitivity
 const PI_2 = Math.PI / 2;
-
-let yaw = 0, pitch = 0;                    // camera rotation
+// ── FIRST PERSON CAMERA SETUP ───────────────────────────────────────
+const EYE_HEIGHT = 1.6;                // Player eye height
+const PITCH_CLAMP = Math.PI / 2 - 0.01; // Prevent flipping
+// ── Update these globals for FPS mouse look ─────────────────────────
+let yaw = 0;
+let pitch = 0;
 let doorPromptDiv = null;                  // UI element
 const raycaster = new THREE.Raycaster();  // reused for door & camera
 
@@ -82,6 +90,58 @@ class Bullet {
         scene.remove(this.mesh);
         this.active = false;
     }
+}
+
+// ── **WIN CONDITION** ───────────────────────────────────────────────────
+function checkGoalCondition() {
+    if (!boxBody || goalReached) return;
+    
+    const playerPos = boxBody.position;
+    const goalPos = new CANNON.Vec3(-51.39, 6, 0.6997);
+    const distance = playerPos.distanceTo(goalPos);
+    
+    if (distance < 2) {
+        goalReached = true;
+        console.log("✅ LEVEL 3 COMPLETED!");
+
+        // 🔥 **FIX: Use a single, safe approach**
+        // 1. Show victory message first
+        showVictoryMessage();
+
+        // 2. Exit pointer lock safely
+        if (document.pointerLockElement) {
+            document.exitPointerLock().catch(e => console.log('Pointer lock already released'));
+        }
+
+        // 3. Stop physics updates but keep rendering
+        safePauseGameLoop();
+
+        // 4. Return after a delay, ensuring all cleanup happens
+        setTimeout(() => {
+            console.log("Returning to main menu from Level 3...");
+            if (returnCallback) {
+                // Make sure we're completely cleaned up before returning
+                cleanupLevel();
+                returnCallback();
+            }
+        }, 3000);
+    }
+}
+
+// Add this function to show victory message
+function showVictoryMessage() {
+    const victoryDiv = document.createElement('div');
+    victoryDiv.className = "game-ui";
+    victoryDiv.textContent = 'LEVEL 3 COMPLETED! Returning to main menu...';
+    victoryDiv.style.cssText = `
+        color: #00ff00; font-size: 32px; font-weight: bold; position: absolute; 
+        top: 40%; left: 50%; transform: translate(-50%, -50%); 
+        text-shadow: 2px 2px 4px black; z-index: 1000; 
+        pointer-events: none; text-align: center;
+        background: rgba(0, 0, 0, 0.7); padding: 20px; border-radius: 10px;
+        border: 2px solid #00ff00;
+    `;
+    document.body.appendChild(victoryDiv);
 }
 
 // -------------------------------------------------------------------
@@ -181,7 +241,17 @@ export function initLevel(levelScene, levelCamera, levelRenderer, levelLabelRend
     // Position the camera
     camera.position.set(0, 5, 10);
     camera.lookAt(0, 0, 0);
+
+    // **RESET FPS CAMERA**
+    yaw = 0;
+    pitch = 0;
+    
+    // **START LOOKING FORWARD**
+    camera.rotation.set(0, 0, 0);
 }
+
+// Add this array to store floor bodies at the module level
+let floorBodies = [];
 
 function setupScene() {
     // Clear the scene
@@ -194,287 +264,289 @@ function setupScene() {
         gravity: new CANNON.Vec3(0, -9.81, 0)
     });
 
+
+    // Initialize floor bodies array
+    floorBodies = [];
     // Create platform mesh
-    const platformGeo = new THREE.PlaneGeometry(12.5, 100); // Width=12.5, Depth=100
-    const platformMat = new THREE.MeshBasicMaterial({
+    const floor1Geo = new THREE.PlaneGeometry(12.5, 100); // Width=12.5, Depth=100
+    const floor1Mat = new THREE.MeshBasicMaterial({
         color: 0x00ff00, // Green to distinguish from blue ground
-        side: THREE.DoubleSide,
-        wireframe: true
+        side: THREE.DoubleSide
     });
-    const platformMesh = new THREE.Mesh(platformGeo, platformMat);
-    platformMesh.position.set(43.75, 0.05, 0); // Center at (43.75, 0.05, 0)
-    platformMesh.receiveShadow = true; // Match ground settings
-    scene.add(platformMesh);
+    const floor1Mesh = new THREE.Mesh(floor1Geo, floor1Mat);
+    floor1Mesh.position.set(43.75, 0.05, 0); // Center at (43.75, 0.05, 0)
+    floor1Mesh.receiveShadow = true; // Match ground settings
+    scene.add(floor1Mesh);
 
     // Create physics platform body
-    const platformBody = new CANNON.Body({
+    const floor1Body = new CANNON.Body({
         shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 100 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
         mass: 0 // Static body
     });
-    platformBody.position.set(43.75, 0.05, 0); // Center matches mesh
-    platformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-    world.addBody(platformBody);
+    floor1Body.position.set(43.75, 0.05, 0); // Center matches mesh
+    floor1Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+    world.addBody(floor1Body);
+    floorBodies.push(floor1Body); // Add to floor bodies array
 
     // Store reference for synchronization
-    platformMesh.userData.physicsBody = platformBody;
+    floor1Mesh.userData.physicsBody = floor1Body;
 
-    // Inside setupScene(), after existing platform creation
 // Create new platform mesh
-const newPlatformGeo = new THREE.PlaneGeometry(12.5, 50.7); // Width=12.5, Depth=50.7
-const newPlatformMat = new THREE.MeshBasicMaterial({
+const floor2Geo = new THREE.PlaneGeometry(12.5, 50.7); // Width=12.5, Depth=50.7
+const floor2Mat = new THREE.MeshBasicMaterial({
     color: 0xffff00, // Yellow to distinguish from green platform and blue ground
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const newPlatformMesh = new THREE.Mesh(newPlatformGeo, newPlatformMat);
-newPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-newPlatformMesh.position.set(31.25, 0.05, -24.65); // Center at (31.25, 0.05, -24.65)
-newPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(newPlatformMesh);
+const floor2Mesh = new THREE.Mesh(floor2Geo, floor2Mat);
+floor2Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor2Mesh.position.set(31.25, 0.05, -24.65); // Center at (31.25, 0.05, -24.65)
+floor2Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor2Mesh);
 
 // Create new physics platform body
-const newPlatformBody = new CANNON.Body({
+const floor2Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 50.7 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
     mass: 0 // Static body
 });
-newPlatformBody.position.set(31.25, 0.05, -24.65); // Center matches mesh
-newPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(newPlatformBody);
+floor2Body.position.set(31.25, 0.05, -24.65); // Center matches mesh
+floor2Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor2Body);
+floorBodies.push(floor2Body); // Add to floor bodies array
 
 // Store reference for synchronization
-newPlatformMesh.userData.physicsBody = newPlatformBody;
+floor2Mesh.userData.physicsBody = floor2Body;
 
 // Inside setupScene(), after the yellow platform creation
 // Create third platform mesh (cyan)
-const thirdPlatformGeo = new THREE.PlaneGeometry(12.5, 20); // Width=12.5, Depth=20
-const thirdPlatformMat = new THREE.MeshBasicMaterial({
+const floor3Geo = new THREE.PlaneGeometry(12.5, 20); // Width=12.5, Depth=20
+const floor3Mat = new THREE.MeshBasicMaterial({
     color: 0x00ffff, // Cyan to distinguish from green platform, yellow platform, and blue ground
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const thirdPlatformMesh = new THREE.Mesh(thirdPlatformGeo, thirdPlatformMat);
-thirdPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-thirdPlatformMesh.position.set(31.25, 0.05, 40); // Center at (31.25, 0.05, 40)
-thirdPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(thirdPlatformMesh);
+const floor3Mesh = new THREE.Mesh(floor3Geo, floor3Mat);
+floor3Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor3Mesh.position.set(31.25, 0.05, 40); // Center at (31.25, 0.05, 40)
+floor3Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor3Mesh);
 
 // Create third physics platform body
-const thirdPlatformBody = new CANNON.Body({
+const floor3Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 20 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
     mass: 0 // Static body
 });
-thirdPlatformBody.position.set(31.25, 0.05, 40); // Center matches mesh
-thirdPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(thirdPlatformBody);
+floor3Body.position.set(31.25, 0.05, 40); // Center matches mesh
+floor3Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor3Body);
+floorBodies.push(floor3Body); // Add to floor bodies array
 
 // Store reference for synchronization
-thirdPlatformMesh.userData.physicsBody = thirdPlatformBody;
+floor3Mesh.userData.physicsBody = floor3Body;
 
 // Inside setupScene(), after the cyan platform creation
 // Create fourth platform mesh (magenta)
-const fourthPlatformGeo = new THREE.PlaneGeometry(12.5, 29.3); // Width=12.5, Depth=29.3
-const fourthPlatformMat = new THREE.MeshBasicMaterial({
-    color: 0xff00ff, // Magenta to distinguish from green, yellow, cyan platforms, and blue ground
-    side: THREE.DoubleSide,
-    wireframe: true
+const floor4Geo = new THREE.PlaneGeometry(12.5, 29.3); // Width=12.5, Depth=29.3
+const floor4Mat = new THREE.MeshBasicMaterial({
+    color: 0xff00ff, // Magenta to distinguish from green, yellow, cyan platforms, and blue ground gonna die if touched
+    side: THREE.DoubleSide
 });
-const fourthPlatformMesh = new THREE.Mesh(fourthPlatformGeo, fourthPlatformMat);
-fourthPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-fourthPlatformMesh.position.set(31.25, -2, 15.35); // Center at (31.25, -2, 15.35)
-fourthPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(fourthPlatformMesh);
+const floor4Mesh = new THREE.Mesh(floor4Geo, floor4Mat);
+floor4Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor4Mesh.position.set(31.25, -2, 15.35); // Center at (31.25, -2, 15.35)
+floor4Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor4Mesh);
 
 // Create fourth physics platform body
-const fourthPlatformBody = new CANNON.Body({
+const floor4Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 29.3 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
     mass: 0 // Static body
 });
-fourthPlatformBody.position.set(31.25, -1.95, 15.35); // Center matches mesh, y=-1.95 for top surface at y=-2
-fourthPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(fourthPlatformBody);
+floor4Body.position.set(31.25, -1.95, 15.35); // Center matches mesh, y=-1.95 for top surface at y=-2
+floor4Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor4Body);
+floorBodies.push(floor4Body); // Add to floor bodies array
 
 // Store reference for synchronization
-fourthPlatformMesh.userData.physicsBody = fourthPlatformBody;
+floor4Mesh.userData.physicsBody = floor4Body;
 
 // Inside setupScene(), after the magenta platform creation
 // Create fifth platform mesh (orange)
-const fifthPlatformGeo = new THREE.PlaneGeometry(12.5, 100); // Width=12.5, Depth=100
-const fifthPlatformMat = new THREE.MeshBasicMaterial({
+const floor5Geo = new THREE.PlaneGeometry(12.5, 100); // Width=12.5, Depth=100
+const floor5Mat = new THREE.MeshBasicMaterial({
     color: 0xffa500, // Orange to distinguish from green, yellow, cyan, magenta platforms, and blue ground
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const fifthPlatformMesh = new THREE.Mesh(fifthPlatformGeo, fifthPlatformMat);
-fifthPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-fifthPlatformMesh.position.set(18.75, 0.05, 0); // Center at (18.75, 0.05, 0)
-fifthPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(fifthPlatformMesh);
+const floor5Mesh = new THREE.Mesh(floor5Geo, floor5Mat);
+floor5Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor5Mesh.position.set(18.75, 0.05, 0); // Center at (18.75, 0.05, 0)
+floor5Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor5Mesh);
 
 // Create fifth physics platform body
-const fifthPlatformBody = new CANNON.Body({
+const floor5Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 100 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
     mass: 0 // Static body
 });
-fifthPlatformBody.position.set(18.75, 0.05, 0); // Center matches mesh
-fifthPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(fifthPlatformBody);
+floor5Body.position.set(18.75, 0.05, 0); // Center matches mesh
+floor5Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor5Body);
+floorBodies.push(floor5Body); // Add to floor bodies array
 
 // Store reference for synchronization
-fifthPlatformMesh.userData.physicsBody = fifthPlatformBody;
+floor5Mesh.userData.physicsBody = floor5Body;
 
 
 // Inside setupScene(), after the orange platform creation
 // Create sixth platform mesh (purple)
-const sixthPlatformGeo = new THREE.PlaneGeometry(12.5, 12.7); // Width=12.5, Depth=12.7
-const sixthPlatformMat = new THREE.MeshBasicMaterial({
+const floor6Geo = new THREE.PlaneGeometry(12.5, 12.7); // Width=12.5, Depth=12.7
+const floor6Mat = new THREE.MeshBasicMaterial({
     color: 0x800080, // Purple to distinguish from other platforms and ground
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const sixthPlatformMesh = new THREE.Mesh(sixthPlatformGeo, sixthPlatformMat);
-sixthPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-sixthPlatformMesh.position.set(6.25, 0.05, -43.65); // Center at (6.25, 0.05, -43.65)
-sixthPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(sixthPlatformMesh);
+const floor6Mesh = new THREE.Mesh(floor6Geo, floor6Mat);
+floor6Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor6Mesh.position.set(6.25, 0.05, -43.65); // Center at (6.25, 0.05, -43.65)
+floor6Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor6Mesh);
 
 // Create sixth physics platform body
-const sixthPlatformBody = new CANNON.Body({
+const floor6Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 12.7 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
     mass: 0 // Static body
 });
-sixthPlatformBody.position.set(6.25, 0.05, -43.65); // Center matches mesh
-sixthPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(sixthPlatformBody);
+floor6Body.position.set(6.25, 0.05, -43.65); // Center matches mesh
+floor6Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor6Body);
+floorBodies.push(floor6Body); // Add to floor bodies array
 
 // Store reference for synchronization
-sixthPlatformMesh.userData.physicsBody = sixthPlatformBody;
+floor6Mesh.userData.physicsBody = floor6Body;
 
 // Create seventh platform mesh (white)
-const seventhPlatformGeo = new THREE.PlaneGeometry(12.5, 12.3); // Width=12.5, Depth=12.3
-const seventhPlatformMat = new THREE.MeshBasicMaterial({
+const floor7Geo = new THREE.PlaneGeometry(12.5, 12.3); // Width=12.5, Depth=12.3
+const floor7Mat = new THREE.MeshBasicMaterial({
     color: 0xffffff, // White to distinguish from other platforms and ground
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const seventhPlatformMesh = new THREE.Mesh(seventhPlatformGeo, seventhPlatformMat);
-seventhPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-seventhPlatformMesh.position.set(6.25, 0.05, 43.85); // Center at (6.25, 0.05, 43.85)
-seventhPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(seventhPlatformMesh);
+const floor7Mesh = new THREE.Mesh(floor7Geo, floor7Mat);
+floor7Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor7Mesh.position.set(6.25, 0.05, 43.85); // Center at (6.25, 0.05, 43.85)
+floor7Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor7Mesh);
 
 // Create seventh physics platform body
-const seventhPlatformBody = new CANNON.Body({
+const floor7Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 12.3 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
     mass: 0 // Static body
 });
-seventhPlatformBody.position.set(6.25, 0.05, 43.85); // Center matches mesh
-seventhPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(seventhPlatformBody);
+floor7Body.position.set(6.25, 0.05, 43.85); // Center matches mesh
+floor7Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor7Body);
+floorBodies.push(floor7Body); // Add to floor bodies array
 
 // Store reference for synchronization
-seventhPlatformMesh.userData.physicsBody = seventhPlatformBody;
+floor7Mesh.userData.physicsBody = floor7Body;
 
 // Create eighth platform mesh (red)
-const eighthPlatformGeo = new THREE.PlaneGeometry(12.5, 75); // Width=12.5, Depth=75
-const eighthPlatformMat = new THREE.MeshBasicMaterial({
+const floor8Geo = new THREE.PlaneGeometry(12.5, 75); // Width=12.5, Depth=75
+const floor8Mat = new THREE.MeshBasicMaterial({
     color: 0xff0000, // Red to distinguish from other platforms and ground
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const eighthPlatformMesh = new THREE.Mesh(eighthPlatformGeo, eighthPlatformMat);
-eighthPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-eighthPlatformMesh.position.set(6.25, -2, 0.2); // Center at (6.25, -2, 0.2)
-eighthPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(eighthPlatformMesh);
+const floor8Mesh = new THREE.Mesh(floor8Geo, floor8Mat);
+floor8Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor8Mesh.position.set(6.25, -2, 0.2); // Center at (6.25, -2, 0.2)
+floor8Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor8Mesh);
 
 // Create eighth physics platform body
-const eighthPlatformBody = new CANNON.Body({
+const floor8Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 75 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
     mass: 0 // Static body
 });
-eighthPlatformBody.position.set(6.25, -1.95, 0.2); // Center matches mesh, y=-1.95 for top surface at y=-2
-eighthPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(eighthPlatformBody);
+floor8Body.position.set(6.25, -1.95, 0.2); // Center matches mesh, y=-1.95 for top surface at y=-2
+floor8Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor8Body);
+floorBodies.push(floor8Body); // Add to floor bodies array
 
 // Store reference for synchronization
-eighthPlatformMesh.userData.physicsBody = eighthPlatformBody;
+floor8Mesh.userData.physicsBody = floor8Body;
 
 // Inside setupScene(), after the red platform creation
 // Create ninth platform mesh (lime)
-const ninthPlatformGeo = new THREE.PlaneGeometry(12.5, 93.865); // Width=12.5, Depth=93.865
-const ninthPlatformMat = new THREE.MeshBasicMaterial({
+const floor9Geo = new THREE.PlaneGeometry(12.5, 93.865); // Width=12.5, Depth=93.865
+const floor9Mat = new THREE.MeshBasicMaterial({
     color: 0x00ff00, // Lime (using 0x00ff00, distinct in context) to distinguish from other platforms and ground
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const ninthPlatformMesh = new THREE.Mesh(ninthPlatformGeo, ninthPlatformMat);
-ninthPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-ninthPlatformMesh.position.set(-6.25, -2, -3.0675); // Center at (-6.25, -2, -3.0675)
-ninthPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(ninthPlatformMesh);
+const floor9Mesh = new THREE.Mesh(floor9Geo, floor9Mat);
+floor9Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor9Mesh.position.set(-6.25, -2, -3.0675); // Center at (-6.25, -2, -3.0675)
+floor9Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor9Mesh);
 
 // Create ninth physics platform body
-const ninthPlatformBody = new CANNON.Body({
+const floor9Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 93.865 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
     mass: 0 // Static body
 });
-ninthPlatformBody.position.set(-6.25, -1.95, -3.0675); // Center matches mesh, y=-1.95 for top surface at y=-2
-ninthPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(ninthPlatformBody);
+floor9Body.position.set(-6.25, -1.95, -3.0675); // Center matches mesh, y=-1.95 for top surface at y=-2
+floor9Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor9Body);
+floorBodies.push(floor9Body); // Add to floor bodies array
 
 // Store reference for synchronization
-ninthPlatformMesh.userData.physicsBody = ninthPlatformBody;
+floor9Mesh.userData.physicsBody = floor9Body;
 
 // Create tenth platform mesh (teal)
-const tenthPlatformGeo = new THREE.PlaneGeometry(12.5, 6.135); // Width=12.5, Depth=6.135
-const tenthPlatformMat = new THREE.MeshBasicMaterial({
+const floor10Geo = new THREE.PlaneGeometry(12.5, 6.135); // Width=12.5, Depth=6.135
+const floor10Mat = new THREE.MeshBasicMaterial({
     color: 0x008080, // Teal to distinguish from other platforms and ground
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const tenthPlatformMesh = new THREE.Mesh(tenthPlatformGeo, tenthPlatformMat);
-tenthPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-tenthPlatformMesh.position.set(-6.25, 0.05, 46.9325); // Center at (-6.25, 0.05, 46.9325)
-tenthPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(tenthPlatformMesh);
+const floor10Mesh = new THREE.Mesh(floor10Geo, floor10Mat);
+floor10Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor10Mesh.position.set(-6.25, 0.05, 46.9325); // Center at (-6.25, 0.05, 46.9325)
+floor10Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor10Mesh);
 
 // Create tenth physics platform body
-const tenthPlatformBody = new CANNON.Body({
+const floor10Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5 / 2, 6.135 / 2, 0.1)),
     mass: 0 // Static body
 });
-tenthPlatformBody.position.set(-6.25, 0.05, 46.9325); // Center matches mesh
-tenthPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(tenthPlatformBody);
+floor10Body.position.set(-6.25, 0.05, 46.9325); // Center matches mesh
+floor10Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor10Body);
+floorBodies.push(floor10Body); // Add to floor bodies array
 
 // Store reference for synchronization
-tenthPlatformMesh.userData.physicsBody = tenthPlatformBody;
+floor10Mesh.userData.physicsBody = floor10Body;
 
 // Inside setupScene(), after the teal platform creation
 // Create eleventh platform mesh (pink)
-const eleventhPlatformGeo = new THREE.PlaneGeometry(37.5, 100); // Width=37.5, Depth=100
-const eleventhPlatformMat = new THREE.MeshBasicMaterial({
+const floor11Geo = new THREE.PlaneGeometry(37.5, 100); // Width=37.5, Depth=100
+const floor11Mat = new THREE.MeshBasicMaterial({
     color: 0xff69b4, // Pink to distinguish from other platforms and ground
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const eleventhPlatformMesh = new THREE.Mesh(eleventhPlatformGeo, eleventhPlatformMat);
-eleventhPlatformMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-eleventhPlatformMesh.position.set(-31.25, 0.05, 0); // Center at (-31.25, 0.05, 0)
-eleventhPlatformMesh.receiveShadow = true; // Match ground and platform settings
-scene.add(eleventhPlatformMesh);
+const floor11Mesh = new THREE.Mesh(floor11Geo, floor11Mat);
+floor11Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
+floor11Mesh.position.set(-31.25, 0.05, 0); // Center at (-31.25, 0.05, 0)
+floor11Mesh.receiveShadow = true; // Match ground and platform settings
+scene.add(floor11Mesh);
 
 // Create eleventh physics platform body
-const eleventhPlatformBody = new CANNON.Body({
+const floor11Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(37.5 / 2, 100 / 2, 0.1)), // Half-extents: width/2, height/2, depth/2
     mass: 0 // Static body
 });
-eleventhPlatformBody.position.set(-31.25, 0.05, 0); // Center matches mesh
-eleventhPlatformBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
-world.addBody(eleventhPlatformBody);
+floor11Body.position.set(-31.25, 0.05, 0); // Center matches mesh
+floor11Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor11Body);
+floorBodies.push(floor11Body); // Add to floor bodies array
 
 // Store reference for synchronization
-eleventhPlatformMesh.userData.physicsBody = eleventhPlatformBody;
+floor11Mesh.userData.physicsBody = floor11Body;
 
 // Inside setupScene(), after the pink platform creation
 // Create twelfth wall mesh (blue, at x=50, YZ plane)
@@ -1220,27 +1292,30 @@ wall42Mesh.userData.physicsBody = wall42Body;
 //  Corners: (10.425,5,-43.718), (14.425,5,-43.718),
 //           (14.425,5,-50), (10.425,5,-50)
 // ---------------------------------------------------------------
-const wall43Geo = new THREE.PlaneGeometry(4, 6.282); // X = 4, Z = 6.282
-const wall43Mat = new THREE.MeshBasicMaterial({
+const floor12Geo = new THREE.PlaneGeometry(4, 6.282); // X = 4, Z = 6.282
+const floor12Mat = new THREE.MeshBasicMaterial({
     color: 0x1e90ff,          // dodgerblue – distinct
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const wall43Mesh = new THREE.Mesh(wall43Geo, wall43Mat);               // horizontal XZ plane
-wall43Mesh.position.set(12.425, 5, -46.859);         // x = (10.425+14.425)/2
+const floor12Mesh = new THREE.Mesh(floor12Geo, floor12Mat);               // horizontal XZ plane
+floor12Mesh.position.set(12.425, 5, -46.859);         // x = (10.425+14.425)/2
                                                      // y = 5
                                                      // z = (-43.718 + -50)/2
-wall43Mesh.receiveShadow = true;
-scene.add(wall43Mesh);
+floor12Mesh.receiveShadow = true;
+scene.add(floor12Mesh);
 
-const wall43Body = new CANNON.Body({
+// Create physics platform body
+const floor12Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(4/2, 6.282/2, 0.1)), // half-extents
-    mass: 0
+    mass: 0 // Static body
 });
-wall43Body.position.set(12.425, 5, -46.859);
-wall43Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-world.addBody(wall43Body);
-wall43Mesh.userData.physicsBody = wall43Body;
+floor12Body.position.set(12.425, 5, -46.859); // Center matches mesh
+floor12Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor12Body);
+floorBodies.push(floor12Body); // Add to floor bodies array
+
+// Store reference for synchronization
+floor12Mesh.userData.physicsBody = floor12Body;
 
 // ---------------------------------------------------------------
 //  44th wall – Wall 2 (royalblue) – front face
@@ -1321,76 +1396,88 @@ wall46Mesh.userData.physicsBody = wall46Body;
 //  Corners: (0,0,-37.322), (0,-2,-37.322),
 //           (12.5,-2,-37.322), (12.5,0,-37.322)
 // ---------------------------------------------------------------
-const wall47Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252 (same thickness as walls 41/42)
-const wall47Mat = new THREE.MeshBasicMaterial({
+const floor13Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252 (same thickness as walls 41/42)
+const floor13Mat = new THREE.MeshBasicMaterial({
     color: 0x2f4f4f,          // darkslategray – distinct
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const wall47Mesh = new THREE.Mesh(wall47Geo, wall47Mat);                // horizontal XZ plane
-wall47Mesh.position.set(6.25, -1, -37.322);           // x = (0+12.5)/2 = 6.25
+const floor13Mesh = new THREE.Mesh(floor13Geo, floor13Mat);                // horizontal XZ plane
+floor13Mesh.position.set(6.25, -1, -37.322);           // x = (0+12.5)/2 = 6.25
                                                       // y = (0 + -2)/2 = -1
                                                       // z = -37.322 (center in Z)
-wall47Mesh.receiveShadow = true;
-scene.add(wall47Mesh);
+floor13Mesh.receiveShadow = true;
+scene.add(floor13Mesh);
 
-const wall47Body = new CANNON.Body({
+// Create physics platform body
+const floor13Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5/2, 1, 0.1)), // half-extents: X/2, thickness/2, Z/2
-    mass: 0
+    mass: 0 // Static body
 });
-wall47Body.position.set(6.25, -1, -37.322);
-world.addBody(wall47Body);
-wall47Mesh.userData.physicsBody = wall47Body;
+floor13Body.position.set(6.25, -1, -37.322); // Center matches mesh
+floor13Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor13Body);
+floorBodies.push(floor13Body); // Add to floor bodies array
+
+// Store reference for synchronization
+floor13Mesh.userData.physicsBody = floor13Body;
 
 // ---------------------------------------------------------------
 //  48th wall – Wall 2 (dimgray)
 //  Corners: (0,0,37.678), (0,-2,37.678),
 //           (12.5,-2,37.678), (12.5,0,37.678)
 // ---------------------------------------------------------------
-const wall48Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252
-const wall48Mat = new THREE.MeshBasicMaterial({
+const floor14Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252
+const floor14Mat = new THREE.MeshBasicMaterial({
     color: 0x696969,          // dimgray – distinct
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const wall48Mesh = new THREE.Mesh(wall48Geo, wall48Mat);               // horizontal XZ plane
-wall48Mesh.position.set(6.25, -1, 37.678);            // x = 6.25, y = -1, z = 37.678
-wall48Mesh.receiveShadow = true;
-scene.add(wall48Mesh);
+const floor14Mesh = new THREE.Mesh(floor14Geo, floor14Mat);               // horizontal XZ plane
+floor14Mesh.position.set(6.25, -1, 37.678);            // x = 6.25, y = -1, z = 37.678
+floor14Mesh.receiveShadow = true;
+scene.add(floor14Mesh);
 
-const wall48Body = new CANNON.Body({
+// Create physics platform body
+const floor14Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5/2, 1, 0.1)), // half-extents
-    mass: 0
+    mass: 0 // Static body
 });
-wall48Body.position.set(6.25, -1, 37.678);
-world.addBody(wall48Body);
-wall48Mesh.userData.physicsBody = wall48Body;
+floor14Body.position.set(6.25, -1, 37.678); // Center matches mesh
+floor14Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor14Body);
+floorBodies.push(floor14Body); // Add to floor bodies array
+
+// Store reference for synchronization
+floor14Mesh.userData.physicsBody = floor14Body;
 
 // ---------------------------------------------------------------
 //  49th wall – Wall 1 (slategray)
 //  Corners: (0,0,43.839), (0,-2,43.839),
 //           (-12.5,-2,43.839), (-12.5,0,43.839)
 // ---------------------------------------------------------------
-const wall49Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252 (consistent thickness)
-const wall49Mat = new THREE.MeshBasicMaterial({
+const floor15Geo = new THREE.PlaneGeometry(12.5, 2); // X = 12.5, Z = 0.71252 (consistent thickness)
+const floor15Mat = new THREE.MeshBasicMaterial({
     color: 0x708090,          // slategray – distinct from all previous
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const wall49Mesh = new THREE.Mesh(wall49Geo, wall49Mat);                // horizontal XZ plane
-wall49Mesh.position.set(-6.25, -1, 43.839);           // x = (0 + -12.5)/2 = -6.25
+const floor15Mesh = new THREE.Mesh(floor15Geo, floor15Mat);                // horizontal XZ plane
+floor15Mesh.position.set(-6.25, -1, 43.839);           // x = (0 + -12.5)/2 = -6.25
                                                       // y = (0 + -2)/2 = -1
                                                       // z = 43.839 (center in Z)
-wall49Mesh.receiveShadow = true;
-scene.add(wall49Mesh);
+floor15Mesh.receiveShadow = true;
+scene.add(floor15Mesh);
 
-const wall49Body = new CANNON.Body({
+// Create physics platform body
+const floor15Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(12.5/2, 1, 0.1)), // half-extents: X/2, thickness/2, Z/2
-    mass: 0
+    mass: 0 // Static body
 });
-wall49Body.position.set(-6.25, -1, 43.839);
-world.addBody(wall49Body);
-wall49Mesh.userData.physicsBody = wall49Body;
+floor15Body.position.set(-6.25, -1, 43.839); // Center matches mesh
+floor15Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor15Body);
+floorBodies.push(floor15Body); // Add to floor bodies array
+
+// Store reference for synchronization
+floor15Mesh.userData.physicsBody = floor15Body;
 
 // ---------------------------------------------------------------
 //  50th wall – Wall 1 (mediumblue)
@@ -1423,26 +1510,30 @@ wall50Mesh.userData.physicsBody = wall50Body;
 //  Corners: (-14.5,5,-43.746), (-14.5,4,-43.746),
 //           (-10.5,4,-43.746), (-10.5,5,-43.746)
 // ---------------------------------------------------------------
-const wall51Geo = new THREE.PlaneGeometry(4, 1); // X = 4, Y = 1 (height)
-const wall51Mat = new THREE.MeshBasicMaterial({
+const floor16Geo = new THREE.PlaneGeometry(4, 1); // X = 4, Y = 1 (height)
+const floor16Mat = new THREE.MeshBasicMaterial({
     color: 0x191970,          // midnightblue – distinct
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const wall51Mesh = new THREE.Mesh(wall51Geo, wall51Mat);                // horizontal XZ plane
-wall51Mesh.position.set(-12.5, 4.5, -43.746);         // x = (-14.5 + -10.5)/2 = -12.5
+const floor16Mesh = new THREE.Mesh(floor16Geo, floor16Mat);                // horizontal XZ plane
+floor16Mesh.position.set(-12.5, 4.5, -43.746);         // x = (-14.5 + -10.5)/2 = -12.5
                                                       // y = (5 + 4)/2 = 4.5
                                                       // z = -43.746
-wall51Mesh.receiveShadow = true;
-scene.add(wall51Mesh);
+floor16Mesh.receiveShadow = true;
+scene.add(floor16Mesh);
 
-const wall51Body = new CANNON.Body({
+// Create physics platform body
+const floor16Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(4/2, 1/2, 0.1)), // half-extents: X/2, Y/2, thickness/2
-    mass: 0
+    mass: 0 // Static body
 });
-wall51Body.position.set(-12.5, 4.5, -43.746);
-world.addBody(wall51Body);
-wall51Mesh.userData.physicsBody = wall51Body;
+floor16Body.position.set(-12.5, 4.5, -43.746); // Center matches mesh
+floor16Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor16Body);
+floorBodies.push(floor16Body); // Add to floor bodies array
+
+// Store reference for synchronization
+floor16Mesh.userData.physicsBody = floor16Body;
 
 // ---------------------------------------------------------------
 //  52nd wall – Wall 2 (navy) – left face
@@ -1499,50 +1590,56 @@ wall53Mesh.userData.physicsBody = wall53Body;
 //  Corners: (-14.5,5,-43.746), (-10.5,5,-43.746),
 //           (-10.5,5,-50), (-14.5,5,-50)
 // ---------------------------------------------------------------
-const wall54Geo = new THREE.PlaneGeometry(4, 6.254); // X = 4, Z = 6.254
-const wall54Mat = new THREE.MeshBasicMaterial({
+const floor17Geo = new THREE.PlaneGeometry(4, 6.254); // X = 4, Z = 6.254
+const floor17Mat = new THREE.MeshBasicMaterial({
     color: 0x4b0082,          // indigo – distinct
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const wall54Mesh = new THREE.Mesh(wall54Geo, wall54Mat);
-wall54Mesh.position.set(-12.5, 5, -46.873);
-wall54Mesh.receiveShadow = true;
-scene.add(wall54Mesh);
+const floor17Mesh = new THREE.Mesh(floor17Geo, floor17Mat);
+floor17Mesh.position.set(-12.5, 5, -46.873);
+floor17Mesh.receiveShadow = true;
+scene.add(floor17Mesh);
 
-const wall54Body = new CANNON.Body({
+// Create physics platform body
+const floor17Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(4/2, 6.254/2, 0.1)),
-    mass: 0
+    mass: 0 // Static body
 });
-wall54Body.position.set(-12.5, 5, -46.873);
-wall54Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-world.addBody(wall54Body);
-wall54Mesh.userData.physicsBody = wall54Body;
+floor17Body.position.set(-12.5, 5, -46.873); // Center matches mesh
+floor17Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor17Body);
+floorBodies.push(floor17Body); // Add to floor bodies array
+
+// Store reference for synchronization
+floor17Mesh.userData.physicsBody = floor17Body;
 
 // ---------------------------------------------------------------
 //  55th wall – Wall 5 (darkslateblue) – bottom face
 //  Corners: (-14.5,4,-43.746), (-10.5,4,-43.746),
 //           (-10.5,4,-50), (-14.5,4,-50)
 // ---------------------------------------------------------------
-const wall55Geo = new THREE.PlaneGeometry(4, 6.254); // X = 4, Z = 6.254
-const wall55Mat = new THREE.MeshBasicMaterial({
+const floor18Geo = new THREE.PlaneGeometry(4, 6.254); // X = 4, Z = 6.254
+const floor18Mat = new THREE.MeshBasicMaterial({
     color: 0x483d8b,          // darkslateblue – distinct
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const wall55Mesh = new THREE.Mesh(wall55Geo, wall55Mat);
-wall55Mesh.position.set(-12.5, 4, -46.873);
-wall55Mesh.receiveShadow = true;
-scene.add(wall55Mesh);
+const floor18Mesh = new THREE.Mesh(floor18Geo, floor18Mat);
+floor18Mesh.position.set(-12.5, 4, -46.873);
+floor18Mesh.receiveShadow = true;
+scene.add(floor18Mesh);
 
-const wall55Body = new CANNON.Body({
+// Create physics platform body
+const floor18Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(4/2, 6.254/2, 0.1)),
-    mass: 0
+    mass: 0 // Static body
 });
-wall55Body.position.set(-12.5, 4, -46.873);
-wall55Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-world.addBody(wall55Body);
-wall55Mesh.userData.physicsBody = wall55Body;
+floor18Body.position.set(-12.5, 4, -46.873); // Center matches mesh
+floor18Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor18Body);
+floorBodies.push(floor18Body); // Add to floor bodies array
+
+// Store reference for synchronization
+floor18Mesh.userData.physicsBody = floor18Body;
 
 // ---------------------------------------------------------------
 //  56th wall – Wall 1 (darkred)
@@ -1699,50 +1796,56 @@ wall61Mesh.userData.physicsBody = wall61Body;
 //  Corners: (-53,5,2.2527), (-50,5,2.2527),
 //           (-50,5,-0.87225), (-53,5,-0.87225)
 // ---------------------------------------------------------------
-const wall62Geo = new THREE.PlaneGeometry(3.25, 3.125); // X = 3, Z = 3.125
-const wall62Mat = new THREE.MeshBasicMaterial({
+const floor19Geo = new THREE.PlaneGeometry(3.25, 3.125); // X = 3, Z = 3.125
+const floor19Mat = new THREE.MeshBasicMaterial({
     color: 0xc71585,          // mediumvioletred – distinct
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const wall62Mesh = new THREE.Mesh(wall62Geo, wall62Mat);                 // horizontal XZ plane
-wall62Mesh.position.set(-51.5, 5, 0.690225);           // z = (2.2527 + -0.87225)/2 = 0.690225
-wall62Mesh.receiveShadow = true;
-scene.add(wall62Mesh);
+const floor19Mesh = new THREE.Mesh(floor19Geo, floor19Mat);                 // horizontal XZ plane
+floor19Mesh.position.set(-51.5, 5, 0.690225);           // z = (2.2527 + -0.87225)/2 = 0.690225
+floor19Mesh.receiveShadow = true;
+scene.add(floor19Mesh);
 
-const wall62Body = new CANNON.Body({
+// Create physics platform body
+const floor19Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(3.25/2, 3.125/2, 0.1)),
-    mass: 0
+    mass: 0 // Static body
 });
-wall62Body.position.set(-51.5, 5, 0.690225);
-wall62Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-world.addBody(wall62Body);
-wall62Mesh.userData.physicsBody = wall62Body;
+floor19Body.position.set(-51.5, 5, 0.690225); // Center matches mesh
+floor19Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor19Body);
+floorBodies.push(floor19Body); // Add to floor bodies array
+
+// Store reference for synchronization
+floor19Mesh.userData.physicsBody = floor19Body;
 
 // ---------------------------------------------------------------
 //  63rd wall – Wall 4 (deeppink)
 //  Corners: (-53,8.75,2.2527), (-50,8.75,2.2527),
 //           (-50,8.75,-0.87225), (-53,8.75,-0.87225)
 // ---------------------------------------------------------------
-const wall63Geo = new THREE.PlaneGeometry(3.25, 3.125);
-const wall63Mat = new THREE.MeshBasicMaterial({
+const floor20Geo = new THREE.PlaneGeometry(3.25, 3.125);
+const floor20Mat = new THREE.MeshBasicMaterial({
     color: 0xff1493,          // deeppink – distinct
-    side: THREE.DoubleSide,
-    wireframe: true
+    side: THREE.DoubleSide
 });
-const wall63Mesh = new THREE.Mesh(wall63Geo, wall63Mat);
-wall63Mesh.position.set(-51.5, 8.75, 0.690225);
-wall63Mesh.receiveShadow = true;
-scene.add(wall63Mesh);
+const floor20Mesh = new THREE.Mesh(floor20Geo, floor20Mat);
+floor20Mesh.position.set(-51.5, 8.75, 0.690225);
+floor20Mesh.receiveShadow = true;
+scene.add(floor20Mesh);
 
-const wall63Body = new CANNON.Body({
+// Create physics platform body
+const floor20Body = new CANNON.Body({
     shape: new CANNON.Box(new CANNON.Vec3(3.25/2, 3.125/2, 0.1)),
-    mass: 0
+    mass: 0 // Static body
 });
-wall63Body.position.set(-51.5, 8.75, 0.690225);
-wall63Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-world.addBody(wall63Body);
-wall63Mesh.userData.physicsBody = wall63Body;
+floor20Body.position.set(-51.5, 8.75, 0.690225); // Center matches mesh
+floor20Body.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(floor20Body);
+floorBodies.push(floor20Body); // Add to floor bodies array
+
+// Store reference for synchronization
+floor20Mesh.userData.physicsBody = floor20Body;
 
 // Define positions for the 13 models (you can tweak these coordinates)
 const modelPositions = [
@@ -1798,7 +1901,7 @@ for (let i = 0; i < 13; i++) {
             
             scene.add(model);
             const plate = new CANNON.Body({
-                shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.01)),
+                shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.1)),
                 mass: 0
             });
             if(modelNames[i] === 'six' || modelNames[i] === 'twelve'){
@@ -1868,7 +1971,7 @@ for (let i = 0; i < 13; i++) {
 
 
     // Add some sample objects to test physics
-    addTestObjects();
+    addPlayer();
     createBuilding();
     createPuzzleElements();
 
@@ -1933,12 +2036,15 @@ function onPointerLockChange() {
     }
 }
 
+// ── FIRST PERSON MOUSE LOOK HANDLER ────────────────────────────────
 function onMouseMove(e) {
-    yaw   -= e.movementX * MOUSE_SENS;
-    pitch += e.movementY * MOUSE_SENS;
-    const maxPitch = PI_2 - 0.1;
-    const minPitch = -maxPitch;
-    pitch = Math.max(minPitch, Math.min(maxPitch, pitch));
+    if (document.pointerLockElement !== renderer.domElement) return;
+    
+    yaw -= e.movementX * MOUSE_SENS;
+    pitch -= e.movementY * MOUSE_SENS;
+    
+    // **CRITICAL: Clamp pitch to prevent camera flip**
+    pitch = Math.max(-PITCH_CLAMP, Math.min(PITCH_CLAMP, pitch));
 }
 let boxBody, boxMesh;
 
@@ -1959,24 +2065,49 @@ document.addEventListener('keyup', (event) => {
     keys[event.code] = false;
 });
 
-// Jump function
-function jump() {
-    // Check if the box is close to the ground (you can adjust this threshold)
-    const isOnGround = boxBody.position.y <= 1.1; // Adjust based on your platform heights
+// Add this function to check if player is on any floor
+function isPlayerOnFloor() {
+    if (!boxBody) return false;
     
-    if (isOnGround) {
-        // Apply upward impulse for jumping
-        boxBody.velocity.y = 16; // Adjust this value for higher/lower jumps
+    const playerPos = boxBody.position;
+    const playerHalfHeight = 0.5; // Half of player height (1 unit total)
+    
+    // Check each floor body
+    for (const floorBody of floorBodies) {
+        const floorPos = floorBody.position;
+        const floorHalfExtents = floorBody.shapes[0].halfExtents;
+        
+        // Calculate floor surface height (position + half thickness)
+        const floorSurfaceY = floorPos.y + 0.1; // Assuming 0.1 thickness
+        
+        // Check if player is standing on this floor
+        const isOnThisFloor = 
+            playerPos.y - playerHalfHeight <= floorSurfaceY + 0.1 && // Player bottom near floor surface
+            playerPos.y - playerHalfHeight >= floorSurfaceY - 0.1 && // Within small tolerance
+            Math.abs(playerPos.x - floorPos.x) <= floorHalfExtents.x + 0.5 && // X overlap
+            Math.abs(playerPos.z - floorPos.z) <= floorHalfExtents.y + 0.5;   // Z overlap
+        
+        if (isOnThisFloor) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Update the jump function to use floor contact detection
+function jump() {
+    if (isPlayerOnFloor() && canJump) {
+        boxBody.velocity.y = 36; // Adjust this value for higher/lower jumps
         canJump = false;
         
-        // Reset jump cooldown after a short delay
         setTimeout(() => {
             canJump = true;
-        }, 500); // 500ms cooldown between jumps
+        }, 500);
     }
 }
 
-function addTestObjects() {
+function addPlayer() {
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const boxMat = new THREE.MeshStandardMaterial({ color: 0xff5555 });
     boxMesh = new THREE.Mesh(boxGeo, boxMat);
@@ -2022,6 +2153,8 @@ function checkBulletCollisions(bullet, i) {
 export function updateLevel() {
     const delta = 1 / 60;
     world.step(delta);
+    // ADD THIS LINE - Check for goal condition
+    checkGoalCondition();
 
     updateBullets(delta);
 
@@ -2189,10 +2322,10 @@ if (selectedBox && document.pointerLockElement === renderer.domElement) {
     // ── PLAYER MOVEMENT (WASD) ───────────────────────────────────────
     const speed = 7;
     const move = new THREE.Vector3();
-    if (keys['KeyW']) move.z -= 1;
-    if (keys['KeyS']) move.z += 1;
-    if (keys['KeyA']) move.x += 1;
-    if (keys['KeyD']) move.x -= 1;
+    if (keys['KeyW']) move.z += 1;
+    if (keys['KeyS']) move.z -= 1;
+    if (keys['KeyA']) move.x -= 1;
+    if (keys['KeyD']) move.x += 1;
     if (move.lengthSq() > 0) {
         move.normalize().multiplyScalar(speed);
         // apply in world space (rotate by yaw)
@@ -2208,7 +2341,7 @@ if (selectedBox && document.pointerLockElement === renderer.domElement) {
     }
 
     // ── JUMP (space) ─────────────────────────────────────────────────
-    if (keys['Space'] && canJump && boxBody.position.y <= 1.1) {
+    if (keys['Space'] && canJump && isPlayerOnFloor()) { // Changed condition here
         boxBody.velocity.y = 16;
         canJump = false;
         setTimeout(() => canJump = true, 500);
@@ -2577,78 +2710,118 @@ function updateBullets(delta) {
     }
 }
 
-// Clean up the level
-export function cleanupLevel() {
-    // remove UI
-    document.querySelectorAll('.game-ui').forEach(el => el.remove());
 
-    // remove pointer-lock listener
-    document.removeEventListener('pointerlockchange', onPointerLockChange);
-    document.removeEventListener('mousemove', onMouseMove);
+// Also add goal cleanup in the cleanupLevel function
+export function cleanupLevel() {
+    console.log("Level 3 cleanup started");
     
-    // remove wheel listener
-    renderer.domElement.removeEventListener('wheel', handleMouseWheel);
-// Remove door bodies
-    doorBodies.forEach((body, index) => {
-        if (body) {
-            world.removeBody(body);
+    // 1. Remove UI
+    document.querySelectorAll('.game-ui').forEach(el => {
+        if (el.textContent !== 'LEVEL 3 COMPLETED! Returning to main menu...') {
+            el.remove();
         }
     });
-    // Reset second door puzzle
-    secondDoorOpenable = false;
-    platesOccupied = {
-        plate13: false,
-        plate11: false, 
-        plate1: false
-    };
-    
-    // Clear all plate timers
+
+    // 2. Remove event listeners
+    document.removeEventListener('pointerlockchange', onPointerLockChange);
+    document.removeEventListener('mousemove', onMouseMove);
+    renderer.domElement.removeEventListener('wheel', handleMouseWheel);
+
+    // 3. Clear all timeouts to prevent delayed executions
     Object.keys(plateTimers).forEach(plateKey => {
         if (plateTimers[plateKey]) {
             clearTimeout(plateTimers[plateKey]);
             plateTimers[plateKey] = null;
         }
     });
-    doorBodies = [];
-    // physics world
-    if (world){
-        while (world.bodies.length > 0){
-            world.removeBody(world.bodies[0]);
+    
+    if (cubeOnPlateTimer) {
+        clearTimeout(cubeOnPlateTimer);
+        cubeOnPlateTimer = null;
+    }
+
+    // 4. Remove door bodies
+    doorBodies.forEach((body, index) => {
+        if (body && world) {
+            world.removeBody(body);
         }
-    }
+    });
+
+    // 5. Reset puzzle state
+    secondDoorOpenable = false;
+    firstDoorOpenable = false;
+    goalReached = false;
+    
+    platesOccupied = {
+        plate13: false,
+        plate11: false, 
+        plate1: false
+    };
+
+    doorBodies = [];
+    
+    // 6. Clear bullets and boxes
     bullets.forEach(b => b.destroy());
-bullets = [];
-movableBoxes = [];
-selectedBox = null;
-}
-function updateCamera() {
-    const cameraDistance = 8;
-    const cameraHeightOffset = 1.8;
-    const aimHeightOffset = 1.5;
-    const cosPitch = Math.cos(pitch);
+    bullets = [];
+    movableBoxes = [];
+    selectedBox = null;
 
-    const targetPos = new THREE.Vector3(
-        player.position.x - Math.sin(yaw) * cameraDistance * cosPitch,
-        player.position.y + Math.sin(pitch) * cameraDistance + cameraHeightOffset,
-        player.position.z - Math.cos(yaw) * cameraDistance * cosPitch
-    );
+    // 7. Reset cube mixers
+    cubeMixers.forEach(entry => {
+        if (entry.mixer) {
+            entry.mixer.stopAllAction();
+        }
+    });
+    cubeMixers = [];
 
-    const playerCenter = player.position.clone().setY(player.position.y + aimHeightOffset);
-    const camDir = new THREE.Vector3().subVectors(targetPos, playerCenter).normalize();
-
-    raycaster.set(playerCenter, camDir);
-    raycaster.far = targetPos.distanceTo(playerCenter);
-    const obstacles = scene.children.filter(o => o !== player && o.name !== 'goal');
-    const hits = raycaster.intersectObjects(obstacles, true);
-
-    if (hits.length > 0) {
-        const actual = hits[0].distance - 0.2;               // stay a little inside
-        camera.position.copy(playerCenter).addScaledVector(camDir, actual);
-    } else {
-        camera.position.copy(targetPos);
+    // 8. Clear physics world
+    if (world) {
+        // Remove all bodies except the static ones that will be recreated
+        const bodiesToRemove = [...world.bodies];
+        bodiesToRemove.forEach(body => {
+            world.removeBody(body);
+        });
     }
 
-    camera.lookAt(player.position.x, player.position.y + aimHeightOffset, player.position.z);
+    console.log("Level 3 cleanup completed");
+}
+
+// Add this function to level3.js to handle game loop pausing more safely
+function safePauseGameLoop() {
+    try {
+        if (window.pauseGameLoop) {
+            window.pauseGameLoop();
+        }
+        // Also stop the renderer's animation loop
+        if (renderer) {
+            renderer.setAnimationLoop(null);
+        }
+    } catch (error) {
+        console.warn('Error pausing game loop:', error);
+    }
+}
+
+// ── **REPLACE** the entire `updateCamera()` function ───────────────
+function updateCamera() {
+    if (!player) return;
+    
+    // **HIDE PLAYER MESH** (run once)
+    if (player.visible !== false) {
+        player.visible = false;
+        player.traverse((child) => {
+            if (child.isMesh) child.visible = false;
+        });
+        console.log('Player mesh hidden for first-person view');
+    }
+    
+    // **SIMPLE FPS POSITIONING**
+    camera.position.copy(player.position);
+    camera.position.y += EYE_HEIGHT;
+    
+    // **DIRECT ROTATION** (no offsets, no collisions needed)
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
 }
 
 // Make functions available for the main game loop
