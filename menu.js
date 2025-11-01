@@ -36,22 +36,12 @@ window.showLevelSelect = function() {
     }
 };
 
-// Function to show settings
+// Function to show settings (now handled by SettingsMenu module)
+// This is kept for backwards compatibility but will be handled by the SettingsMenu module
 window.showSettings = function() {
-    // Track where settings was accessed from
-    if (isGamePaused) {
-        settingsReturnContext = 'pause';
-    } else {
-        settingsReturnContext = 'main';
-    }
-    
-    hideAllMenuScreens();
-    const settings = document.getElementById('settings');
-    if (settings) {
-        settings.classList.remove('hidden');
-        currentMenuScreen = 'settings';
-        createMenuParticles();
-        setupSettingsHandlers();
+    // The SettingsMenu module will handle this
+    if (window.settingsMenu && window.settingsMenu.show) {
+        window.settingsMenu.show();
     }
 };
 
@@ -216,59 +206,176 @@ window.startStoryMode = function () {
         return;
     }
 
+    // ---- 0. CLEANUP: Remove any existing event listeners and reset state ----
+    // Pause and reset video first
+    video.pause();
+    video.currentTime = 0;
+    
+    // Remove all event listeners by cloning handlers we can't easily remove
+    // We'll use a flag to prevent old handlers from running
+    if (video._cutsceneActive) {
+        // Remove old listeners if they exist
+        video.removeEventListener('timeupdate', video._cutsceneUpdate);
+        video.onended = null;
+        video.onclick = null;
+    }
+    
+    // Clear any existing button handlers
+    if (skipBtn) {
+        skipBtn.onclick = null;
+    }
+    if (unmuteBtn) {
+        unmuteBtn.onclick = null;
+    }
+    
+    // Remove any existing keydown handlers (we'll track the current one)
+    // Store reference to remove later
+    
+    // Remove 'ended' class from screen if it exists
+    screen.classList.remove('ended', 'hidden');
+
     // ---- 1. Show the cutscene ------------------------------------------------
     screen.classList.remove('hidden');
 
     // ---- 2. Reset + start muted (autoplay policy) ---------------------------
     video.currentTime = 0;
     video.muted = true;
-    progress.style.width = '0%';
-
-    const playPromise = video.play();
-    if (playPromise) playPromise.catch(() => console.log('autoplay blocked'));
+    video.load(); // Reload the video to reset state
+    
+    if (progress) {
+        progress.style.width = '0%';
+    }
+    
+    // Reset button states
+    if (unmuteBtn) {
+        unmuteBtn.textContent = 'Unmute';
+        unmuteBtn.disabled = false;
+        unmuteBtn.style.opacity = '1';
+    }
 
     // ---- 3. Progress bar ----------------------------------------------------
     const update = () => {
-        const pct = (video.currentTime / video.duration) * 100;
-        progress.style.width = `${pct}%`;
+        if (video.duration && progress) {
+            const pct = (video.currentTime / video.duration) * 100;
+            progress.style.width = `${pct}%`;
+        }
     };
+    // Store reference for cleanup
+    video._cutsceneUpdate = update;
+    video._cutsceneActive = true;
     video.addEventListener('timeupdate', update);
 
-    // ---- 4. UNMUTE BUTTON ---------------------------------------------------
-    const unmute = () => {
-        video.muted = false;
-        unmuteBtn.textContent = 'Sound On';
-        unmuteBtn.disabled = true;
-        unmuteBtn.style.opacity = '0.6';
+    // ---- 4. UNMUTE/MUTE BUTTON (toggle functionality) ----------------------
+    const toggleMute = () => {
+        video.muted = !video.muted;
+        if (unmuteBtn) {
+            if (video.muted) {
+                unmuteBtn.textContent = 'Unmute';
+                unmuteBtn.style.opacity = '1';
+            } else {
+                unmuteBtn.textContent = 'Mute';
+                unmuteBtn.style.opacity = '1';
+            }
+            // Button is always enabled so user can toggle
+            unmuteBtn.disabled = false;
+        }
     };
-    unmuteBtn.onclick = unmute;
-    // Also unmute on any click on the video itself
-    video.onclick = () => { if (video.muted) unmute(); };
+    if (unmuteBtn) {
+        unmuteBtn.onclick = (e) => {
+            e.stopPropagation(); // Prevent triggering screen click handler
+            toggleMute();
+        };
+    }
+    // Also toggle mute on any click on the video itself (but don't skip)
+    const videoClickHandler = (e) => {
+        e.stopPropagation(); // Prevent triggering screen click handler
+        if (video.muted) {
+            toggleMute();
+        }
+    };
+    video.onclick = videoClickHandler;
 
     // ---- 5. SKIP (any click, S key, button) ---------------------------------
     const finish = () => {
+        // Clean up handlers
+        video._cutsceneActive = false;
         screen.classList.add('ended', 'hidden');
         video.pause();
         video.removeEventListener('timeupdate', update);
-        document.removeEventListener('keydown', keyHandler);
+        video.onended = null;
+        video.onclick = null;
+        if (document._cutsceneKeyHandler) {
+            document.removeEventListener('keydown', document._cutsceneKeyHandler);
+            document._cutsceneKeyHandler = null;
+        }
         // → start the 3D hub world
         window.initMainMenu?.();
     };
 
-    skipBtn.onclick = finish;
-    video.onclick = (e) => { if (e.target === video) finish(); };
-    screen.onclick = (e) => { if (e.target === screen) finish(); };
+    if (skipBtn) {
+        skipBtn.onclick = (e) => {
+            e.stopPropagation(); // Prevent triggering screen click handler
+            finish();
+        };
+    }
+    
+    // Click anywhere on screen (except buttons/video) to skip
+    const screenClickHandler = (e) => {
+        // Skip if clicking on screen background or elements that aren't interactive
+        const target = e.target;
+        const isButton = target.closest('button');
+        const isVideo = target.closest('video');
+        const isProgressBar = target.id === 'cutscene-progress-bar' || target.closest('#cutscene-progress-bar');
+        
+        // Skip if clicking directly on screen or non-interactive elements
+        if (!isButton && !isVideo && !isProgressBar) {
+            finish();
+        }
+    };
+    screen.onclick = screenClickHandler;
+    
+    // Also allow clicking on the progress bar area to skip
+    if (progress) {
+        progress.onclick = (e) => {
+            e.stopPropagation(); // Prevent screen click handler
+            finish();
+        };
+    }
 
     const keyHandler = (e) => { if (e.key.toLowerCase() === 's') finish(); };
+    document._cutsceneKeyHandler = keyHandler; // Store reference for cleanup
     document.addEventListener('keydown', keyHandler);
 
     // ---- 6. Auto-finish when video ends ------------------------------------
     video.onended = () => setTimeout(finish, 400);
+    
+    // ---- 7. Start playing ------------------------------------
+    // Wait a moment for video to load, then play
+    video.addEventListener('loadeddata', () => {
+        const playPromise = video.play();
+        if (playPromise) {
+            playPromise.catch((err) => {
+                console.log('Video autoplay blocked or error:', err);
+            });
+        }
+    }, { once: true });
+    
+    // Fallback: try to play after a short delay
+    setTimeout(() => {
+        if (video.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+            const playPromise = video.play();
+            if (playPromise) {
+                playPromise.catch((err) => {
+                    console.log('Video play failed:', err);
+                });
+            }
+        }
+    }, 200);
 };
 
 // Function to hide all menu screens
 function hideAllMenuScreens() {
-    const menuScreens = ['main-menu', 'play-submenu', 'level-select', 'settings', 'credits', 'cinematic-credits', 'instructions', 'pause-menu'];
+    const menuScreens = ['main-menu', 'play-submenu', 'level-select', 'settings', 'credits', 'cinematic-credits', 'instructions', 'pause-menu', 'story-cutscene'];
     menuScreens.forEach(screenId => {
         const screen = document.getElementById(screenId);
         if (screen) {
@@ -281,113 +388,11 @@ function hideAllMenuScreens() {
 window.hideAllMenuScreens = hideAllMenuScreens;
 
 // ---------- Pause Menu Functions ----------
-let isGamePaused = false;
-let currentPausedLevel = null;
-let settingsReturnContext = null; // Track where settings was accessed from
+// Pause menu functionality has been moved to src/pause/PauseMenu.js
+// The PauseMenu module will create these global functions
 
-// Function to show pause menu
-window.showPauseMenu = function(levelNumber = null) {
-    console.log('showPauseMenu called with levelNumber:', levelNumber);
-    isGamePaused = true;
-    currentPausedLevel = levelNumber;
-    
-    // Hide all other menus
-    hideAllMenuScreens();
-    
-    // Show pause menu
-    const pauseMenu = document.getElementById('pause-menu');
-    console.log('Pause menu element found:', !!pauseMenu);
-    if (pauseMenu) {
-        pauseMenu.classList.remove('hidden');
-        console.log('Pause menu should be visible now');
-        createMenuParticles();
-    } else {
-        console.error('Pause menu element not found!');
-    }
-    
-    // Pause the game loop if it exists
-    if (window.pauseGameLoop) {
-        console.log('Pausing game loop...');
-        window.pauseGameLoop();
-    } else {
-        console.log('pauseGameLoop function not available');
-    }
-};
-
-// Function to resume game
-window.resumeGame = function() {
-    isGamePaused = false;
-    
-    // Hide pause menu
-    const pauseMenu = document.getElementById('pause-menu');
-    if (pauseMenu) {
-        pauseMenu.classList.add('hidden');
-    }
-    
-    // Resume the game loop if it exists
-    if (window.resumeGameLoop) {
-        window.resumeGameLoop();
-    }
-    
-    // Clear paused level reference
-    currentPausedLevel = null;
-};
-
-// Function to restart current level
-window.restartLevel = function() {
-    if (currentPausedLevel) {
-        // Resume first to clean up
-        window.resumeGame();
-        
-        // Restart the level
-        if (window.loadLevel) {
-            window.loadLevel(currentPausedLevel);
-        }
-    } else {
-        // If no specific level, just resume
-        window.resumeGame();
-    }
-};
-
-// Function to return to main menu from pause
-window.returnToMainMenuFromPause = function() {
-    // Resume first to clean up
-    window.resumeGame();
-    
-    // Return to main menu - use appropriate function based on context
-    if (currentPausedLevel === 'main') {
-        // If we were in Story Mode, use the special return function
-        if (window.returnToMainMenuFromStory) {
-            window.returnToMainMenuFromStory();
-        } else {
-            window.showMainMenu();
-        }
-    } else {
-        // If we were in a level, use the normal return function
-        if (window.returnToMainMenu) {
-            window.returnToMainMenu();
-        } else {
-            window.showMainMenu();
-        }
-    }
-};
-
-// Function to check if game is paused
-window.isGamePaused = function() {
-    return isGamePaused;
-};
-
-// Function to return from settings to the appropriate screen
-window.returnFromSettings = function() {
-    if (settingsReturnContext === 'pause') {
-        // Return to pause menu
-        showPauseMenu(currentPausedLevel);
-    } else {
-        // Return to main menu
-        showMainMenu();
-    }
-    settingsReturnContext = null; // Reset context
-};
+// Backwards compatibility - these functions are now handled by PauseMenu module
+// They will be overridden when PauseMenu.init() is called in main.js
 
 // Function to create floating particles for menu screens
 function createMenuParticles() {
@@ -426,54 +431,11 @@ window.startLevel = function(levelNumber) {
 };
 
 // ---------- Settings Functions ----------
-function setupSettingsHandlers() {
-    // Volume slider
-    const volumeSlider = document.getElementById('master-volume');
-    const volumeDisplay = document.getElementById('volume-display');
-    if (volumeSlider && volumeDisplay) {
-        volumeSlider.addEventListener('input', (e) => {
-            volumeDisplay.textContent = e.target.value + '%';
-            // Here you would apply the volume setting to the game
-        });
-    }
-    
-    // Mouse sensitivity slider
-    const sensitivitySlider = document.getElementById('mouse-sensitivity');
-    const sensitivityDisplay = document.getElementById('sensitivity-display');
-    if (sensitivitySlider && sensitivityDisplay) {
-        sensitivitySlider.addEventListener('input', (e) => {
-            sensitivityDisplay.textContent = e.target.value;
-            // Here you would apply the sensitivity setting to the game
-        });
-    }
-}
+// Settings functionality has been moved to src/settings/SettingsMenu.js
+// The SettingsMenu module will create these global functions
 
-// Toggle functions for settings
-window.toggleFullscreen = function() {
-    const button = event.target;
-    if (button.textContent === 'OFF') {
-        button.textContent = 'ON';
-        button.style.background = 'rgba(0, 255, 0, 0.3)';
-        // Here you would enable fullscreen
-    } else {
-        button.textContent = 'OFF';
-        button.style.background = 'rgba(255, 0, 0, 0.3)';
-        // Here you would disable fullscreen
-    }
-};
-
-window.toggleSoundEffects = function() {
-    const button = event.target;
-    if (button.textContent === 'ON') {
-        button.textContent = 'OFF';
-        button.style.background = 'rgba(255, 0, 0, 0.3)';
-        // Here you would disable sound effects
-    } else {
-        button.textContent = 'ON';
-        button.style.background = 'rgba(0, 255, 0, 0.3)';
-        // Here you would enable sound effects
-    }
-};
+// Backwards compatibility - these functions are now handled by SettingsMenu module
+// They will be overridden when SettingsMenu.init() is called in main.js
 
 // ---------- Intro Screen Management ----------
 let introCompleted = false;
