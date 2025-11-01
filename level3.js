@@ -23,9 +23,9 @@ let cubeOnPlateTimer = null;
 
 // ADD THIS LINE - Define platePositions at module level
 let platePositions = {
-    plate13: new THREE.Vector3(44.49, 3, 15),
-    plate11: new THREE.Vector3(44.49, 4, 10),  
-    plate1: new THREE.Vector3(38.01, 5, 48)
+    plate1: new THREE.Vector3(38.5, 5, 45),     // Model 1 position
+    plate11: new THREE.Vector3(43.9, 3, 10),    // Model 11 position  
+    plate13: new THREE.Vector3(43.9, 3, 15)     // Model 13 position
 };
 
 let cubeMixers = [];   // { cube, mixer, action, wasPlaying }
@@ -34,12 +34,21 @@ let doorBodies = []; // Array to store door physics bodies
 // ── GOAL CONDITION VARIABLE ─────────────────────────────────────
 let goalReached = false; //
 
+// ── DEATH CONDITION VARIABLES ─────────────────────────────────────
+const DEADLY_FLOOR_Y = -2;  // Top surface Y for all deadly floors
+const deadlyFloors = [
+    { centerX: 31.25, halfX: 6.25, centerZ: 15.35, halfZ: 14.65 },  // floor4 (magenta)
+    { centerX:  6.25, halfX: 6.25, centerZ:  0.2,  halfZ: 37.5  },  // floor8 (red)
+    { centerX: -6.25, halfX: 6.25, centerZ: -3.0675, halfZ: 46.9325 }  // floor9 (lime)
+];
+let playerDied = false;  // Prevent spam logging
+
 // ── UI & INPUT ───────────────────────────────────────────────────────
 const DOOR_INTERACT_DISTANCE = 5;          // max distance to interact
 const MOUSE_SENS = 0.002;                  // mouse look sensitivity
 const PI_2 = Math.PI / 2;
 // ── FIRST PERSON CAMERA SETUP ───────────────────────────────────────
-const EYE_HEIGHT = 1.6;                // Player eye height
+const EYE_HEIGHT = 1;                // Player eye height
 const PITCH_CLAMP = Math.PI / 2 - 0.01; // Prevent flipping
 // ── Update these globals for FPS mouse look ─────────────────────────
 let yaw = 0;
@@ -52,7 +61,7 @@ let player = null;                         // reference to the physics box mesh
 // ── BULLETS & MOVABLE CUBES ───────────────────────────────────────
 const BULLET_SPEED = 60;               // units/second
 const BULLET_MAX_DISTANCE = 100;       // units
-const BOX_SIZE = 1;                    // size of the sci-fi cube model (scale later)
+const BOX_SIZE = 1.3;                    // size of the sci-fi cube model (scale later)
 
 let bullets = [];                      // active Bullet instances
 let movableBoxes = [];                 // all sci-fi cubes
@@ -62,6 +71,94 @@ const MIN_CUBE_DISTANCE = 5;           // Minimum distance between cube and play
 const MAX_CUBE_DISTANCE = 30;          // Maximum distance for cube dragging
 const SCROLL_SENSITIVITY = 10;        // How fast scroll changes distance
 let lastValidBoxPos = new THREE.Vector3();
+
+// ── CHECK FOR DEATH ON DEADLY FLOORS ──────────────────────────────
+function checkForDeath() {
+    if (!boxBody || goalReached || playerDied) return;
+    
+    const playerPos = boxBody.position;
+    const playerBottomY = playerPos.y - 0.5;  // Player bottom
+    
+    // Quick Y filter: must be near deadly floor height
+    if (Math.abs(playerBottomY - DEADLY_FLOOR_Y) > 0.4) return;
+    
+    const px = playerPos.x;
+    const pz = playerPos.z;
+    
+    // Check overlap with each deadly floor
+    for (const floor of deadlyFloors) {
+        if (Math.abs(px - floor.centerX) < floor.halfX + 0.5 &&
+            Math.abs(pz - floor.centerZ) < floor.halfZ + 0.5) {
+            
+            playerDied = true;
+            showDeathMessage();
+            
+            // 🔥 TODO: Add full restart logic here later
+            // - Reset player position: boxBody.position.set(47.3, 3, 0);
+            // - Reset yaw/pitch, velocities, clear selectedBox, etc.
+            // - Reset playerDied = false;
+            // - Maybe show "You Died!" UI and restart after 2s
+            
+            return;
+        }
+    }
+}
+// ── **DEATH UI** ───────────────────────────────────────────────────
+function showDeathMessage() {
+    // 1. CREATE DEATH SCREEN
+    const deathDiv = document.createElement('div');
+    deathDiv.className = "game-ui";
+    deathDiv.innerHTML = `
+        <h1 style="margin: 0 0 30px 0; font-size: 36px;">💀 YOU DIED! 💀</h1>
+        <button id="restart-death-btn">🔄 RESTART LEVEL</button>
+        <button id="menu-death-btn">🏠 MAIN MENU</button>
+        <p style="margin-top: 25px; font-size: 16px; opacity: 0.8;">Press buttons to continue</p>
+    `;
+    deathDiv.style.cssText = `
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        color: #ff4444; text-align: center; z-index: 1001;
+        background: rgba(20, 20, 40, 0.95); padding: 50px; border-radius: 25px;
+        border: 4px solid #ff0000; box-shadow: 0 20px 60px rgba(255,0,0,0.4);
+        font-family: Arial, sans-serif; font-weight: bold; min-width: 350px;
+        button {
+            display: block; margin: 20px auto; padding: 18px 40px;
+            font-size: 22px; font-weight: bold; border: none; border-radius: 15px;
+            cursor: pointer; transition: all 0.3s; min-width: 250px;
+        }
+        #restart-death-btn {
+            background: linear-gradient(145deg, #ffaa00, #ff7700); color: white;
+            box-shadow: 0 10px 30px rgba(255,170,0,0.4);
+        }
+        #restart-death-btn:hover { transform: scale(1.05); box-shadow: 0 15px 40px rgba(255,170,0,0.6); }
+        #menu-death-btn {
+            background: linear-gradient(145deg, #666, #444); color: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+        #menu-death-btn:hover { transform: scale(1.05); box-shadow: 0 15px 40px rgba(0,0,0,0.6); }
+    `;
+    document.body.appendChild(deathDiv);
+
+    // 2. **RESTART BUTTON** → Reload level 3 (full reset!)
+    document.getElementById('restart-death-btn').onclick = () => {
+        deathDiv.remove();
+        if (window.loadLevel) {
+            window.loadLevel(3);  // 🔥 Full level restart (calls initLevel + cleanup)
+        }
+    };
+
+    // 3. **MAIN MENU BUTTON** → Return to hub
+    document.getElementById('menu-death-btn').onclick = () => {
+        deathDiv.remove();
+        cleanupLevel();  // Quick cleanup
+        if (returnCallback) returnCallback();  // → main.js returnToMainMenu
+    };
+
+    // 4. **PAUSE GAME** (like victory)
+    safePauseGameLoop();
+    document.exitPointerLock().catch(() => {});
+    
+    console.log("💀 DEATH SCREEN SHOWN");
+}
 
 class Bullet {
     constructor(position, direction) {
@@ -131,6 +228,7 @@ function checkGoalCondition() {
 // Add this function to show victory message
 function showVictoryMessage() {
     const victoryDiv = document.createElement('div');
+    victoryDiv.id = 'victory-message';
     victoryDiv.className = "game-ui";
     victoryDiv.textContent = 'LEVEL 3 COMPLETED! Returning to main menu...';
     victoryDiv.style.cssText = `
@@ -176,7 +274,8 @@ function createMovableBox(position) {
                 mass: 200,                     
                 shape,
                 linearDamping: 0.9,
-                angularDamping: 0.9
+                angularDamping: 0.9,
+                material: world.materials.cube  // Use the cube material
             });
             body.position.copy(cube.position);
             world.addBody(body);
@@ -213,20 +312,23 @@ function createMovableBox(position) {
 }
 
 function createPuzzleElements() {
-    // Staircase cube (ground floor)
-    createMovableBox(new THREE.Vector3(46, 5, 0));
+    createMovableBox(new THREE.Vector3(47.3, 1, 5));
 
     // hall 1
     createMovableBox(new THREE.Vector3(40, 1, -30));
     createMovableBox(new THREE.Vector3( 40, 1, 0));
     createMovableBox(new THREE.Vector3( 40, 1, 10));
+    // hall 2
+    createMovableBox(new THREE.Vector3(27, 1, -30));
+    createMovableBox(new THREE.Vector3( 27, 1, 0));
+    createMovableBox(new THREE.Vector3( 27, 1, -20));
+    createMovableBox(new THREE.Vector3(27, 1, -10));
     // hall 3
     createMovableBox(new THREE.Vector3(14, 1, -30));
     createMovableBox(new THREE.Vector3( 20, 1, 0));
     createMovableBox(new THREE.Vector3( 19, 1, 10));
 }
 
-// Initialize the level
 export function initLevel(levelScene, levelCamera, levelRenderer, levelLabelRenderer, callback) {
     // Store references to the passed parameters
     scene = levelScene;
@@ -242,12 +344,12 @@ export function initLevel(levelScene, levelCamera, levelRenderer, levelLabelRend
     camera.position.set(0, 5, 10);
     camera.lookAt(0, 0, 0);
 
-    // **RESET FPS CAMERA**
-    yaw = 0;
-    pitch = 0;
+    // **RESET FPS CAMERA TO FACE POSITIVE Z**
+    yaw = Math.PI;    // 180 degrees - facing positive Z
+    pitch = 0;        // Level view
     
-    // **START LOOKING FORWARD**
-    camera.rotation.set(0, 0, 0);
+    // **START LOOKING TOWARD POSITIVE Z**
+    camera.rotation.set(0, Math.PI, 0); // Y rotation = PI (180 degrees)
 }
 
 // Add this array to store floor bodies at the module level
@@ -264,6 +366,8 @@ function setupScene() {
         gravity: new CANNON.Vec3(0, -9.81, 0)
     });
 
+    // ADD THIS LINE - Set up contact materials
+    setupContactMaterials();
 
     // Initialize floor bodies array
     floorBodies = [];
@@ -346,7 +450,7 @@ floor3Mesh.userData.physicsBody = floor3Body;
 // Create fourth platform mesh (magenta)
 const floor4Geo = new THREE.PlaneGeometry(12.5, 29.3); // Width=12.5, Depth=29.3
 const floor4Mat = new THREE.MeshBasicMaterial({
-    color: 0xff00ff, // Magenta to distinguish from green, yellow, cyan platforms, and blue ground gonna die if touched
+    color: 0xff00ff, // Magenta gonna die if touched
     side: THREE.DoubleSide
 });
 const floor4Mesh = new THREE.Mesh(floor4Geo, floor4Mat);
@@ -449,7 +553,7 @@ floor7Mesh.userData.physicsBody = floor7Body;
 // Create eighth platform mesh (red)
 const floor8Geo = new THREE.PlaneGeometry(12.5, 75); // Width=12.5, Depth=75
 const floor8Mat = new THREE.MeshBasicMaterial({
-    color: 0xff0000, // Red to distinguish from other platforms and ground
+    color: 0xff0000, // Red gonna die if touch
     side: THREE.DoubleSide
 });
 const floor8Mesh = new THREE.Mesh(floor8Geo, floor8Mat);
@@ -475,7 +579,7 @@ floor8Mesh.userData.physicsBody = floor8Body;
 // Create ninth platform mesh (lime)
 const floor9Geo = new THREE.PlaneGeometry(12.5, 93.865); // Width=12.5, Depth=93.865
 const floor9Mat = new THREE.MeshBasicMaterial({
-    color: 0x00ff00, // Lime (using 0x00ff00, distinct in context) to distinguish from other platforms and ground
+    color: 0x00ff00, // Lime gonna die
     side: THREE.DoubleSide
 });
 const floor9Mesh = new THREE.Mesh(floor9Geo, floor9Mat);
@@ -1847,90 +1951,117 @@ floorBodies.push(floor20Body); // Add to floor bodies array
 // Store reference for synchronization
 floor20Mesh.userData.physicsBody = floor20Body;
 
-// Define positions for the 13 models (you can tweak these coordinates)
-const modelPositions = [
-    new THREE.Vector3(38.01, 5, 48),   // Model 1
-    new THREE.Vector3(44.49, 3, 0),   // Model 2
-    new THREE.Vector3(39.5, 3.5, -49.49),   // Model 3
-    new THREE.Vector3(38.01, 1, 0),   // Model 4
-    new THREE.Vector3(38.01, 2, 38),     // Model 5
-    new THREE.Vector3(39.5, 4, 49.49),    // Model 6
-    new THREE.Vector3(48, 4, -49.49),    // Model 7
-    new THREE.Vector3(38.01, 1.5, 20),    // Model 8
-    new THREE.Vector3(43.5, 3, -49.49),    // Model 9
-    new THREE.Vector3(49.49, 5, -4.2),   // Model 10 (elevated)
-    new THREE.Vector3(44.49, 4, 10),    // Model 11 (elevated)
-    new THREE.Vector3(44, 3.5, 49.49),   // Model 12 (higher)
-    new THREE.Vector3(44.49, 3, 15)     // Model 13 (higher)
-];
+    // Define positions for the 13 models (you can tweak these coordinates)
+    const modelPositions = [
+        new THREE.Vector3(38.5, 5, 45),   // Model 1
+        new THREE.Vector3(43.9, 3, 0),   // Model 2
+        new THREE.Vector3(39.5, 3.5, -48.9),   // Model 3
+        new THREE.Vector3(38.5, 1, 0),   // Model 4
+        new THREE.Vector3(38.5, 2, 38),     // Model 5
+        new THREE.Vector3(39.5, 4, 48.9),    // Model 6
+        new THREE.Vector3(48, 4, -48.9),    // Model 7
+        new THREE.Vector3(38.5, 1.5, 20),    // Model 8
+        new THREE.Vector3(43.5, 3, -48.9),    // Model 9
+        new THREE.Vector3(48.9, 5, -4.2),   // Model 10
+        new THREE.Vector3(43.9, 3, 10),    // Model 11
+        new THREE.Vector3(44, 3.5, 48.9),   // Model 12
+        new THREE.Vector3(43.9, 3, 15)     // Model 13
+    ];
 
-// Array of model names
-const modelNames = [
-    'one', 'two', 'three', 'four', 'five', 'six', 'seven', 
-    'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen'
-];
+    // Array of model names
+    const modelNames = [
+        'one', 'two', 'three', 'four', 'five', 'six', 'seven', 
+        'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen'
+    ];
 
-// Load and place the 13 models
-for (let i = 0; i < 13; i++) {
-    const loader = new GLTFLoader();
-    const modelName = modelNames[i];
+    // Load and place the 13 models
+    for (let i = 0; i < 13; i++) {
+        const loader = new GLTFLoader();
+        const modelName = modelNames[i];
     
-    loader.load(
-        `./${modelName}.glb`,
-        (gltf) => {
-            const model = gltf.scene;
-            model.position.copy(modelPositions[i]);
+        loader.load(
+            `./${modelName}.glb`,
+            (gltf) => {
+                const model = gltf.scene;
+                model.position.copy(modelPositions[i]);
+                // Double the scale of the model
+                model.scale.set(2, 2, 2);
             
-            if(modelNames[i] === 'six' || modelNames[i] === 'twelve'){
-                model.rotation.y = Math.PI;
-            }
-            if(modelNames[i] === 'one' || modelNames[i] === 'four' || modelNames[i] === 'five' || modelNames[i] === 'eight'){
-                model.rotation.y = Math.PI/2;
-            }
-            if(modelNames[i] === 'ten' || modelNames[i] === 'two' || modelNames[i] === 'eleven' || modelNames[i] === 'thirteen'){
-                model.rotation.y = -Math.PI/2;
-            }
-             
-            // Enable shadows
-            model.traverse(child => {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
+                if (modelName === 'six' || modelName === 'twelve') {
+                    model.rotation.y = Math.PI;
+                } else if (modelName === 'one' || modelName === 'four' || modelName === 'five' || modelName === 'eight') {
+                    model.rotation.y = Math.PI / 2;
+                } else if (modelName === 'ten' || modelName === 'two' || modelName === 'eleven' || modelName === 'thirteen') {
+                    model.rotation.y = -Math.PI / 2;
+                } else if (modelName === 'three' || modelName === 'nine' || modelName === 'seven') {
+                    model.rotation.y = 0;
                 }
-            });
-            
-            scene.add(model);
-            const plate = new CANNON.Body({
-                shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.1)),
-                mass: 0
-            });
-            if(modelNames[i] === 'six' || modelNames[i] === 'twelve'){
-                plate.position.copy(model.position);
-                plate.quaternion.setFromEuler(0,Math.PI, 0);
+                
+                // Enable shadows
+                model.traverse(child => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                scene.add(model);
+
+                // Create physics body for ALL models
+                let plate;
+                if(modelName === 'six' || modelName === 'twelve'){
+                    plate = new CANNON.Body({
+                        shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.1)),
+                        mass: 0
+                    });
+                    plate.position.copy(modelPositions[i]);
+                    plate.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+                }
+                if(modelName === 'one' || modelName === 'four' || modelName === 'five' || modelName === 'eight'){
+                    // plate.position.copy(model.position);
+                    // plate.quaternion.setFromEuler(0,Math.PI / 2, 0);
+                    plate = new CANNON.Body({
+                        shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.1)),
+                        mass: 0
+                    });
+                    plate.position.copy(modelPositions[i]);
+                    plate.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+                }
+                if(modelName === 'ten' || modelName === 'two' || modelName === 'eleven' || modelName === 'thirteen'){
+                    // plate.position.copy(model.position);
+                    // plate.quaternion.setFromEuler(0,-Math.PI / 2, 0);
+                    plate = new CANNON.Body({
+                        shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.1)),
+                        mass: 0
+                    });
+                    plate.position.copy(modelPositions[i]);
+                    plate.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+                }
+                if(modelName === 'three' || modelName === 'seven' || modelName === 'nine'){
+                    // plate.position.copy(model.position);
+                    // plate.quaternion.setFromEuler(0,-Math.PI / 2, 0);
+                    plate = new CANNON.Body({
+                        shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.1)),
+                        mass: 0
+                    });
+                    plate.position.copy(modelPositions[i]);
+                    plate.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+                }
+                world.addBody(plate);
+                // Store reference for synchronization
+                // if (model && plate) {
+                //     model.userData.physicsBody = plate;  // Link model to physics body
+                //     plate.userData = plate.userData || {};
+                //     plate.userData.mesh = model;         // Link physics body to model
+                // }
+                console.log(`Model ${modelName}.glb loaded at position:`, modelPositions[i]);
+            },
+            undefined,
+            (error) => {
+                console.error(`Error loading model ${modelName}.glb:`, error);
             }
-            if(modelNames[i] === 'one' || modelNames[i] === 'four' || modelNames[i] === 'five' || modelNames[i] === 'eight'){
-                plate.position.copy(model.position);
-                plate.quaternion.setFromEuler(0,Math.PI / 2, 0);
-            }
-            if(modelNames[i] === 'ten' || modelNames[i] === 'two' || modelNames[i] === 'eleven' || modelNames[i] === 'thirteen'){
-                plate.position.copy(model.position);
-                plate.quaternion.setFromEuler(0,-Math.PI / 2, 0);
-            }
-            world.addBody(plate);
-            // Store reference for synchronization
-            if (model && plate) {
-                model.userData.physicsBody = plate;  // Link model to physics body
-                plate.userData = plate.userData || {};
-                plate.userData.mesh = model;         // Link physics body to model
-            }
-            console.log(`Model ${modelName}.glb loaded at position:`, modelPositions[i]);
-        },
-        undefined,
-        (error) => {
-            console.error(`Error loading model ${modelName}.glb:`, error);
-        }
-    );
-}
+        );
+    }
 
 
 
@@ -2065,7 +2196,7 @@ document.addEventListener('keyup', (event) => {
     keys[event.code] = false;
 });
 
-// Add this function to check if player is on any floor
+// Add this function to check if player is on any floor OR on a cube
 function isPlayerOnFloor() {
     if (!boxBody) return false;
     
@@ -2092,7 +2223,96 @@ function isPlayerOnFloor() {
         }
     }
     
+    // NEW: Check if player is standing on any cube
+    for (const cube of movableBoxes) {
+        const cubeBody = cube.userData.physicsBody;
+        if (!cubeBody) continue;
+        
+        const cubePos = cubeBody.position;
+        const cubeHalfExtents = new CANNON.Vec3(BOX_SIZE / 2, BOX_SIZE / 2, BOX_SIZE / 2);
+        
+        // Calculate cube top surface height
+        const cubeTopY = cubePos.y + cubeHalfExtents.y;
+        
+        // Check if player is standing on this cube
+        const isOnThisCube = 
+            playerPos.y - playerHalfHeight <= cubeTopY + 0.1 && // Player bottom near cube top
+            playerPos.y - playerHalfHeight >= cubeTopY - 0.1 && // Within small tolerance
+            Math.abs(playerPos.x - cubePos.x) <= cubeHalfExtents.x + 0.5 && // X overlap
+            Math.abs(playerPos.z - cubePos.z) <= cubeHalfExtents.z + 0.5;   // Z overlap
+        
+        if (isOnThisCube) {
+            console.log("Player standing on cube!");
+            return true;
+        }
+    }
+    
     return false;
+}
+
+function setupContactMaterials() {
+    // Create materials for different object types
+    const playerMaterial = new CANNON.Material("player");
+    const cubeMaterial = new CANNON.Material("cube");
+    const floorMaterial = new CANNON.Material("floor");
+
+    // 🔥 **ADD THIS BLOCK (fixes crash instantly)**
+    world.materials = {
+        player: playerMaterial,
+        cube: cubeMaterial,
+        floor: floorMaterial
+    };
+
+    // Player-Cube contact material (high friction)
+    const playerCubeContact = new CANNON.ContactMaterial(
+        playerMaterial,
+        cubeMaterial,
+        {
+            friction: 1.7,      // High friction between player and cubes
+            restitution: 0.01,   // Low bounce
+            contactEquationStiffness: 1e8,
+            contactEquationRelaxation: 3
+        }
+    );
+
+    // Player-Floor contact material
+    const playerFloorContact = new CANNON.ContactMaterial(
+        playerMaterial,
+        floorMaterial,
+        {
+            friction: 0.4,      // Normal friction for floors
+            restitution: 0.3,
+            contactEquationStiffness: 1e8,
+            contactEquationRelaxation: 3
+        }
+    );
+
+    // // Cube-Floor contact material
+    // const cubeFloorContact = new CANNON.ContactMaterial(
+    //     cubeMaterial,
+    //     floorMaterial,
+    //     {
+    //         friction: 0.5,
+    //         restitution: 0.2,
+    //         contactEquationStiffness: 1e8,
+    //         contactEquationRelaxation: 3
+    //     }
+    // );
+
+    // Add contact materials to world
+    world.addContactMaterial(playerCubeContact);
+    world.addContactMaterial(playerFloorContact);
+    // world.addContactMaterial(cubeFloorContact);
+
+    // Set default contact material (fallback)
+    // world.defaultContactMaterial = new CANNON.ContactMaterial(
+    //     new CANNON.Material("default"),
+    //     new CANNON.Material("default"),
+    //     {
+    //         friction: 0.3,
+    //         restitution: 0.3
+    //     }
+    // );
 }
 
 // Update the jump function to use floor contact detection
@@ -2113,21 +2333,36 @@ function addPlayer() {
     boxMesh = new THREE.Mesh(boxGeo, boxMat);
 
     // SPAWN ON PLATFORM
-    boxMesh.position.set(46.5, 3, 0);  // Center of first green platform
+    boxMesh.position.set(47.3, 3, 0);  // Center of first green platform
     boxMesh.castShadow = true;
+    
+    // 🔥 ROTATE PLAYER MESH TO FACE POSITIVE Z
+    boxMesh.rotation.y = Math.PI; // 180 degrees to face positive Z
+    
     scene.add(boxMesh);
 
     boxBody = new CANNON.Body({
-        mass: 100,
+        mass: 60,
         shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
         linearDamping: 0.9,
-        angularDamping: 1
+        angularDamping: 1,
+        material: world.materials.player  // Use the player material
     });
     boxBody.position.copy(boxMesh.position);
+    
+    // 🔥 ROTATE PHYSICS BODY TO MATCH
+    boxBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI);
+    
     world.addBody(boxBody);
     boxMesh.userData.physicsBody = boxBody;
 
     player = boxMesh;
+    
+    // 🔥 ALSO ROTATE THE CAMERA TO FACE POSITIVE Z
+    yaw = Math.PI; // Set yaw to 180 degrees (facing positive Z)
+    pitch = 0;     // Reset pitch to level
+    
+    console.log("Player spawned facing positive Z direction");
 }
 function checkBulletCollisions(bullet, i) {
     const bb = new THREE.Box3().setFromObject(bullet.mesh);
@@ -2228,50 +2463,54 @@ if (!firstDoorOpenable) {
 
 // ── CHECK CUBES ON SECOND DOOR PLATES ──────────────────────────
 if (!secondDoorOpenable) {
-    // Check each plate
+    // Reset all plate status first
+    let anyPlateChanged = false;
+    
     Object.keys(platePositions).forEach(plateKey => {
         const platePos = platePositions[plateKey];
         let cubeOnThisPlate = false;
         
         for (const box of movableBoxes) {
             const boxPos = box.position;
+            const body = box.userData.physicsBody;
             
-            // Check if cube is on the plate (within XZ range and close to plate height)
+            // More precise plate detection
             const distanceXZ = Math.sqrt(
                 Math.pow(boxPos.x - platePos.x, 2) + 
                 Math.pow(boxPos.z - platePos.z, 2)
             );
             const heightDiff = Math.abs(boxPos.y - platePos.y);
             
-            // If cube is within 2 units in XZ and resting on plate (height < 2)
-            if (distanceXZ < 2 && heightDiff < 2 && box.userData.physicsBody.velocity.length() < 0.1) {
+            // Check if cube is centered on plate (tighter bounds) and at rest
+            if (distanceXZ < 1.5 && heightDiff < 1.5 && body.velocity.length() < 0.5) {
                 cubeOnThisPlate = true;
                 break;
             }
         }
         
+        // Handle plate timer logic
         if (cubeOnThisPlate) {
             if (!plateTimers[plateKey]) {
                 // Start timer when cube first lands on plate
                 plateTimers[plateKey] = setTimeout(() => {
                     platesOccupied[plateKey] = true;
-                    console.log(`Plate ${plateKey} is now occupied!`);
+                    console.log(`✅ Plate ${plateKey} is now occupied!`);
                     plateTimers[plateKey] = null;
-                    
-                    // Check if all plates are occupied
                     checkSecondDoorUnlock();
-                }, 3000); // 3 seconds
+                }, 2000); // 2 seconds for more responsive feel
             }
         } else {
             // Reset timer if cube leaves plate
             if (plateTimers[plateKey]) {
                 clearTimeout(plateTimers[plateKey]);
                 plateTimers[plateKey] = null;
+                console.log(`⏱️ Timer reset for plate ${plateKey}`);
             }
             // Reset plate status if cube leaves
             if (platesOccupied[plateKey]) {
                 platesOccupied[plateKey] = false;
-                console.log(`Plate ${plateKey} is no longer occupied`);
+                console.log(`❌ Plate ${plateKey} is no longer occupied`);
+                secondDoorOpenable = false; // Door locks if any plate becomes unoccupied
             }
         }
     });
@@ -2320,12 +2559,12 @@ if (selectedBox && document.pointerLockElement === renderer.domElement) {
 }
 
     // ── PLAYER MOVEMENT (WASD) ───────────────────────────────────────
-    const speed = 7;
+    const speed = 4;
     const move = new THREE.Vector3();
-    if (keys['KeyW']) move.z += 1;
-    if (keys['KeyS']) move.z -= 1;
-    if (keys['KeyA']) move.x -= 1;
-    if (keys['KeyD']) move.x += 1;
+    if (keys['KeyW']) move.z += 2;
+    if (keys['KeyS']) move.z -= 2;
+    if (keys['KeyA']) move.x -= 2;
+    if (keys['KeyD']) move.x += 2;
     if (move.lengthSq() > 0) {
         move.normalize().multiplyScalar(speed);
         // apply in world space (rotate by yaw)
@@ -2353,6 +2592,8 @@ if (boxMesh && boxBody) {
     boxMesh.quaternion.copy(boxBody.quaternion);
 }
 
+checkForDeath();
+
 // ── SYNC STATIC OBJECTS ─────────────────────────────────────────
 scene.traverse(obj => {
     if (obj.userData.physicsBody && obj !== boxMesh) {
@@ -2376,38 +2617,40 @@ scene.traverse(obj => {
         }
     });
 
-// ── UI PROMPT ─────────────────────────────────────────────────────
-const targeted = getTargetedDoor();
-doorPromptDiv.style.display = targeted ? 'block' : 'none';
+    // ── UI PROMPT ─────────────────────────────────────────────────────
+    const targeted = getTargetedDoor();
 
-// Show messages for locked doors
-if (!firstDoorOpenable && doors[0] && !doors[0].isOpen) {
-    const direction = new THREE.Vector3();
-    camera.getWorldDirection(direction);
-    raycaster.set(camera.position, direction);
-    raycaster.far = DOOR_INTERACT_DISTANCE;
-    const hits = raycaster.intersectObject(doors[0].model, true);
+    // Update door prompt based on current state
+    if (targeted) {
+        const doorIndex = doors.indexOf(targeted);
     
-    if (hits.length > 0 && camera.position.distanceTo(doors[0].model.position) <= DOOR_INTERACT_DISTANCE) {
-        doorPromptDiv.textContent = 'Place cube on plate to unlock';
-        doorPromptDiv.style.display = 'block';
+        if (doorIndex === 0) {
+            // First door logic
+            if (firstDoorOpenable) {
+                doorPromptDiv.textContent = 'Press E to open';
+                doorPromptDiv.style.display = 'block';
+            } else {
+                doorPromptDiv.textContent = 'Place cube on plate to unlock';
+                doorPromptDiv.style.display = 'block';
+            }
+        } else if (doorIndex === 1) {
+            // Second door logic
+            if (secondDoorOpenable) {
+                doorPromptDiv.textContent = 'Press E to open';
+                doorPromptDiv.style.display = 'block';
+            } else {
+                const occupiedCount = Object.values(platesOccupied).filter(Boolean).length;
+                doorPromptDiv.textContent = `Place cubes on plates (${occupiedCount}/3 occupied)`;
+                doorPromptDiv.style.display = 'block';
+            }
+        } else {
+            // Other doors (always openable)
+            doorPromptDiv.textContent = 'Press E to open';
+            doorPromptDiv.style.display = 'block';
+        }
+    } else {
+        doorPromptDiv.style.display = 'none';
     }
-}
-
-// Show message for second door when not openable
-if (!secondDoorOpenable && doors[1] && !doors[1].isOpen) {
-    const direction = new THREE.Vector3();
-    camera.getWorldDirection(direction);
-    raycaster.set(camera.position, direction);
-    raycaster.far = DOOR_INTERACT_DISTANCE;
-    const hits = raycaster.intersectObject(doors[1].model, true);
-    
-    if (hits.length > 0 && camera.position.distanceTo(doors[1].model.position) <= DOOR_INTERACT_DISTANCE) {
-        const occupiedCount = Object.values(platesOccupied).filter(Boolean).length;
-        doorPromptDiv.textContent = `Place cubes on plates (${occupiedCount}/3 occupied)`;
-        doorPromptDiv.style.display = 'block';
-    }
-}
 
     // ── CAMERA ───────────────────────────────────────────────────────
     updateCamera();
@@ -2586,24 +2829,24 @@ scene.add(doormesh);
             console.error('Error loading map.glb:', error);
         }
     );
-    const firstPlateGeo = new THREE.BoxGeometry(3.2, 0.2, 2); 
-    const firstPlateMat = new THREE.MeshBasicMaterial({
-        color: 0x800000,          // maroon – distinct
+    const firstPlateGeo = new THREE.BoxGeometry(1.5, 0.2, 1.5); 
+    const firstPlateMat = new THREE.MeshStandardMaterial({
+        color: 0x0000ff,          // blue
         side: THREE.DoubleSide,
     });
     const firstPlateMesh = new THREE.Mesh(firstPlateGeo, firstPlateMat);
     firstPlateMesh.position.set(47.5, 0, 15);      
     firstPlateMesh.receiveShadow = true;
     scene.add(firstPlateMesh);
-                            const firstPlateBody = new CANNON.Body({
-                                shape: new CANNON.Box(new CANNON.Vec3(3.2/2, 0.2/2, 1)),
-                                mass: 0
-                            });
-                            // Position physics body at the same height
+    const firstPlateBody = new CANNON.Body({
+        shape: new CANNON.Box(new CANNON.Vec3(1.5/2, 0.2/2, 1.5/2)),
+        mass: 0
+    });
+    // Position physics body at the same height
     firstPlateBody.position.set(47.5, 0, 15);
-                            firstPlateBody.quaternion.setFromEuler(0, -Math.PI / 2, 0);
-                            world.addBody(firstPlateBody);
-                            firstPlateMesh.userData.physicsBody = firstPlateBody;
+    firstPlateBody.quaternion.setFromEuler(0, -Math.PI / 2, 0);
+    world.addBody(firstPlateBody);
+    firstPlateMesh.userData.physicsBody = firstPlateBody;
 }
 
 
@@ -2715,12 +2958,12 @@ function updateBullets(delta) {
 export function cleanupLevel() {
     console.log("Level 3 cleanup started");
     
-    // 1. Remove UI
-    document.querySelectorAll('.game-ui').forEach(el => {
-        if (el.textContent !== 'LEVEL 3 COMPLETED! Returning to main menu...') {
-            el.remove();
-        }
-    });
+    // Replace the UI removal block:
+document.querySelectorAll('.game-ui').forEach(el => {
+    if (el.id !== 'victory-message') {  // 🔥 Keep victory, remove ALL else (incl. death)
+        el.remove();
+    }
+});
 
     // 2. Remove event listeners
     document.removeEventListener('pointerlockchange', onPointerLockChange);
@@ -2783,6 +3026,8 @@ export function cleanupLevel() {
         });
     }
 
+    // Reset death flag
+    playerDied = false;
     console.log("Level 3 cleanup completed");
 }
 
@@ -2801,7 +3046,6 @@ function safePauseGameLoop() {
     }
 }
 
-// ── **REPLACE** the entire `updateCamera()` function ───────────────
 function updateCamera() {
     if (!player) return;
     
@@ -2818,22 +3062,23 @@ function updateCamera() {
     camera.position.copy(player.position);
     camera.position.y += EYE_HEIGHT;
     
-    // **DIRECT ROTATION** (no offsets, no collisions needed)
+    // **DIRECT ROTATION** (using the yaw and pitch that now start at PI)
     camera.rotation.order = 'YXZ';
-    camera.rotation.y = yaw;
-    camera.rotation.x = pitch;
+    camera.rotation.y = yaw;    // This should be PI (180 degrees) initially
+    camera.rotation.x = pitch;  // This should be 0 initially
 }
 
 // Make functions available for the main game loop
 window.returnToMainMenuFromLevel3 = returnCallback;
 function checkSecondDoorUnlock() {
-    const allPlatesOccupied = platesOccupied.plate13 && platesOccupied.plate11 && platesOccupied.plate1;
+    const allPlatesOccupied = platesOccupied.plate1 && platesOccupied.plate11 && platesOccupied.plate13;
     
     if (allPlatesOccupied && !secondDoorOpenable) {
         secondDoorOpenable = true;
-        console.log("SECOND DOOR UNLOCKED! All plates are occupied!");
-    } else if (!allPlatesOccupied && secondDoorOpenable) {
-        secondDoorOpenable = false;
-        console.log("Second door locked - plates are no longer all occupied");
+        console.log("🎉 SECOND DOOR UNLOCKED! All three plates are occupied!");
+        
+        // Visual feedback - you can add some effect here
+        // For example, change the color of the second door or add a sound
     }
 }
+
