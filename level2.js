@@ -234,25 +234,6 @@ function showLevel2UI() {
         console.log('✅ Showed existing minimap-container');
     }
     
-    // Create mobile controls if they don't exist
-    if (!document.getElementById('mobile-controls')) {
-        const mobileControls = document.createElement('div');
-        mobileControls.id = 'mobile-controls';
-        mobileControls.className = 'game-ui';
-        mobileControls.innerHTML = `
-            <div id="joystick-container">
-                <div id="joystick-base"></div>
-                <div id="joystick-stick"></div>
-            </div>
-            <div id="mobile-buttons">
-                <div class="mobile-btn" id="mobile-boost">⚡</div>
-                <div class="mobile-btn" id="mobile-camera">📷</div>
-            </div>
-        `;
-        document.body.appendChild(mobileControls);
-        console.log('✅ Created mobile-controls');
-    }
-    
     console.log('✅ All Level 2 UI elements ready');
 }
 
@@ -263,8 +244,7 @@ function hideLevel2UI() {
         'direction-info',
         'toggle-daynight',
         'toggle-colliders',
-        'minimap-container',
-        'mobile-controls'
+        'minimap-container'
     ];
     
     uiElements.forEach(id => {
