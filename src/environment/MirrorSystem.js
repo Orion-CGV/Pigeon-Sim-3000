@@ -228,19 +228,6 @@ export class MirrorSystem {
         // Ensure reflector world matrix is up to date
         if (this.reflector) {
             this.reflector.updateMatrixWorld();
-            
-            // Debug: Verify reflector is set up correctly (only log occasionally to avoid spam)
-            if (!this._lastDebugLog || Date.now() - this._lastDebugLog > 2000) {
-                const renderTarget = this.reflector.getRenderTarget ? this.reflector.getRenderTarget() : null;
-                console.log('📊 Reflector Debug:');
-                console.log(`   Visible: ${this.reflector.visible}`);
-                console.log(`   In scene: ${this.scene.children.includes(this.reflector)}`);
-                console.log(`   Has material: ${!!this.reflector.material}`);
-                console.log(`   Material visible: ${this.reflector.material?.visible ?? 'N/A'}`);
-                console.log(`   Has render target: ${!!renderTarget}`);
-                console.log(`   Render target size: ${renderTarget ? `${renderTarget.width}x${renderTarget.height}` : 'N/A'}`);
-                this._lastDebugLog = Date.now();
-            }
         }
     }
     

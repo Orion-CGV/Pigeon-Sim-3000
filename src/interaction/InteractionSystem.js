@@ -102,63 +102,6 @@ export class InteractionSystem {
         const storySystem = this.scene.userData.storySystem;
         const allLevelsCompleted = storySystem ? storySystem.areAllLevelsCompleted() : false;
         
-        // First check proximity to second chest (higher priority than first treasure)
-        if (secondChest) {
-            const secondChestWorldPos = new THREE.Vector3();
-            secondChest.getWorldPosition(secondChestWorldPos);
-            const distanceToSecondChest = player.position.distanceTo(secondChestWorldPos);
-            
-            if (distanceToSecondChest <= this.interactionDistance) {
-                // Player is close enough - show interaction prompt
-                if (allLevelsCompleted) {
-                    // All levels completed - allow interaction
-                    const secondChestOpened = this.scene.userData.secondChestOpened || false;
-                    if (!secondChestOpened) {
-                        this.interactionPrompt.textContent = "E to open chest";
-                    } else {
-                        this.interactionPrompt.textContent = "E to view chest";
-                    }
-                } else {
-                    // Not all levels completed - show locked message
-                    this.interactionPrompt.textContent = "Chest is locked - Complete all levels";
-                }
-                this.interactionPrompt.style.opacity = "1";
-                this.currentInteractable = secondChest;
-                this.scene.userData.currentInteractable = secondChest;
-                this.scene.userData.currentInteractableType = 'secondChest';
-                return; // Second chest takes priority when close
-            }
-        }
-        
-        // Then check proximity to treasure (even if not looking directly at it)
-        if (treasure) {
-            const treasureWorldPos = new THREE.Vector3();
-            treasure.getWorldPosition(treasureWorldPos);
-            const distanceToTreasure = player.position.distanceTo(treasureWorldPos);
-            
-            // Check if in viewing mode
-            const isViewingMode = this.scene.userData.treasureInteractionSystem?.isViewingMode?.() || false;
-            
-            if (distanceToTreasure <= this.interactionDistance) {
-                // Player is close enough - show interaction prompt
-                if (isViewingMode) {
-                    this.interactionPrompt.textContent = "E to exit viewing mode";
-                } else {
-                    const treasureOpened = this.scene.userData.treasureOpened || false;
-                    if (!treasureOpened) {
-                        this.interactionPrompt.textContent = "E to open treasure chest";
-                    } else {
-                        this.interactionPrompt.textContent = "E to view treasure";
-                    }
-                }
-                this.interactionPrompt.style.opacity = "1";
-                this.currentInteractable = treasure;
-                this.scene.userData.currentInteractable = treasure;
-                this.scene.userData.currentInteractableType = 'treasure';
-                return; // Treasure takes priority when close
-            }
-        }
-        
         // Build array of all interactable objects for raycasting
         const interactableObjects = [...arcades];
         if (treasure) {
@@ -224,8 +167,17 @@ export class InteractionSystem {
                 foundSecondChest.getWorldPosition(secondChestWorldPos);
                 const distance = player.position.distanceTo(secondChestWorldPos);
                 if (distance <= this.interactionDistance) {
-                    // Check if all levels are completed
-                    if (allLevelsCompleted) {
+                    // Check if in viewing mode
+                    const isSecondChestViewingMode = this.scene.userData.secondChestInteractionSystem?.isViewingMode?.() || false;
+                    
+                    if (isSecondChestViewingMode) {
+                        this.interactionPrompt.textContent = "E to exit viewing mode";
+                        this.interactionPrompt.style.opacity = "1";
+                        this.currentInteractable = foundSecondChest;
+                        this.scene.userData.currentInteractable = foundSecondChest;
+                        this.scene.userData.currentInteractableType = 'secondChest';
+                        return;
+                    } else if (allLevelsCompleted) {
                         const secondChestOpened = this.scene.userData.secondChestOpened || false;
                         if (!secondChestOpened) {
                             this.interactionPrompt.textContent = "E to open chest";
@@ -269,10 +221,24 @@ export class InteractionSystem {
                 foundTreasure.getWorldPosition(treasureWorldPos);
                 const distance = player.position.distanceTo(treasureWorldPos);
                 if (distance <= this.interactionDistance) {
-                    // Check if treasure has already been opened
-                    const treasureOpened = this.scene.userData.treasureOpened || false;
-                    if (!treasureOpened) {
-                        this.interactionPrompt.textContent = "E to open treasure chest";
+                    // Check if in viewing mode
+                    const isTreasureViewingMode = this.scene.userData.treasureInteractionSystem?.isViewingMode?.() || false;
+                    
+                    if (isTreasureViewingMode) {
+                        this.interactionPrompt.textContent = "E to exit viewing mode";
+                        this.interactionPrompt.style.opacity = "1";
+                        this.currentInteractable = foundTreasure;
+                        this.scene.userData.currentInteractable = foundTreasure;
+                        this.scene.userData.currentInteractableType = 'treasure';
+                        return;
+                    } else {
+                        // Check if treasure has already been opened
+                        const treasureOpened = this.scene.userData.treasureOpened || false;
+                        if (!treasureOpened) {
+                            this.interactionPrompt.textContent = "E to open treasure chest";
+                        } else {
+                            this.interactionPrompt.textContent = "E to view treasure";
+                        }
                         this.interactionPrompt.style.opacity = "1";
                         this.currentInteractable = foundTreasure;
                         this.scene.userData.currentInteractable = foundTreasure;
@@ -378,10 +344,13 @@ export class InteractionSystem {
                     return;
                 }
                 
-                // All levels completed - allow interaction (placeholder for now)
-                // TODO: Implement chest opening animation/sequence
-                console.log('Opening second chest...');
-                this.scene.userData.secondChestOpened = true;
+                // All levels completed - delegate to SecondChestInteractionSystem
+                const secondChestSystem = this.scene.userData.secondChestInteractionSystem;
+                if (secondChestSystem) {
+                    secondChestSystem.handleInteraction();
+                } else {
+                    console.warn('⚠️ SecondChestInteractionSystem not found');
+                }
                 // Lock E key to prevent rapid repeated interactions
                 this.eKeyLocked = true;
                 setTimeout(() => {

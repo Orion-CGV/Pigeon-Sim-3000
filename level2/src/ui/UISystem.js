@@ -176,27 +176,7 @@ export class UISystem {
      * @param {Object} carBody - Physics body with velocity
      */
     updateDirectionDisplay(carDirection, carWrapper, carBody) {
-        // Update wheel direction
-        if (this.elements.wheelDirection) {
-            if (carDirection < -0.1) {
-                this.elements.wheelDirection.textContent = 'Left';
-                this.elements.wheelDirection.style.color = '#ff6b6b';
-            } else if (carDirection > 0.1) {
-                this.elements.wheelDirection.textContent = 'Right';
-                this.elements.wheelDirection.style.color = '#4ecdc4';
-            } else {
-                this.elements.wheelDirection.textContent = 'Straight';
-                this.elements.wheelDirection.style.color = '#64b5f6';
-            }
-        }
-        
-        // Update car heading (convert from radians to degrees, normalize to 0-360)
-        if (carWrapper && this.elements.carHeading) {
-            let heading = (carWrapper.rotation.y * (180 / Math.PI)) % 360;
-            if (heading < 0) heading += 360;
-            this.elements.carHeading.textContent = Math.round(heading) + '°';
-        }
-        
+        // Direction and Heading removed - only update speed
         // Update speed - show actual velocity magnitude
         if (this.elements.carSpeed) {
             if (carBody) {

@@ -212,6 +212,7 @@ export class EnvironmentLoader {
                     let treasureLidObject = null;
                     let secondChestObject = null;
                     let secondChestLidObject = null;
+                    let paperObject = null; // Paper inside the second chest
                     let featherMarkObject = null;
                     let carMarkObject = null;
                     let blockMarkObject = null;
@@ -316,9 +317,27 @@ export class EnvironmentLoader {
                             });
                         }
                         
+                        // Check if this is paper (inside second chest)
+                        const childNameLower = child.name ? child.name.toLowerCase() : '';
+                        if (child.name && (
+                            childNameLower.includes('paper') ||
+                            childNameLower.includes('note') ||
+                            childNameLower.includes('letter') ||
+                            childNameLower.includes('document')
+                        )) {
+                            paperObject = child;
+                            // Enable shadows for paper
+                            child.traverse((mesh) => {
+                                if (mesh.isMesh) {
+                                    mesh.castShadow = true;
+                                    mesh.receiveShadow = true;
+                                }
+                            });
+                            console.log(`✅ Found paper object: ${child.name}`);
+                        }
+                        
                         // Check if this is a mark object (feather mark, car mark, block mark)
                         // Handle both spaces and underscores in the name
-                        const childNameLower = child.name ? child.name.toLowerCase() : '';
                         const normalizedName = childNameLower.replace(/[_\s]/g, ''); // Remove underscores and spaces for comparison
                         
                         if (child.name && (
@@ -563,6 +582,7 @@ export class EnvironmentLoader {
                     // Store second chest objects in scene userData
                     this.scene.userData.secondChest = secondChestObject;
                     this.scene.userData.secondChestLid = secondChestLidObject;
+                    this.scene.userData.paper = paperObject; // Store paper object
                     if (secondChestObject) {
                         console.log('✅ Second chest (mChest__0) found in basement');
                         const secondChestPos = new THREE.Vector3();
@@ -571,6 +591,11 @@ export class EnvironmentLoader {
                     }
                     if (secondChestLidObject) {
                         console.log('✅ Second chest lid (mLid__0) found in basement');
+                    }
+                    if (paperObject) {
+                        console.log('✅ Paper found in second chest:', paperObject.name);
+                    } else {
+                        console.log('⚠️ Paper not found in second chest - make sure paper object exists in model');
                     }
                     
                     // Store mark objects in scene userData

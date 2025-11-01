@@ -119,10 +119,33 @@ export class TreasureInteractionSystem {
     
     /**
      * Finds joystick objects in the scene (only base joysticks, not heads)
+     * Also hides joysticks if they're already in inventory
      */
     findJoysticks() {
         this.joysticks = [];
         
+        // Check if joysticks are already in inventory
+        const joysticksInInventory = this.inventorySystem && this.inventorySystem.hasItem('Joystick');
+        
+        if (joysticksInInventory) {
+            // If joysticks are in inventory, hide all joysticks and their heads
+            this.scene.traverse((child) => {
+                if (!child.name) return;
+                
+                const name = child.name.toLowerCase();
+                const isJoystick = name.startsWith('joystick');
+                
+                if (isJoystick) {
+                    // Hide both joysticks and their heads if already in inventory
+                    child.visible = false;
+                    child.userData.collected = true;
+                }
+            });
+            console.log('📦 Joysticks already in inventory - all joysticks hidden');
+            return; // Don't add any joysticks to the list
+        }
+        
+        // Find joysticks normally if not in inventory
         this.scene.traverse((child) => {
             if (!child.name) return;
             
@@ -235,10 +258,27 @@ export class TreasureInteractionSystem {
             });
         }
         
+        // If still not found, try one more time to refresh from scene.userData
+        // (in case the basement just finished loading)
+        if (!this.treasure) {
+            this.treasure = this.scene.userData.treasure;
+        }
+        if (!this.treasureLid) {
+            this.treasureLid = this.scene.userData.treasureLid;
+        }
+        
         // Only warn if we still can't find them AND we're trying to enter viewing mode
         if (!this.treasure || !this.treasureLid) {
             console.warn('Treasure or treasure lid not found - cannot enter viewing mode');
-            return;
+            console.warn('   Treasure in userData:', !!this.scene.userData.treasure);
+            console.warn('   Treasure lid in userData:', !!this.scene.userData.treasureLid);
+            console.warn('   Hint: Make sure the basement model has finished loading');
+            // Try to reinitialize in case the basement just loaded
+            this.init();
+            // Try one more time after reinitialization
+            if (!this.treasure || !this.treasureLid) {
+                return;
+            }
         }
         
         // Check if already opened (lid opened)

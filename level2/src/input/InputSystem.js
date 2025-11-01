@@ -83,8 +83,9 @@ export class InputSystem {
             }
         }
         
-        // Colliders toggle (C key)
-        if (event.code === 'KeyC') {
+        // Colliders toggle (F2 key) - hidden dev feature
+        if (event.code === 'F2') {
+            event.preventDefault(); // Prevent browser dev tools from opening
             if (this.callbacks.onCollidersToggle) {
                 this.callbacks.onCollidersToggle();
             }
@@ -92,6 +93,8 @@ export class InputSystem {
         
         // Pause/Menu (ESC key)
         if (event.code === 'Escape') {
+            event.preventDefault(); // Prevent default browser behavior
+            event.stopPropagation(); // Stop event from bubbling to main.js handlers
             if (this.callbacks.onPause) {
                 this.callbacks.onPause();
             }

@@ -19,6 +19,8 @@ import { LightingSystem } from './level2/src/lighting/LightingSystem.js';
 import { CameraSystem } from './level2/src/camera/CameraSystem.js';
 import { CarPhysicsSystem } from './level2/src/physics/CarPhysicsSystem.js';
 import { EnvironmentSystem } from './level2/src/environment/EnvironmentSystem.js';
+import { GameRestartSystem } from './level2/src/game/GameRestartSystem.js';
+import { FailureSystem } from './level2/src/game/FailureSystem.js';
 
 let scene, camera, renderer, labelRenderer;
 let returnToMainCallback;
@@ -48,10 +50,14 @@ let world;
 let groundBody;
 let groundHelper;
 let timeStep = 1 / 60;
-let collidersVisible = true;
+let collidersVisible = false; // Start with colliders off
 
 // Boost effect tracking
 let wasBoostingLastFrame = false;
+
+// Game Restart System
+let gameRestartSystem = null;
+let failureSystem = null;
 
 export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, callback) {
     if (!sceneRef || !cameraRef || !rendererRef || !labelRendererRef) {
@@ -86,6 +92,27 @@ function setupLevel() {
     // Show Level 2 UI elements
     showLevel2UI();
     
+    // Initialize Game Restart System (systems will be set when initialized)
+    gameRestartSystem = new GameRestartSystem(
+        scene,
+        null, // carWrapper - will be set when car loads
+        null, // carBody - will be set when car loads
+        null, // carPhysicsSystem - will be set when initialized
+        null, // deliverySystem - will be set when initialized
+        null, // cameraSystem - will be set when initialized
+        null, // uiSystem - will be set when initialized
+        null  // lightingSystem - will be set when initialized
+    );
+    
+    // Initialize Failure System (deliverySystem will be set when initialized)
+    failureSystem = new FailureSystem(
+        scene,
+        null, // deliverySystem - will be set when initialized
+        gameRestartSystem
+    );
+    failureSystem.init();
+    window.failureSystem = failureSystem; // Make globally accessible for collision handler
+    
     // Initialize Camera System (pass existing camera from main.js)
     cameraSystem = new CameraSystem(scene, renderer, camera);
     cameraSystem.init();
@@ -108,6 +135,24 @@ function setupLevel() {
     // Initialize Delivery System (will be initialized later with zones from model)
     deliverySystem = new DeliverySystem(scene, uiSystem);
     
+    // Update failure system with delivery system
+    if (failureSystem) {
+        failureSystem.deliverySystem = deliverySystem;
+    }
+    
+    // Update restart system references with initialized systems
+    if (gameRestartSystem) {
+        gameRestartSystem.updateReferences(
+            null, // carWrapper - will be set when car loads
+            null, // carBody - will be set when car loads
+            carPhysicsSystem,
+            deliverySystem,
+            cameraSystem,
+            uiSystem,
+            null  // lightingSystem - will be set when initialized
+        );
+    }
+    
     // Get Story Mode status from scene.userData (set by main.js)
     const isInStoryMode = scene && scene.userData && scene.userData.isInStoryMode === true;
     
@@ -127,12 +172,18 @@ function setupLevel() {
     lightingSystem = new LightingSystem(scene, uiSystem);
     lightingSystem.init();
     
-    // Expose toggleDayNight globally for the UI button
-    window.toggleDayNight = () => {
-        if (lightingSystem) {
-            lightingSystem.toggleDayNight();
-        }
-    };
+    // Update restart system with lighting system
+    if (gameRestartSystem) {
+        gameRestartSystem.updateReferences(
+            null, // carWrapper - will be set when car loads
+            null, // carBody - will be set when car loads
+            carPhysicsSystem,
+            deliverySystem,
+            cameraSystem,
+            uiSystem,
+            lightingSystem
+        );
+    }
     
     // Initialize Car Physics System
     carPhysicsSystem = new CarPhysicsSystem(scene, world);
@@ -168,8 +219,6 @@ function showLevel2UI() {
         directionInfo.className = 'game-ui';
         directionInfo.innerHTML = `
             <div>FPS: <span id="fps">60</span></div>
-            <div>Direction: <span id="wheel-direction">Straight</span></div>
-            <div>Heading: <span id="car-heading">0°</span></div>
             <div>Speed: <span id="car-speed">0.0</span></div>
             <div id="headlights-ui" style="display: none;">Headlights: <span id="headlights-status">OFF</span></div>
             <div>
@@ -190,37 +239,34 @@ function showLevel2UI() {
         console.log('✅ Showed existing direction-info');
     }
     
-    // Create day/night toggle button if it doesn't exist
-    if (!document.getElementById('toggle-daynight')) {
-        const toggleBtn = document.createElement('button');
-        toggleBtn.id = 'toggle-daynight';
-        toggleBtn.className = 'toggle-btn game-ui';
-        toggleBtn.textContent = 'Toggle Day/Night (H)';
-        toggleBtn.onclick = () => { if(window.toggleDayNight) window.toggleDayNight(); };
-        toggleBtn.style.display = 'block';
-        document.body.appendChild(toggleBtn);
-        console.log('✅ Created toggle-daynight');
+    // Create keybinds display in bottom left
+    if (!document.getElementById('keybinds-display')) {
+        const keybindsDisplay = document.createElement('div');
+        keybindsDisplay.id = 'keybinds-display';
+        keybindsDisplay.className = 'game-ui';
+        keybindsDisplay.innerHTML = `
+            <div style="font-family: 'Press Start 2P', cursive; font-size: 10px; color: #fff; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;">
+                <div style="font-size: 12px; margin-bottom: 8px; color: #00ff00;">KEYBINDS</div>
+                <div>W/S: Accelerate/Reverse</div>
+                <div>A/D: Steer</div>
+                <div>Space: Boost</div>
+                <div>Q: Camera Mode</div>
+                <div>L: Headlights</div>
+                <div>ESC: Pause</div>
+            </div>
+        `;
+        keybindsDisplay.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            pointer-events: none;
+        `;
+        document.body.appendChild(keybindsDisplay);
+        console.log('✅ Created keybinds display');
     } else {
-        document.getElementById('toggle-daynight').style.display = 'block';
-        console.log('✅ Showed existing toggle-daynight');
-    }
-    
-    // Create collider toggle button if it doesn't exist
-    if (!document.getElementById('toggle-colliders')) {
-        const toggleCollidersBtn = document.createElement('button');
-        toggleCollidersBtn.id = 'toggle-colliders';
-        toggleCollidersBtn.className = 'toggle-btn game-ui';
-        toggleCollidersBtn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
-        toggleCollidersBtn.style.display = 'block';
-        toggleCollidersBtn.style.top = '120px';
-        toggleCollidersBtn.onclick = toggleColliders;
-        document.body.appendChild(toggleCollidersBtn);
-        console.log('✅ Created toggle-colliders');
-    } else {
-        const btn = document.getElementById('toggle-colliders');
-        btn.style.display = 'block';
-        btn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
-        console.log('✅ Showed existing toggle-colliders');
+        document.getElementById('keybinds-display').style.display = 'block';
+        console.log('✅ Showed existing keybinds display');
     }
     
     // Create minimap container if it doesn't exist
@@ -257,8 +303,7 @@ function hideLevel2UI() {
     
     const uiElements = [
         'direction-info',
-        'toggle-daynight',
-        'toggle-colliders',
+        'keybinds-display',
         'minimap-container'
     ];
     
@@ -312,9 +357,18 @@ function initPhysics() {
 function setupRenderer() {
     if (!renderer) return;
     
+    // Save original renderer settings before modifying them
+    originalRendererSettings.toneMapping = renderer.toneMapping;
+    originalRendererSettings.toneMappingExposure = renderer.toneMappingExposure;
+    // Use outputColorSpace instead of deprecated outputEncoding
+    originalRendererSettings.outputColorSpace = renderer.outputColorSpace || null;
+    originalRendererSettings.logarithmicDepthBuffer = renderer.logarithmicDepthBuffer;
+    
+    console.log('💾 Saved original renderer settings:', originalRendererSettings);
+    
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     
@@ -412,7 +466,30 @@ function onEnvironmentModelLoaded(data) {
         carPhysicsSystem.createPhysicsBody(carWrapper);
         carBody = carPhysicsSystem.getPhysicsBody();
         carHelper = carPhysicsSystem.getCollisionHelper();
+        // Car helper is created with visible = false in CarPhysicsSystem
         carPhysicsOffset = carPhysicsSystem.getPhysicsOffset();
+        
+        // Store initial car position and rotation for restart
+        if (carWrapper && gameRestartSystem) {
+            const box = new THREE.Box3().setFromObject(carWrapper);
+            const center = box.getCenter(new THREE.Vector3());
+            const initialPosition = center.clone();
+            const initialRotation = carWrapper.quaternion.clone();
+            gameRestartSystem.setInitialCarState(initialPosition, initialRotation);
+        }
+        
+        // Update restart system references with loaded car
+        if (gameRestartSystem) {
+            gameRestartSystem.updateReferences(
+                carWrapper,
+                carBody,
+                carPhysicsSystem,
+                deliverySystem,
+                cameraSystem,
+                uiSystem,
+                lightingSystem
+            );
+        }
     }
     
     environmentSystem.createEnvironmentPhysics(collidersVisible);
@@ -467,6 +544,11 @@ function setupCollisionListeners() {
             if (deliverySystem && (currentTime - lastCollisionTime) > collisionCooldown) {
                 deliverySystem.recordCollision();
                 lastCollisionTime = currentTime;
+                
+                // Check for failure condition
+                if (window.failureSystem) {
+                    window.failureSystem.checkFailure();
+                }
             }
             
             if (effectsSystem) {
@@ -518,11 +600,16 @@ function setupInputCallbacks() {
             toggleColliders();
         },
         onPause: () => {
-        if (window.showPauseMenu) {
-            window.showPauseMenu(2);
-        } else {
-            returnToMainCallback();
-        } 
+            // Always try to show pause menu - don't fall back to returning to main menu
+            if (window.showPauseMenu && typeof window.showPauseMenu === 'function') {
+                window.showPauseMenu('level2');
+            } else if (window.pauseMenu && window.pauseMenu.show) {
+                // Fallback: try to show pause menu via main.js pauseMenu instance
+                window.pauseMenu.show(2);
+            } else {
+                // Only if pause menu truly doesn't exist, log a warning (don't return to menu)
+                console.warn('⚠️ Pause menu not available - window.showPauseMenu:', !!window.showPauseMenu, 'window.pauseMenu:', !!window.pauseMenu);
+            }
         }
     });
 }
@@ -530,7 +617,7 @@ function setupInputCallbacks() {
 function toggleColliders() {
     collidersVisible = !collidersVisible;
     
-    console.log(`🔲 Colliders ${collidersVisible ? 'visible' : 'hidden'}`);
+    console.log(`🔲 Colliders ${collidersVisible ? 'visible' : 'hidden'} (F2)`);
     
     if (carHelper) {
         carHelper.visible = collidersVisible;
@@ -545,12 +632,6 @@ function toggleColliders() {
             envObj.object.userData.physicsHelper.visible = collidersVisible;
         }
     });
-    
-    // Update button text to show current state
-    const toggleBtn = document.getElementById('toggle-colliders');
-    if (toggleBtn) {
-        toggleBtn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
-    }
 }
 
 // Level update function called by main.js animation loop
@@ -627,13 +708,54 @@ export function updateLevel() {
     }
 }
 
+/**
+ * Restart Level 2 - Resets all game state to initial conditions
+ */
+export function restartLevel() {
+    // Defer restart to next event loop tick to avoid animation loop conflicts
+    // This prevents the FPS doubling issue (see BUG.md)
+    setTimeout(() => {
+        if (gameRestartSystem) {
+            gameRestartSystem.restart();
+            // Reset boost effect tracking
+            wasBoostingLastFrame = false;
+        } else {
+            console.warn('⚠️ GameRestartSystem not initialized - cannot restart level');
+        }
+    }, 0);
+}
+
+// Expose restartLevel globally for failure system and other systems
+window.restartLevel = restartLevel;
+
+// Store original renderer settings before level 2 modifies them
+let originalRendererSettings = {
+    toneMapping: null,
+    toneMappingExposure: null,
+    outputColorSpace: null, // Use outputColorSpace instead of deprecated outputEncoding
+    logarithmicDepthBuffer: null
+};
+
 // Cleanup function
 export function cleanupLevel() {
     // Hide Level 2 UI elements
     hideLevel2UI();
     
-    // Remove global functions
-    delete window.toggleDayNight;
+    // Restore original renderer settings
+    if (renderer && originalRendererSettings.toneMapping !== null) {
+        renderer.toneMapping = originalRendererSettings.toneMapping;
+        renderer.toneMappingExposure = originalRendererSettings.toneMappingExposure;
+        if (originalRendererSettings.outputColorSpace !== null) {
+            renderer.outputColorSpace = originalRendererSettings.outputColorSpace;
+        }
+        if (originalRendererSettings.logarithmicDepthBuffer !== null) {
+            renderer.logarithmicDepthBuffer = originalRendererSettings.logarithmicDepthBuffer;
+        }
+        console.log('✅ Restored renderer settings:', {
+            toneMapping: renderer.toneMapping,
+            toneMappingExposure: renderer.toneMappingExposure
+        });
+    }
     
     // Clean up systems
     if (effectsSystem) effectsSystem.cleanup();
@@ -665,6 +787,18 @@ export function cleanupLevel() {
     world = null;
     groundBody = null;
     groundHelper = null;
+    
+    // Cleanup restart system
+    if (gameRestartSystem) {
+        gameRestartSystem = null;
+    }
+    
+    // Cleanup failure system
+    if (failureSystem) {
+        failureSystem.cleanup();
+        failureSystem = null;
+        window.failureSystem = null;
+    }
     
     // Reset boost tracking
     wasBoostingLastFrame = false;

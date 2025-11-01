@@ -26,6 +26,8 @@ import { StorySystem } from './src/story/StorySystem.js';
 import { StoryUI } from './src/story/StoryUI.js';
 // Import treasure interaction system
 import { TreasureInteractionSystem } from './src/interaction/TreasureInteractionSystem.js';
+// Import second chest interaction system
+import { SecondChestInteractionSystem } from './src/interaction/SecondChestInteractionSystem.js';
 // Import inventory system
 import { InventorySystem } from './src/inventory/InventorySystem.js';
 // Import mirror system
@@ -79,6 +81,9 @@ let inventorySystem = null; // Inventory system instance
 
 // ---------- Treasure Interaction System ----------
 let treasureInteractionSystem = null; // Treasure interaction system instance
+
+// ---------- Second Chest Interaction System ----------
+let secondChestInteractionSystem = null; // Second chest interaction system instance
 
 // ---------- Loading State ----------
 let isPlayerLoaded = false; // Track if player has finished loading
@@ -224,6 +229,7 @@ function initMainMenu() {
                }
                // Reinitialize treasure system now that basement (and treasure) has loaded
                if (treasureInteractionSystem) {
+                   treasureInteractionSystem.scene = scene; // Ensure scene reference is current
                    treasureInteractionSystem.init();
                }
                // Reinitialize mirror system now that basement (and mirror) has loaded
@@ -328,8 +334,11 @@ function initMainMenu() {
         );
         treasureInteractionSystem.init();
     } else {
-        // Reuse existing system, just reinitialize
-        treasureInteractionSystem.inventorySystem = inventorySystem; // Update reference
+        // Reuse existing system, update scene reference and reinitialize
+        treasureInteractionSystem.scene = scene; // Update scene reference (important after level return)
+        treasureInteractionSystem.camera = camera; // Update camera reference
+        treasureInteractionSystem.cameraControl = cameraControl; // Update camera control reference
+        treasureInteractionSystem.inventorySystem = inventorySystem; // Update inventory reference
         treasureInteractionSystem.init();
     }
     
@@ -342,6 +351,30 @@ function initMainMenu() {
             treasureInteractionSystem.handleInteraction();
         }
     });
+    
+    // ---------- Second Chest Interaction System ----------
+    // Initialize second chest interaction system (or reuse existing one in Story Mode)
+    if (!secondChestInteractionSystem) {
+        secondChestInteractionSystem = new SecondChestInteractionSystem(
+            scene, 
+            camera, 
+            cameraControl, 
+            storySystem, 
+            storyUI
+        );
+        secondChestInteractionSystem.init();
+    } else {
+        // Reuse existing system, update scene reference and reinitialize
+        secondChestInteractionSystem.scene = scene;
+        secondChestInteractionSystem.camera = camera;
+        secondChestInteractionSystem.cameraControl = cameraControl;
+        secondChestInteractionSystem.storySystem = storySystem;
+        secondChestInteractionSystem.storyUI = storyUI;
+        secondChestInteractionSystem.init();
+    }
+    
+    // Store second chest system in scene for easy access
+    scene.userData.secondChestInteractionSystem = secondChestInteractionSystem;
 
     // ---------- Mirror System ----------
     // Initialize mirror system (finds Mirror_Face object and sets up render-to-texture)
@@ -357,8 +390,13 @@ function initMainMenu() {
     }
     
     // ---------- Pause Menu System ----------
-    pauseMenu = new PauseMenu();
-    pauseMenu.init();
+    // Only create pause menu if it doesn't exist (preserve across level loads)
+    if (!pauseMenu) {
+        pauseMenu = new PauseMenu();
+        pauseMenu.init();
+    }
+    // Make pauseMenu globally accessible for levels
+    window.pauseMenu = pauseMenu;
     
     // Set callbacks for pause menu actions
     pauseMenu.setOnResume(() => {
@@ -371,7 +409,32 @@ function initMainMenu() {
             cleanupCurrentLevel();
             initMainMenu();
         } else {
-            loadLevel(levelNumber);
+            // Extract level number from "level2" format to just "2"
+            // Handle both string "level2" and number 2
+            let levelNum;
+            if (typeof levelNumber === 'string' && levelNumber.startsWith('level')) {
+                levelNum = parseInt(levelNumber.replace('level', ''));
+            } else if (typeof levelNumber === 'number') {
+                levelNum = levelNumber;
+            } else {
+                // Fallback: try to parse as number
+                levelNum = parseInt(levelNumber);
+            }
+            console.log(`🔄 Restarting level: ${levelNumber} -> ${levelNum}`);
+            
+            // Special handling for level 2 - use its restart function (deferred to avoid animation loop conflicts)
+            if (levelNum === 2 && currentLevelModule && currentLevelModule.restartLevel) {
+                console.log('🔄 Using level 2 restart function');
+                // Defer restart to prevent FPS doubling (see BUG.md)
+                setTimeout(() => {
+                    currentLevelModule.restartLevel();
+                }, 0);
+            } else if (levelNum && !isNaN(levelNum)) {
+                // For other levels, reload completely (loadLevel already defers internally)
+                loadLevel(levelNum);
+            } else {
+                console.error('⚠️ Invalid level number for restart:', levelNumber);
+            }
         }
     });
     
@@ -506,6 +569,79 @@ let currentLevelReturnCallback = null; // Store return callback for cheat key
 
 // Loads a specific level by number (1, 2, or 3)
 function loadLevel(levelNumber) {
+    // Initialize pause menu if it doesn't exist (needed when loading from main menu, not Story Mode)
+    if (!pauseMenu) {
+        console.log('📋 Initializing pause menu for level...');
+        pauseMenu = new PauseMenu();
+        pauseMenu.init();
+        // Make pauseMenu globally accessible for levels
+        window.pauseMenu = pauseMenu;
+        
+        // Set callbacks for pause menu actions
+        pauseMenu.setOnResume(() => {
+            // Resume callback - game loop will resume automatically
+        });
+        
+        pauseMenu.setOnRestart((levelNum) => {
+            // Restart callback
+            // Handle null case - try to get level from currentLevel
+            if (!levelNum && currentLevel && currentLevel !== 'main') {
+                const levelMatch = currentLevel.match(/level(\d+)/);
+                if (levelMatch) {
+                    levelNum = parseInt(levelMatch[1]);
+                    console.log(`🔄 Restart: Got level number from currentLevel: ${levelNum}`);
+                }
+            }
+            
+            if (!levelNum) {
+                console.warn('⚠️ No level number provided for restart, and currentLevel not available');
+                return;
+            }
+            
+            if (levelNum === 'main') {
+                cleanupCurrentLevel();
+                initMainMenu();
+            } else {
+                // Extract level number from "level2" format to just "2"
+                let num;
+                if (typeof levelNum === 'string' && levelNum.startsWith('level')) {
+                    num = parseInt(levelNum.replace('level', ''));
+                } else if (typeof levelNum === 'number') {
+                    num = levelNum;
+                } else {
+                    num = parseInt(levelNum);
+                }
+                console.log(`🔄 Restarting level: ${levelNum} -> ${num}`);
+                
+                // Special handling for level 2 - use its restart function
+                if (num === 2 && currentLevelModule && currentLevelModule.restartLevel) {
+                    console.log('🔄 Using level 2 restart function');
+                    currentLevelModule.restartLevel();
+                } else if (num && !isNaN(num)) {
+                    // For other levels, reload completely
+                    loadLevel(num);
+                } else {
+                    console.error('⚠️ Invalid level number for restart:', levelNum);
+                }
+            }
+        });
+        
+        pauseMenu.setOnReturnToMenu((levelNum) => {
+            // Return to menu callback
+            if (levelNum === 'main') {
+                returnToMainMenuFromStory();
+            } else {
+                returnToMainMenu();
+            }
+        });
+    }
+    
+    // Hide StoryUI when entering a level (but keep it in DOM for later)
+    if (storyUI) {
+        storyUI.hide();
+        console.log('📖 StoryUI hidden (entering level)');
+    }
+    
     // 1. Clean up current scene before loading new one
     cleanupCurrentLevel();
     
@@ -603,6 +739,13 @@ function loadLevel(levelNumber) {
             // Pass Story Mode info to level (store in scene.userData for level to access)
             if (scene) {
                 scene.userData.isInStoryMode = isInStoryMode;
+                // Make StoryUI and StorySystem accessible to levels (for future use)
+                if (storyUI) {
+                    scene.userData.storyUI = storyUI;
+                }
+                if (storySystem) {
+                    scene.userData.storySystem = storySystem;
+                }
             }
             
             // Call level initialization function with required parameters
@@ -754,6 +897,10 @@ function cleanupCurrentLevel() {
         if (treasureInteractionSystem) {
             treasureInteractionSystem.cleanup();
             treasureInteractionSystem = null;
+        }
+        if (secondChestInteractionSystem) {
+            secondChestInteractionSystem.cleanup();
+            secondChestInteractionSystem = null;
         }
         if (storyUI) {
             storyUI.cleanup();
@@ -909,6 +1056,12 @@ function animate() {
                         const keys = inputSystem ? inputSystem.getKeys() : {};
                         treasureInteractionSystem.update(keys);
                     }
+                    
+                    // Update second chest interaction system (pass keys for F key detection)
+                    if (secondChestInteractionSystem) {
+                        const keys = inputSystem ? inputSystem.getKeys() : {};
+                        secondChestInteractionSystem.update(keys);
+                    }
         }
         
         // Update level-specific logic if exists
@@ -954,6 +1107,11 @@ window.pauseGameLoop = function() {
 
 // Function to resume the game loop
 window.resumeGameLoop = function() {
+    // Only resume if not already active (prevents duplicate loops)
+    if (gameLoopActive === true) {
+        console.warn('⚠️ resumeGameLoop called but game loop already active - skipping');
+        return;
+    }
     // Set game loop active
     gameLoopActive = true;
     // Restart animation loop
@@ -962,6 +1120,14 @@ window.resumeGameLoop = function() {
     }
 };
 
+// Expose gameLoopActive globally so restart system can check it
+window.gameLoopActive = gameLoopActive;
+Object.defineProperty(window, 'gameLoopActive', {
+    get: () => gameLoopActive,
+    enumerable: true,
+    configurable: true
+});
+
 // Make functions available globally for menu.js
 window.loadLevel = loadLevel;
 window.initMainMenu = initMainMenu;
@@ -969,6 +1135,13 @@ window.returnToMainMenu = returnToMainMenu;
 window.returnToMainMenuFromStory = returnToMainMenuFromStory;
 window.renderer = renderer;
 window.labelRenderer = labelRenderer;
+
+// Make currentLevel accessible globally for pause menu restart fallback
+Object.defineProperty(window, 'currentLevel', {
+    get: () => currentLevel,
+    enumerable: true,
+    configurable: true
+});
 
 // ---------- Initialize Game ----------
 // The menu.js will handle the intro screen and main menu
