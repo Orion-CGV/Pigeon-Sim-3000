@@ -20,6 +20,16 @@ import { InputSystem } from './src/input/InputSystem.js';
 import { PauseMenu } from './src/pause/PauseMenu.js';
 // Import settings menu system
 import { SettingsMenu } from './src/settings/SettingsMenu.js';
+// Import story system
+import { StorySystem } from './src/story/StorySystem.js';
+// Import story UI
+import { StoryUI } from './src/story/StoryUI.js';
+// Import treasure interaction system
+import { TreasureInteractionSystem } from './src/interaction/TreasureInteractionSystem.js';
+// Import inventory system
+import { InventorySystem } from './src/inventory/InventorySystem.js';
+// Import mirror system
+import { MirrorSystem } from './src/environment/MirrorSystem.js';
 
 // ---------- Scene / Camera / Renderer ----------
 // Global variables to store our 3D environment components
@@ -45,6 +55,9 @@ let showCollisionHelpers = false; // Toggle for collision visualization
 // ---------- Lighting System ----------
 let lightingSystem = null; // Lighting system instance
 
+// ---------- Mirror System ----------
+let mirrorSystem = null; // Mirror system instance
+
 // ---------- Interaction System ----------
 let interactionSystem = null; // Interaction system instance
 
@@ -56,6 +69,16 @@ let pauseMenu = null; // Pause menu system instance
 
 // ---------- Settings Menu System ----------
 let settingsMenu = null; // Settings menu system instance
+
+// ---------- Story System ----------
+let storySystem = null; // Story system instance
+let storyUI = null; // Story UI instance
+
+// ---------- Inventory System ----------
+let inventorySystem = null; // Inventory system instance
+
+// ---------- Treasure Interaction System ----------
+let treasureInteractionSystem = null; // Treasure interaction system instance
 
 // ---------- Loading State ----------
 let isPlayerLoaded = false; // Track if player has finished loading
@@ -199,6 +222,14 @@ function initMainMenu() {
                if (cameraControl) {
                    cameraControl.calculateRoomBounds();
                }
+               // Reinitialize treasure system now that basement (and treasure) has loaded
+               if (treasureInteractionSystem) {
+                   treasureInteractionSystem.init();
+               }
+               // Reinitialize mirror system now that basement (and mirror) has loaded
+               if (mirrorSystem) {
+                   mirrorSystem.init();
+               }
                isEnvironmentLoaded = true;
                checkIfEverythingLoaded();
            });
@@ -207,10 +238,56 @@ function initMainMenu() {
     environmentLoader.loadBasement(null, showCollisionHelpers);
 
     // ---------- Camera Control ----------
+    // Ensure pointer lock is unlocked before reinitializing
+    if (document.pointerLockElement) {
+        document.exitPointerLock();
+    }
+    
     // Initialize camera control system
     cameraControl = new CameraControl(scene, camera, renderer);
     cameraControl.init();
+    
+    // Ensure renderer canvas is visible and ready for pointer lock
+    if (renderer && renderer.domElement) {
+        renderer.domElement.style.display = 'block';
+        renderer.domElement.style.pointerEvents = 'auto';
+    }
+    
+    // Ensure player is unlocked when returning from a level
+    if (scene) {
+        scene.userData.playerLocked = false;
+        scene.userData.lockedPlayerPosition = null;
+    }
 
+    // ---------- Story System ----------
+    // Initialize story system (or reuse existing one in Story Mode)
+    if (!storySystem) {
+        storySystem = new StorySystem(scene);
+        storySystem.init();
+    } else {
+        // Reuse existing story system, just update scene reference
+        storySystem.scene = scene;
+        if (scene) {
+            scene.userData.storySystem = storySystem;
+        }
+    }
+    
+    // Initialize story UI (or reuse existing one in Story Mode)
+    if (!storyUI) {
+        storyUI = new StoryUI();
+        storyUI.init();
+        storyUI.setStorySystem(storySystem);
+        storyUI.show(); // Show story objectives by default
+    } else {
+        // Reuse existing story UI - ensure UI is created and visible
+        if (!storyUI.uiElement || !storyUI.uiElement.parentNode) {
+            storyUI.init(); // Recreate UI if it was removed
+        }
+        storyUI.setStorySystem(storySystem);
+        storyUI.update();
+        storyUI.show(); // Ensure it's visible when returning from a level
+    }
+    
     // ---------- Interaction System ----------
     // Initialize interaction system
     interactionSystem = new InteractionSystem(scene, camera);
@@ -220,7 +297,65 @@ function initMainMenu() {
     interactionSystem.setOnInteract((level) => {
         loadLevel(level);
     });
+    
+    // ---------- Inventory System ----------
+    // Initialize inventory system (or reuse existing one in Story Mode)
+    if (!inventorySystem) {
+        inventorySystem = new InventorySystem();
+        inventorySystem.init();
+    } else {
+        // Reuse existing inventory system - ensure UI is created and visible
+        if (!inventorySystem.uiElement || !inventorySystem.uiElement.parentNode) {
+            inventorySystem.createUI();
+        }
+        inventorySystem.updateUI(); // Update to show any preserved items
+    }
+    // Always show inventory UI (even if reusing existing one)
+    if (inventorySystem) {
+        inventorySystem.show(); // Show inventory UI
+    }
+    
+    // ---------- Treasure Interaction System ----------
+    // Initialize treasure interaction system (or reuse existing one in Story Mode)
+    if (!treasureInteractionSystem) {
+        treasureInteractionSystem = new TreasureInteractionSystem(
+            scene, 
+            camera, 
+            cameraControl, 
+            storySystem, 
+            storyUI,
+            inventorySystem // Pass inventory system
+        );
+        treasureInteractionSystem.init();
+    } else {
+        // Reuse existing system, just reinitialize
+        treasureInteractionSystem.inventorySystem = inventorySystem; // Update reference
+        treasureInteractionSystem.init();
+    }
+    
+    // Store treasure system in scene for easy access
+    scene.userData.treasureInteractionSystem = treasureInteractionSystem;
+    
+    // Set callback for when player interacts with treasure chest
+    interactionSystem.setOnTreasureInteract(() => {
+        if (treasureInteractionSystem) {
+            treasureInteractionSystem.handleInteraction();
+        }
+    });
 
+    // ---------- Mirror System ----------
+    // Initialize mirror system (finds Mirror_Face object and sets up render-to-texture)
+    if (!mirrorSystem) {
+        mirrorSystem = new MirrorSystem(scene, camera, renderer);
+        mirrorSystem.init();
+    } else {
+        // Reuse existing mirror system, update references
+        mirrorSystem.scene = scene;
+        mirrorSystem.mainCamera = camera;
+        mirrorSystem.renderer = renderer;
+        mirrorSystem.init(); // Reinitialize to find mirror in new scene
+    }
+    
     // ---------- Pause Menu System ----------
     pauseMenu = new PauseMenu();
     pauseMenu.init();
@@ -317,6 +452,38 @@ function initMainMenu() {
             environmentLoader.toggleCollisionHelpers(showCollisionHelpers);
         }
     });
+    
+    // Add global E key handler for treasure viewing mode exit
+    // This allows pressing E to exit viewing mode even when not looking at treasure
+    document.addEventListener('keydown', (e) => {
+        if (currentLevel === 'main' && e.key.toLowerCase() === 'e' && !e.repeat) {
+            // Check if we're in treasure viewing mode
+            if (treasureInteractionSystem && treasureInteractionSystem.isViewingMode()) {
+                treasureInteractionSystem.exitViewingMode();
+                e.preventDefault();
+            }
+        }
+    });
+    
+    // Add global F3 key handler for cheat - complete current level
+    document.addEventListener('keydown', (e) => {
+        // F3 key cheat: Complete current level and advance story
+        if (e.key === 'F3' || e.keyCode === 114) {
+            e.preventDefault();
+            
+            // Only work when in a level (not in main menu)
+            if (currentLevel !== 'main' && currentLevelReturnCallback) {
+                const levelMatch = currentLevel.match(/level(\d+)/);
+                if (levelMatch) {
+                    const levelNum = parseInt(levelMatch[1]);
+                    console.log(`🎮 F3 Cheat: Completing Level ${levelNum}...`);
+                    
+                    // Call the return callback which will mark level as complete and return to main
+                    currentLevelReturnCallback();
+                }
+            }
+        }
+    });
 
     // ---------- Camera ----------
     // Position camera above and behind player
@@ -335,6 +502,7 @@ function checkIfEverythingLoaded() {
 
 // ---------- Level Management ----------
 let currentLevelModule = null; // Store reference to the level module for cleanup
+let currentLevelReturnCallback = null; // Store return callback for cheat key
 
 // Loads a specific level by number (1, 2, or 3)
 function loadLevel(levelNumber) {
@@ -417,14 +585,25 @@ function loadLevel(levelNumber) {
             // Initialize the level, passing scene, camera, and callback function
             // Use different callback based on whether we're in Story Mode or direct level selection
             const returnCallback = () => {
+                console.log(`🔄 Return callback called - isInStoryMode: ${isInStoryMode}, currentLevel: ${currentLevel}`);
                 if (isInStoryMode) {
                     // We're in Story Mode (3D hub world), use Story Mode return
+                    console.log('📖 Returning to Story Mode hub world...');
                     returnToMainMenuFromStory();
                 } else {
                     // We're in direct level selection, use normal return
+                    console.log('🏠 Returning to main menu...');
                     returnToMainMenu();
                 }
             };
+            
+            // Store return callback for F3 cheat
+            currentLevelReturnCallback = returnCallback;
+            
+            // Pass Story Mode info to level (store in scene.userData for level to access)
+            if (scene) {
+                scene.userData.isInStoryMode = isInStoryMode;
+            }
             
             // Call level initialization function with required parameters
             levelModule.initLevel(scene, camera, renderer, labelRenderer, returnCallback);
@@ -474,19 +653,31 @@ function returnToMainMenu() {
 
 // Returns player from Story Mode back to main menu (without hiding canvas)
 function returnToMainMenuFromStory() {
-    // Clean up the current level
+    // Get level number before cleanup to mark it as completed
+    const levelNumber = currentLevel.replace('level', '');
+    const completedLevelNum = parseInt(levelNumber);
+    
+    // Mark level as completed in story system BEFORE cleanup (if we have one and it's a valid level)
+    if (storySystem && completedLevelNum && completedLevelNum >= 1 && completedLevelNum <= 3) {
+        storySystem.completeLevel(completedLevelNum);
+    }
+    
+    // Clean up the current level (story system will be preserved since isInStoryMode is true)
     cleanupCurrentLevel();
+    
     // Update game state to main menu
     currentLevel = 'main';
     // Keep Story Mode flag set (we're staying in 3D hub world)
     
     // Re-initialize everything from scratch to avoid state issues
-    // Call initMainMenu to properly reinitialize all systems
+    // Story system and UI will be preserved and reused by initMainMenu
     initMainMenu();
 }
 
 // Cleans up resources when leaving a level or the game
 function cleanupCurrentLevel() {
+    // Clear return callback
+    currentLevelReturnCallback = null;
     // Stop and clear animation mixer
     if (scene && scene.userData.playerMixer) {
         // Stop all animations
@@ -527,6 +718,11 @@ function cleanupCurrentLevel() {
         cameraControl.cleanup();
         cameraControl = null;
     }
+    
+    // Unlock pointer lock if it's still active (important for returning from levels)
+    if (document.pointerLockElement) {
+        document.exitPointerLock();
+    }
 
     // Cleanup input system
     if (inputSystem) {
@@ -545,6 +741,35 @@ function cleanupCurrentLevel() {
     
     // Cleanup environment loader (no cleanup method, just null reference)
     environmentLoader = null;
+    
+    // Cleanup mirror system
+    if (mirrorSystem) {
+        mirrorSystem.cleanup();
+        mirrorSystem = null;
+    }
+    
+    // Cleanup story system and UI (but preserve if in Story Mode)
+    // Only cleanup if we're leaving Story Mode entirely
+    if (!isInStoryMode) {
+        if (treasureInteractionSystem) {
+            treasureInteractionSystem.cleanup();
+            treasureInteractionSystem = null;
+        }
+        if (storyUI) {
+            storyUI.cleanup();
+            storyUI = null;
+        }
+        if (storySystem) {
+            storySystem.cleanup();
+            storySystem = null;
+        }
+    } else {
+        // In Story Mode - just save progress, don't destroy
+        if (storySystem) {
+            storySystem.saveProgress();
+        }
+        // Don't null references - we'll reuse them
+    }
     
     // 3. Remove all event listeners
     window.removeEventListener("resize", onWindowResize);
@@ -572,13 +797,18 @@ function cleanupCurrentLevel() {
     }
     
     // 6. Clear any level-specific UI elements with class 'game-ui'
+    // BUT preserve Story UI and Inventory UI (they should persist in Story Mode)
     const uiElements = document.querySelectorAll('.game-ui');
     // Loop through all game UI elements
     uiElements.forEach(el => {
         // Check if element is part of main menu (not level-specific)
         const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
-        if (!isMainMenuElement) {
-            // Remove level-specific UI elements
+        // Preserve Story UI and Inventory UI (they have special classes and should persist)
+        const isStoryUI = el.classList.contains('story-ui');
+        const isInventoryUI = el.classList.contains('inventory-ui');
+        
+        if (!isMainMenuElement && !isStoryUI && !isInventoryUI) {
+            // Remove level-specific UI elements only
             el.remove();
         }
     });
@@ -591,6 +821,22 @@ let inputSystem = null;
 function updatePlayer() {
     // Only update player in main menu, not during levels
     if (currentLevel !== 'main' || !playerSystem) return;
+
+    // Check if player is locked (e.g., during treasure interaction)
+    if (scene.userData.playerLocked) {
+        // Still update animations and camera, but prevent movement
+        const player = scene.getObjectByName('player');
+        if (player && scene.userData.lockedPlayerPosition) {
+            // Lock player position
+            player.position.copy(scene.userData.lockedPlayerPosition);
+        }
+        // Update animations only
+        const delta = playerSystem.clock.getDelta();
+        if (scene.userData.playerMixer) {
+            scene.userData.playerMixer.update(delta);
+        }
+        return;
+    }
 
     // Update arcade box helpers if they exist
     if (scene.userData.arcadeBoxHelpers) {
@@ -637,16 +883,42 @@ function animate() {
     if (gameLoopActive && (!pauseMenu || !pauseMenu.isPaused())) {
         // Update main menu specific logic
         if (currentLevel === 'main') {
-            updatePlayer();
+            // Only update player if not locked (e.g., during treasure viewing)
+            if (!scene.userData.playerLocked) {
+                updatePlayer();
+            } else {
+                // Still update animations even when locked
+                if (playerSystem && scene.userData.playerMixer) {
+                    const delta = playerSystem.clock.getDelta();
+                    scene.userData.playerMixer.update(delta);
+                }
+            }
+            
             if (interactionSystem) {
                 const keys = inputSystem ? inputSystem.getKeys() : {};
+                // Always update interactions (so E key works even in viewing mode)
                 interactionSystem.update(currentLevel, keys);
             }
+            // Update story UI periodically (every few seconds or on demand)
+            if (storyUI && Math.random() < 0.01) { // Update ~1% of frames (~0.6 times per second at 60fps)
+                storyUI.update();
+            }
+            
+                    // Update treasure interaction system (pass keys for F key detection)
+                    if (treasureInteractionSystem) {
+                        const keys = inputSystem ? inputSystem.getKeys() : {};
+                        treasureInteractionSystem.update(keys);
+                    }
         }
         
         // Update level-specific logic if exists
         if (currentLevelModule && currentLevelModule.updateLevel) {
             currentLevelModule.updateLevel();
+        }
+        
+        // Update mirror system (before main render, but only in main menu)
+        if (currentLevel === 'main' && mirrorSystem) {
+            mirrorSystem.update();
         }
         
         // Render the 3D scene

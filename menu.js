@@ -237,18 +237,18 @@ window.startStoryMode = function () {
     // ---- 1. Show the cutscene ------------------------------------------------
     screen.classList.remove('hidden');
 
-    // ---- 2. Reset + start muted (autoplay policy) ---------------------------
+    // ---- 2. Reset + start unmuted --------------------------------------------
     video.currentTime = 0;
-    video.muted = true;
+    video.muted = false;
     video.load(); // Reload the video to reset state
     
     if (progress) {
         progress.style.width = '0%';
     }
     
-    // Reset button states
+    // Reset button states (video starts unmuted, so button shows "Mute")
     if (unmuteBtn) {
-        unmuteBtn.textContent = 'Unmute';
+        unmuteBtn.textContent = 'Mute';
         unmuteBtn.disabled = false;
         unmuteBtn.style.opacity = '1';
     }
@@ -286,12 +286,10 @@ window.startStoryMode = function () {
             toggleMute();
         };
     }
-    // Also toggle mute on any click on the video itself (but don't skip)
+    // Click on video to skip cutscene
     const videoClickHandler = (e) => {
         e.stopPropagation(); // Prevent triggering screen click handler
-        if (video.muted) {
-            toggleMute();
-        }
+        finish();
     };
     video.onclick = videoClickHandler;
 
@@ -300,6 +298,21 @@ window.startStoryMode = function () {
         // Clean up handlers
         video._cutsceneActive = false;
         screen.classList.add('ended', 'hidden');
+        
+        // Hide the cutscene overlay as well
+        const overlay = document.querySelector('.cutscene-overlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+            overlay.style.opacity = '0';
+        }
+        
+        // Hide the entire cutscene screen container
+        const cutsceneScreen = document.querySelector('.cutscene-screen');
+        if (cutsceneScreen) {
+            cutsceneScreen.style.display = 'none';
+            cutsceneScreen.classList.add('hidden');
+        }
+        
         video.pause();
         video.removeEventListener('timeupdate', update);
         video.onended = null;
@@ -319,16 +332,15 @@ window.startStoryMode = function () {
         };
     }
     
-    // Click anywhere on screen (except buttons/video) to skip
+    // Click anywhere on screen to skip (video click handled separately)
     const screenClickHandler = (e) => {
-        // Skip if clicking on screen background or elements that aren't interactive
+        // Skip if clicking on screen background or elements that aren't buttons
         const target = e.target;
         const isButton = target.closest('button');
-        const isVideo = target.closest('video');
         const isProgressBar = target.id === 'cutscene-progress-bar' || target.closest('#cutscene-progress-bar');
         
-        // Skip if clicking directly on screen or non-interactive elements
-        if (!isButton && !isVideo && !isProgressBar) {
+        // Skip if clicking directly on screen or non-interactive elements (video is handled by its own handler)
+        if (!isButton && !isProgressBar) {
             finish();
         }
     };

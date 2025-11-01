@@ -108,6 +108,21 @@ function setupLevel() {
     // Initialize Delivery System (will be initialized later with zones from model)
     deliverySystem = new DeliverySystem(scene, uiSystem);
     
+    // Get Story Mode status from scene.userData (set by main.js)
+    const isInStoryMode = scene && scene.userData && scene.userData.isInStoryMode === true;
+    
+    // Set completion callback for when level is completed
+    deliverySystem.setOnComplete(() => {
+        console.log('🎉 Level 2 completed! Returning to hub world...');
+        console.log('   returnToMainCallback available:', !!returnToMainCallback);
+        if (returnToMainCallback) {
+            console.log('   Calling returnToMainCallback()...');
+            returnToMainCallback();
+        } else {
+            console.error('⚠️ returnToMainCallback is null! Cannot return to hub.');
+        }
+    }, isInStoryMode); // Pass Story Mode status to hide button if in Story Mode
+    
     // Initialize Lighting System
     lightingSystem = new LightingSystem(scene, uiSystem);
     lightingSystem.init();

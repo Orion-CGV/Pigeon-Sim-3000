@@ -205,9 +205,16 @@ export class EnvironmentLoader {
                     // Add to scene
                     this.scene.add(basement);
 
-                    // Find the Ground object, all arcades, walls, and Table within the basement model
+                    // Find the Ground object, all arcades, walls, Table, and Treasure within the basement model
                     let groundObject = null;
                     let tableObject = null;
+                    let treasureObject = null;
+                    let treasureLidObject = null;
+                    let secondChestObject = null;
+                    let secondChestLidObject = null;
+                    let featherMarkObject = null;
+                    let carMarkObject = null;
+                    let blockMarkObject = null;
                     const arcades = [];
                     const arcadeBoxHelpers = [];
                     const arcadeBoxes = [];
@@ -243,6 +250,123 @@ export class EnvironmentLoader {
                                     mesh.receiveShadow = true;
                                 }
                             });
+                        }
+                        
+                        // Check if this is the Treasure object
+                        if (child.name && (
+                            child.name === 'treasure' || 
+                            child.name === 'Treasure' ||
+                            child.name.toLowerCase() === 'treasure'
+                        )) {
+                            treasureObject = child;
+                            // Enable shadows for Treasure object
+                            child.traverse((mesh) => {
+                                if (mesh.isMesh) {
+                                    mesh.castShadow = true;
+                                    mesh.receiveShadow = true;
+                                }
+                            });
+                        }
+                        
+                        // Check if this is the Treasure Lid object
+                        if (child.name && (
+                            child.name === 'treasure_lid' || 
+                            child.name === 'Treasure_lid' ||
+                            child.name === 'Treasure_Lid' ||
+                            child.name.toLowerCase().includes('treasure_lid') ||
+                            child.name.toLowerCase().includes('treasurelid')
+                        )) {
+                            treasureLidObject = child;
+                            // Enable shadows for Treasure Lid object
+                            child.traverse((mesh) => {
+                                if (mesh.isMesh) {
+                                    mesh.castShadow = true;
+                                    mesh.receiveShadow = true;
+                                }
+                            });
+                        }
+                        
+                        // Check if this is the second chest (mChest__0)
+                        if (child.name && (
+                            child.name === 'mChest__0' || 
+                            child.name.toLowerCase() === 'mchest__0'
+                        )) {
+                            secondChestObject = child;
+                            // Enable shadows for second chest
+                            child.traverse((mesh) => {
+                                if (mesh.isMesh) {
+                                    mesh.castShadow = true;
+                                    mesh.receiveShadow = true;
+                                }
+                            });
+                        }
+                        
+                        // Check if this is the second chest lid (mLid__0)
+                        if (child.name && (
+                            child.name === 'mLid__0' || 
+                            child.name.toLowerCase() === 'mlid__0'
+                        )) {
+                            secondChestLidObject = child;
+                            // Enable shadows for second chest lid
+                            child.traverse((mesh) => {
+                                if (mesh.isMesh) {
+                                    mesh.castShadow = true;
+                                    mesh.receiveShadow = true;
+                                }
+                            });
+                        }
+                        
+                        // Check if this is a mark object (feather mark, car mark, block mark)
+                        // Handle both spaces and underscores in the name
+                        const childNameLower = child.name ? child.name.toLowerCase() : '';
+                        const normalizedName = childNameLower.replace(/[_\s]/g, ''); // Remove underscores and spaces for comparison
+                        
+                        if (child.name && (
+                            childNameLower === 'feather mark' ||
+                            childNameLower === 'feather_mark' ||
+                            childNameLower.includes('feather mark') ||
+                            childNameLower.includes('feather_mark') ||
+                            normalizedName === 'feathermark' ||
+                            child.name === 'feather mark' ||
+                            child.name === 'feather_mark'
+                        )) {
+                            featherMarkObject = child;
+                            // Hide initially - will be shown when level 1 is completed
+                            child.visible = false;
+                            console.log(`✅ Found feather mark (${child.name}) - hidden until level 1 is completed`);
+                            console.log(`   📊 Visibility: ${child.visible ? 'VISIBLE' : 'HIDDEN'}`);
+                        }
+                        
+                        if (child.name && (
+                            childNameLower === 'car mark' ||
+                            childNameLower === 'car_mark' ||
+                            childNameLower.includes('car mark') ||
+                            childNameLower.includes('car_mark') ||
+                            normalizedName === 'carmark' ||
+                            child.name === 'car mark' ||
+                            child.name === 'car_mark'
+                        )) {
+                            carMarkObject = child;
+                            // Hide initially - will be shown when level 2 is completed
+                            child.visible = false;
+                            console.log(`✅ Found car mark (${child.name}) - hidden until level 2 is completed`);
+                            console.log(`   📊 Visibility: ${child.visible ? 'VISIBLE' : 'HIDDEN'}`);
+                        }
+                        
+                        if (child.name && (
+                            childNameLower === 'block mark' ||
+                            childNameLower === 'block_mark' ||
+                            childNameLower.includes('block mark') ||
+                            childNameLower.includes('block_mark') ||
+                            normalizedName === 'blockmark' ||
+                            child.name === 'block mark' ||
+                            child.name === 'block_mark'
+                        )) {
+                            blockMarkObject = child;
+                            // Hide initially - will be shown when level 3 is completed
+                            child.visible = false;
+                            console.log(`✅ Found block mark (${child.name}) - hidden until level 3 is completed`);
+                            console.log(`   📊 Visibility: ${child.visible ? 'VISIBLE' : 'HIDDEN'}`);
                         }
                         
                         // Check if this is a Collider object (cube colliders for collision detection)
@@ -418,7 +542,51 @@ export class EnvironmentLoader {
                     this.scene.userData.colliders = colliders;
                     this.scene.userData.colliderBoxHelpers = colliderBoxHelpers;
                     this.scene.userData.colliderBoxes = colliderBoxes;
-
+                    
+                    // Store treasure objects in scene userData
+                    this.scene.userData.treasure = treasureObject;
+                    this.scene.userData.treasureLid = treasureLidObject;
+                    if (treasureObject) {
+                        console.log('✅ Treasure chest found in basement');
+                        // Log treasure position
+                        const treasurePos = new THREE.Vector3();
+                        treasureObject.getWorldPosition(treasurePos);
+                        console.log('📍 Treasure position:', treasurePos);
+                        console.log('📍 Treasure local position:', treasureObject.position);
+                        // Add visual highlight to treasure
+                        this.createTreasureHighlight(treasureObject);
+                    }
+                    if (treasureLidObject) {
+                        console.log('✅ Treasure lid found in basement');
+                    }
+                    
+                    // Store second chest objects in scene userData
+                    this.scene.userData.secondChest = secondChestObject;
+                    this.scene.userData.secondChestLid = secondChestLidObject;
+                    if (secondChestObject) {
+                        console.log('✅ Second chest (mChest__0) found in basement');
+                        const secondChestPos = new THREE.Vector3();
+                        secondChestObject.getWorldPosition(secondChestPos);
+                        console.log('📍 Second chest position:', secondChestPos);
+                    }
+                    if (secondChestLidObject) {
+                        console.log('✅ Second chest lid (mLid__0) found in basement');
+                    }
+                    
+                    // Store mark objects in scene userData
+                    this.scene.userData.featherMark = featherMarkObject;
+                    this.scene.userData.carMark = carMarkObject;
+                    this.scene.userData.blockMark = blockMarkObject;
+                    
+                    // Log mark detection status
+                    console.log('📊 Mark Detection Summary:');
+                    console.log(`   ${featherMarkObject ? '✅' : '❌'} Feather Mark: ${featherMarkObject ? `Found (${featherMarkObject.name}), Visibility: ${featherMarkObject.visible ? 'VISIBLE' : 'HIDDEN'}` : 'Not found'}`);
+                    console.log(`   ${carMarkObject ? '✅' : '❌'} Car Mark: ${carMarkObject ? `Found (${carMarkObject.name}), Visibility: ${carMarkObject.visible ? 'VISIBLE' : 'HIDDEN'}` : 'Not found'}`);
+                    console.log(`   ${blockMarkObject ? '✅' : '❌'} Block Mark: ${blockMarkObject ? `Found (${blockMarkObject.name}), Visibility: ${blockMarkObject.visible ? 'VISIBLE' : 'HIDDEN'}` : 'Not found'}`);
+                    
+                    // Update mark visibility based on completed levels
+                    this.updateMarkVisibility();
+                    
                     // Create collision box for ground (use Ground object if found, otherwise use basement)
                     let groundBox;
                     if (groundObject) {
@@ -653,5 +821,113 @@ export class EnvironmentLoader {
      */
     getCollisionHelper() {
         return this.collisionHelper;
+    }
+    
+    /**
+     * Creates a visual highlight for the treasure chest
+     * @param {THREE.Object3D} treasure - The treasure object to highlight
+     */
+    createTreasureHighlight(treasure) {
+        // Calculate bounding box for the treasure
+        const bbox = new THREE.Box3().setFromObject(treasure);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        bbox.getSize(size);
+        bbox.getCenter(center);
+        
+        // Expand the bounding box slightly for better visibility
+        const expandedSize = new THREE.Vector3(
+            size.x + 0.3,
+            size.y + 0.3,
+            size.z + 0.3
+        );
+        
+        // Create wireframe box as outline (glowing gold/yellow)
+        const outlineGeometry = new THREE.BoxGeometry(expandedSize.x, expandedSize.y, expandedSize.z);
+        const outlineMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffd700, // Gold color
+            wireframe: true,
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide
+        });
+        
+        const outline = new THREE.Mesh(outlineGeometry, outlineMaterial);
+        outline.position.copy(center);
+        outline.name = 'treasure-outline';
+        outline.renderOrder = 999; // Render on top
+        
+        // Add pulsing animation using GSAP
+        const pulseAnimation = gsap.to(outlineMaterial, {
+            opacity: 0.3,
+            duration: 1.5,
+            repeat: -1,
+            yoyo: true,
+            ease: "power1.inOut"
+        });
+        
+        // Also animate scale for pulsing effect
+        const scaleAnimation = gsap.to(outline.scale, {
+            x: 1.05,
+            y: 1.05,
+            z: 1.05,
+            duration: 1.5,
+            repeat: -1,
+            yoyo: true,
+            ease: "power1.inOut"
+        });
+        
+        // Store animations for cleanup
+        outline.userData.pulseAnimation = pulseAnimation;
+        outline.userData.scaleAnimation = scaleAnimation;
+        
+        this.scene.add(outline);
+        this.scene.userData.treasureOutline = outline;
+        
+        console.log('✨ Treasure highlight created');
+    }
+    
+    /**
+     * Updates the visibility of mark objects based on completed levels
+     */
+    updateMarkVisibility() {
+        // Get story system from scene
+        const storySystem = this.scene.userData.storySystem;
+        if (!storySystem) {
+            console.log('⚠️ Mark visibility: Story system not available yet');
+            return; // Story system not available yet
+        }
+        
+        // Show feather mark if level 1 is completed
+        const featherMark = this.scene.userData.featherMark;
+        if (featherMark) {
+            const level1Completed = storySystem.storyState.levelsCompleted[1] === true;
+            featherMark.visible = level1Completed;
+            console.log(`📊 Feather Mark: ${featherMark.visible ? 'VISIBLE' : 'HIDDEN'} (Level 1 completed: ${level1Completed})`);
+        } else {
+            console.log('⚠️ Feather Mark: Not found in scene');
+        }
+        
+        // Show car mark if level 2 is completed
+        const carMark = this.scene.userData.carMark;
+        if (carMark) {
+            const level2Completed = storySystem.storyState.levelsCompleted[2] === true;
+            carMark.visible = level2Completed;
+            console.log(`📊 Car Mark: ${carMark.visible ? 'VISIBLE' : 'HIDDEN'} (Level 2 completed: ${level2Completed})`);
+        } else {
+            console.log('⚠️ Car Mark: Not found in scene');
+        }
+        
+        // Show block mark if level 3 is completed
+        const blockMark = this.scene.userData.blockMark;
+        if (blockMark) {
+            const level3Completed = storySystem.storyState.levelsCompleted[3] === true;
+            blockMark.visible = level3Completed;
+            console.log(`📊 Block Mark: ${blockMark.visible ? 'VISIBLE' : 'HIDDEN'} (Level 3 completed: ${level3Completed})`);
+        } else {
+            console.log('⚠️ Block Mark: Not found in scene');
+        }
+        
+        console.log('📊 Mark visibility update complete');
     }
 }

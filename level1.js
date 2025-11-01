@@ -546,12 +546,16 @@ export function updateLevel() {
 export function cleanupLevel() {
     // Remove all event listeners and DOM elements
     
-    // Remove level-specific UI elements
+    // Remove level-specific UI elements (but preserve Story UI and Inventory UI)
     const uiElements = document.querySelectorAll('.game-ui');
     uiElements.forEach(el => {
         // Only remove elements that are not part of the main menu system
         const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
-        if (!isMainMenuElement) {
+        // Preserve Story UI and Inventory UI (they should persist)
+        const isStoryUI = el.classList.contains('story-ui');
+        const isInventoryUI = el.classList.contains('inventory-ui');
+        
+        if (!isMainMenuElement && !isStoryUI && !isInventoryUI) {
             el.remove();
         }
     });
