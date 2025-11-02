@@ -1,4 +1,4 @@
-// level2.js - Arcade Racing Game Integration
+// level2.js - Speed Delivery Game Integration
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';

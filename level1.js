@@ -178,7 +178,7 @@ function createUI() {
     // Re-use the 'game-ui' class for easy global cleanup
     const titleDiv = document.createElement('div');
     titleDiv.className = "game-ui"; 
-    titleDiv.textContent = 'LEVEL 1 - City Exploration';
+    titleDiv.textContent = 'LEVEL 1 - Pigeon Simulator';
     titleDiv.style.cssText = `
         color: white; font-size: 24px; font-weight: bold; position: absolute; 
         top: 20px; left: 50%; transform: translateX(-50%); text-shadow: 2px 2px 4px black;

@@ -54,19 +54,19 @@ export class StorySystem {
             },
             {
                 id: 'complete_level1',
-                description: 'Complete Flight Frenzy',
+                description: 'Complete Pigeon Simulator',
                 status: 'locked', // Locked until joysticks found
                 requirements: ['found_joysticks']
             },
             {
                 id: 'complete_level2',
-                description: 'Complete Arcade Racing',
+                description: 'Complete Speed Delivery Game',
                 status: 'locked', // Locked until level 1 is done
                 requirements: ['complete_level1', 'found_joysticks']
             },
             {
                 id: 'complete_level3',
-                description: 'Complete Mystic Trial',
+                description: 'Complete Gravity Cube Game',
                 status: 'locked',
                 requirements: ['complete_level1', 'complete_level2', 'found_joysticks']
             }

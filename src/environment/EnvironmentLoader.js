@@ -499,7 +499,8 @@ export class EnvironmentLoader {
                             const level = levelMatch ? parseInt(levelMatch[1]) : arcades.length + 1;
                             
                             // Set up arcade userData
-                            const colorNames = ["Red", "Blue", "Yellow"];
+                            // Level 1 = Blue (Pigeon Simulator), Level 2 = Green (Speed Delivery Game), Level 3 = Grey (Gravity Cube Game)
+                            const colorNames = ["Blue", "Green", "Grey"];
                             child.userData.level = level;
                             child.userData.colorName = colorNames[level - 1] || colorNames[arcades.length];
                             child.name = `arcade-${level}`;

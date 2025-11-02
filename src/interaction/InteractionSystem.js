@@ -78,6 +78,23 @@ export class InteractionSystem {
     setOnTreasureInteract(callback) {
         this.onTreasureInteractCallback = callback;
     }
+    
+    /**
+     * Gets the color name for an arcade based on its level
+     * Level 1 = Blue (Pigeon Simulator)
+     * Level 2 = Green (Speed Delivery Game)
+     * Level 3 = Grey (Gravity Cube Game)
+     * @param {number} level - Level number
+     * @returns {string} Color name
+     */
+    getArcadeColorName(level) {
+        const colorMap = {
+            1: 'Blue',   // Pigeon Simulator
+            2: 'Green',  // Speed Delivery Game
+            3: 'Grey'    // Gravity Cube Game
+        };
+        return colorMap[level] || 'Unknown';
+    }
 
     /**
      * Checks if player is looking at an interactive object and close enough to interact
@@ -266,7 +283,8 @@ export class InteractionSystem {
                     if (storySystem && !storySystem.canAccessLevel(level)) {
                         // Level is locked - show lock reason
                         const lockReason = storySystem.getLevelLockReason(level);
-                        this.interactionPrompt.textContent = `🔒 ${arcade.userData.colorName} machine locked`;
+                        const colorName = this.getArcadeColorName(level);
+                        this.interactionPrompt.textContent = `🔒 ${colorName} machine locked`;
                         if (lockReason) {
                             // Create or update lock reason element
                             if (!this.lockReasonElement) {
@@ -297,7 +315,8 @@ export class InteractionSystem {
                     }
                     
                     // Level is accessible
-                    this.interactionPrompt.textContent = `E to interact with ${arcade.userData.colorName} machine`;
+                    const colorName = this.getArcadeColorName(level);
+                    this.interactionPrompt.textContent = `E to interact with ${colorName} machine`;
                     this.interactionPrompt.style.opacity = "1";
                     this.currentInteractable = arcade;
                     this.scene.userData.currentInteractable = arcade;

@@ -1,4 +1,4 @@
-// Legacy Arcade - Menu Navigation System
+// Timmy's Lost Treasure - Menu Navigation System
 
 // ---------- Menu Navigation ----------
 let currentMenuScreen = 'intro';
