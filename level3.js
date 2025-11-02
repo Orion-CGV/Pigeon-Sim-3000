@@ -358,13 +358,34 @@ function checkGoalCondition() {
         goalReached = true;
         console.log("✅ LEVEL 3 COMPLETED!");
 
+        // Check if we're in Story Mode (for proper story progression)
+        const isInStoryMode = scene && scene.userData && scene.userData.isInStoryMode === true;
+        console.log(`📖 Story Mode: ${isInStoryMode ? 'ENABLED' : 'DISABLED'}`);
+        
+        if (isInStoryMode) {
+            console.log("🎯 Level 3 completed in Story Mode - will update story progression and return to basement");
+        }
+
         // 🔥 **FIX: Use a single, safe approach**
         // 1. Show victory message first
         showVictoryMessage();
 
         // 2. Exit pointer lock safely
         if (document.pointerLockElement) {
-            document.exitPointerLock().catch(e => console.log('Pointer lock already released'));
+            try {
+                if (typeof document.exitPointerLock === 'function') {
+                    const exitPromise = document.exitPointerLock();
+                    if (exitPromise && typeof exitPromise.catch === 'function') {
+                        exitPromise.catch(e => {
+                            console.log('Pointer lock already released or not supported:', e);
+                        });
+                    }
+                } else {
+                    console.log('Pointer lock exit not available in this browser');
+                }
+            } catch (error) {
+                console.log('Error attempting to exit pointer lock:', error);
+            }
         }
 
         // 3. Stop physics updates but keep rendering
@@ -372,11 +393,26 @@ function checkGoalCondition() {
 
         // 4. Return after a delay, ensuring all cleanup happens
         setTimeout(() => {
-            console.log("Returning to main menu from Level 3...");
+            console.log("🔄 Returning to basement from Level 3...");
             if (returnCallback) {
+                console.log("   ✓ returnCallback is available - will return to basement");
                 // Make sure we're completely cleaned up before returning
                 cleanupLevel();
+                console.log("   ✓ Cleanup complete - calling returnCallback to return to basement...");
+                // Call returnCallback - this will handle returning to basement via main.js
+                // It will call returnToMainMenuFromStory() if in Story Mode, which reinitializes the basement
                 returnCallback();
+            } else {
+                console.error("   ✗ returnCallback is null! Cannot return to basement.");
+                // Fallback: try to return directly if callback is missing
+                if (window.loadLevel && isInStoryMode) {
+                    console.warn("   ⚠️ Attempting fallback return to basement...");
+                    cleanupLevel();
+                    // Try calling returnToMainMenuFromStory directly if available
+                    if (window.returnToMainMenuFromStory) {
+                        window.returnToMainMenuFromStory();
+                    }
+                }
             }
         }, 3000);
     }
@@ -387,7 +423,14 @@ function showVictoryMessage() {
     const victoryDiv = document.createElement('div');
     victoryDiv.id = 'victory-message';
     victoryDiv.className = "game-ui";
-    victoryDiv.textContent = 'LEVEL 3 COMPLETED! Returning to main menu...';
+    
+    // Check if we're in Story Mode to customize message
+    const isInStoryMode = scene && scene.userData && scene.userData.isInStoryMode === true;
+    const message = isInStoryMode 
+        ? 'LEVEL 3 COMPLETED! Returning to basement...' 
+        : 'LEVEL 3 COMPLETED! Returning to main menu...';
+    
+    victoryDiv.textContent = message;
     victoryDiv.style.cssText = `
         color: #00ff00; font-size: 32px; font-weight: bold; position: absolute; 
         top: 40%; left: 50%; transform: translate(-50%, -50%); 
@@ -1031,6 +1074,15 @@ floorBodies.push(silver3BoxBody);
     loadNumberModels();
     loadNumberModels2(); 
     loadNumberModels3();
+    
+    // Start level 3 music via AudioManager
+    if (window.audioManager) {
+        // Register level 3 music if not already registered
+        if (!window.audioManager.musicTracks['level3']) {
+            window.audioManager.registerMusic('level3', 'assets/audio/music/Fabian Measures - LifeCycle.mp3', true);
+        }
+        window.audioManager.playMusic('level3');
+    }
 }
 function createUI() {
     // Title
@@ -1255,7 +1307,7 @@ function addPlayer() {
     boxMesh = new THREE.Mesh(boxGeo, boxMat);
 
     // SPAWN ON PLATFORM
-    boxMesh.position.set(-45, 3, 48);  // Center of first green platform
+    boxMesh.position.set(47.5, 2, 0);  // Center of first green platform
     
     
     // 🔥 ROTATE PLAYER MESH TO FACE POSITIVE Z
@@ -1837,6 +1889,37 @@ function getTargetedDoor() {
 
 function initInput() {
     document.addEventListener('keydown', e => {
+        // ESC key - Show pause menu
+        if (e.code === 'Escape') {
+            e.preventDefault(); // Prevent default browser behavior
+            e.stopPropagation(); // Stop event from bubbling to main.js handlers
+            
+            // Exit pointer lock when pausing
+            if (document.pointerLockElement) {
+                try {
+                    if (typeof document.exitPointerLock === 'function') {
+                        const exitPromise = document.exitPointerLock();
+                        if (exitPromise && typeof exitPromise.catch === 'function') {
+                            exitPromise.catch(err => console.log('Pointer lock exit on pause:', err));
+                        }
+                    }
+                } catch (error) {
+                    console.log('Error exiting pointer lock on pause:', error);
+                }
+            }
+            
+            // Try to show pause menu
+            if (window.showPauseMenu && typeof window.showPauseMenu === 'function') {
+                window.showPauseMenu('level3');
+            } else if (window.pauseMenu && window.pauseMenu.show) {
+                // Fallback: try to show pause menu via main.js pauseMenu instance
+                window.pauseMenu.show(3);
+            } else {
+                console.warn('⚠️ Pause menu not available - window.showPauseMenu:', !!window.showPauseMenu, 'window.pauseMenu:', !!window.pauseMenu);
+            }
+            return;
+        }
+        
         if (e.code === 'KeyE') {
             const door = getLookedAtDoor();
             if (door) {
@@ -1965,11 +2048,17 @@ export function cleanupLevel() {
         if (listener) {
             camera.remove(listener);
         }
-    }console.log("Level 3 cleanup started");
+    }
     
-    // Replace the UI removal block:
+    console.log("Level 3 cleanup started");
+    
+    // 1. Remove UI (but preserve Story UI and Inventory UI)
     document.querySelectorAll('.game-ui').forEach(el => {
-        if (el.id !== 'victory-message') {  // 🔥 Keep victory, remove ALL else (incl. death)
+        // Preserve Story UI and Inventory UI (they should persist)
+        const isStoryUI = el.classList.contains('story-ui');
+        const isInventoryUI = el.classList.contains('inventory-ui');
+        
+        if (!isStoryUI && !isInventoryUI && el.textContent !== 'LEVEL 3 COMPLETED! Returning to main menu...') {
             el.remove();
         }
     });
@@ -2114,6 +2203,12 @@ export function cleanupLevel() {
 
     // Reset death flag
     playerDied = false;
+    
+    // Stop level 3 music via AudioManager
+    if (window.audioManager) {
+        window.audioManager.stopMusic('level3');
+    }
+    
     console.log("Level 3 cleanup completed");
 }
 
