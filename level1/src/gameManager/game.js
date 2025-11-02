@@ -30,7 +30,7 @@ export class Game {
         this.pauseStartTime = 0;
 
         // Timer & Medals
-        this.gameTime = 5 * 60;
+        this.gameTime = 30;
         this.timerRunning = false;
         this.gameStartTime = 0;
         this.medal = null;
@@ -151,7 +151,7 @@ async _loadAudio() {
     // Background music – loop + auto-start
     this.music = this.sounds.background;
     this.music.setLoop(true);
-    this.music.play();
+    this.music.stop();
 }
 
 _playSound(name, volume = 1) {
@@ -159,7 +159,7 @@ _playSound(name, volume = 1) {
     const s = this.sounds[name];
     if (!s) return console.warn(`Sound "${name}" missing`);
     s.stop();
-    s.setVolume(volume);
+    s.setVolume(0);
     s.play();
 }
 
@@ -479,7 +479,25 @@ _showWelcomeScreen() {
 
         if (remaining <= 0) {
             this.timerRunning = false;
-            this._endGame();
+            
+            // Check if we're in a wrapper context (integrated with main.js)
+            // If so, mark level as complete and return immediately
+            if (this._isWrappedContext && this._onLevelComplete) {
+                this._awardMedal(); // Still award medal before returning
+                // Stop music
+                if (this.music) this.music.stop();
+                // Play victory sound
+                this._playSound('victory');
+                // Call completion callback to return to basement
+                setTimeout(() => {
+                    if (this._onLevelComplete) {
+                        this._onLevelComplete();
+                    }
+                }, 1000); // Brief 1 second delay to show completion state
+            } else {
+                // Original behavior - show full end game screen
+                this._endGame();
+            }
         }
     }
 
@@ -490,19 +508,19 @@ _showWelcomeScreen() {
         let emoji = '';
 
         if (percent >= 1.0) {
-            medal = 'GOLD'; emoji = '🥇'; color = '#ffd700';
+            medal = 'GOLD'; emoji = ''; color = '#ffd700';
         } else if (percent >= 0.8) {
-            medal = 'SILVER'; emoji = '🥈'; color = '#c0c0c0';
+            medal = 'SILVER'; emoji = ''; color = '#c0c0c0';
         } else if (percent >= 0.5) {
-            medal = 'BRONZE'; emoji = '🥉'; color = '#cd7f32';
+            medal = 'BRONZE'; emoji = ''; color = '#cd7f32';
         } else {
-            medal = 'NONE'; emoji = '💔'; color = '#666';
+            medal = 'NONE'; emoji = ''; color = '#666';
         }
 
         this.medal = medal;
         this.medalElement.innerHTML = emoji;
         this.medalElement.style.background = color;
-        this.medalElement.style.opacity = '1';
+        this.medalElement.style.opacity = '0';
         this.medalElement.style.borderColor = color;
     }
 
@@ -964,7 +982,19 @@ _checkCollectibleCollisions() {
             // ---- VICTORY CHECK ----
             if (this.score >= this.totalCollectibles) {
                 this.timerRunning = false;
-                this._endGame();
+                // Use completion callback if in wrapped context, otherwise use normal end game
+                if (this._isWrappedContext && this._onLevelComplete) {
+                    this._awardMedal();
+                    if (this.music) this.music.stop();
+                    this._playSound('victory');
+                    setTimeout(() => {
+                        if (this._onLevelComplete) {
+                            this._onLevelComplete();
+                        }
+                    }, 1500);
+                } else {
+                    this._endGame();
+                }
             }
         }
     });
