@@ -1,7 +1,9 @@
 // level1.js - City Level with Skyscrapers
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+let clock = new THREE.Clock()
 let scene, camera, renderer, labelRenderer;
 let returnToMainCallback;
 
@@ -24,6 +26,12 @@ let currentFlightSpeed = 0;
 const FLIGHT_ACCEL = 0.01;
 const FLIGHT_MAX_SPEED = 0.35; // slightly faster than walking
 
+
+//pigeon model variable
+
+let pigeon, mixer;
+let takeoffAction, flapAction, landingAction;
+let currentAction = null;
 
 // Player reference
 let player;
@@ -70,6 +78,14 @@ function setupLevel1() {
     
     // Sky background
     scene.background = new THREE.Color(0x87CEEB);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    directionalLight.position.set(50, 100, 50);
+    scene.add(directionalLight);
+
     
     // Large ground
     const groundGeometry = new THREE.PlaneGeometry(200, 200);
@@ -82,14 +98,16 @@ function setupLevel1() {
     ground.position.y = 0;
     scene.add(ground);
 
+
     // Create player
-    const PLAYER_SIZE = { x: 1, y: 1, z: 1 };
+    /*const PLAYER_SIZE = { x: 1, y: 1, z: 1 };
     const playerGeometry = new THREE.BoxGeometry(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z);
-    const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const playerMaterial = new THREE.MeshBasicMaterial({visible: false});
     player = new THREE.Mesh(playerGeometry, playerMaterial);
     player.position.set(0, PLAYER_SIZE.y / 2, 0); // Player stands on ground (y=1)
     player.name = 'player';
     scene.add(player);
+    */
 
     // Generate skyscrapers and populate collisionBoxes
     generateSkyscrapers();
@@ -109,11 +127,171 @@ function setupLevel1() {
     createUI();
     
     // Initial camera position (third-person view)
+
+
+
+    loadPigeon();
+
+        // --- Debug marker ---
+    const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0xff0000 })
+    );
+    scene.add(marker);
+
+    // Store marker globally so updatePlayer can access it
+    window.playerMarker = marker; 
+}
+
+
+let pigeonLoaded = false;
+
+function loadPigeon() {
+    const loader = new GLTFLoader();
+    
+    loader.load('/assets/models/pigeon.glb', 
+        (gltf) => {
+            console.log('Pigeon model loaded successfully');
+            
+            pigeon = new THREE.Group();
+            const pigeonModel = gltf.scene;
+
+            // DEBUG 1: Check raw model center
+            const rawBox = new THREE.Box3().setFromObject(pigeonModel);
+            const rawCenter = rawBox.getCenter(new THREE.Vector3());
+            console.log('DEBUG 1 - Raw model center:', rawCenter);
+
+            // Apply transformations FIRST
+            pigeonModel.scale.set(0.5, 0.5, 0.5);
+            pigeonModel.rotation.x = -Math.PI / 2; 
+            pigeonModel.rotation.z = -Math.PI/2;
+
+            // DEBUG 2: Check center after transformations
+            const transformedBox = new THREE.Box3().setFromObject(pigeonModel);
+            const transformedCenter = transformedBox.getCenter(new THREE.Vector3());
+            console.log('DEBUG 2 - Center after transformations:', transformedCenter);
+
+            // Center the model within the group AFTER transformations
+            pigeonModel.position.x = -transformedCenter.x;
+            pigeonModel.position.y = -transformedCenter.y;
+            pigeonModel.position.z = -transformedCenter.z;
+
+            // Add to group
+            pigeon.add(pigeonModel);
+
+            // DEBUG 3: Check group center after everything
+            const finalBox = new THREE.Box3().setFromObject(pigeon);
+            const finalCenter = finalBox.getCenter(new THREE.Vector3());
+            console.log('DEBUG 3 - Final group center:', finalCenter);
+
+            // Position group at ground level
+            pigeon.position.set(0, 0.5, 0);
+
+            console.log('DEBUG 4 - Final pigeon position:', pigeon.position);
+
+            scene.add(pigeon);
+            player = pigeon;
+            pigeonLoaded = true;
+
+            // Setup animation mixer
+            mixer = new THREE.AnimationMixer(pigeonModel);
+
+            console.log("Available animations:", gltf.animations.map(a => a.name));
+
+            // Animation setup...
+            gltf.animations.forEach((clip) => {
+                const clipName = clip.name.toLowerCase();
+                if (clipName.includes('flap')) {
+                    currentAction = mixer.clipAction(clip);
+                    currentAction.setLoop(THREE.LoopRepeat, Infinity);
+                    currentAction.play();
+                }
+            });
+
+            initializeCamera();
+        },
+        (progress) => {
+            console.log(`Loading progress: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
+        }
+    );
+}
+
+function initializeCamera() {
+    if (!player) return;
+    
+    player.position.set(0, 0.5, 0);
+
+
+    // Set initial camera position (third-person view)
     camera.position.set(0, 10, 15);
     camera.lookAt(player.position);
     
     // Initialize yaw based on initial camera position
     yaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+    
+    console.log('Camera initialized with player');
+}
+
+
+// Fallback pigeon with basic colors
+function createFallbackPigeon() {
+    console.log('Creating fallback pigeon');
+    
+    // Create a simple pigeon-like shape with basic colors
+    const bodyGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+    const bodyMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x888888, // Gray pigeon color
+        roughness: 0.7,
+        metalness: 0.3
+    });
+    
+    const headGeometry = new THREE.SphereGeometry(0.15, 6, 6);
+    const headMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x666666,
+        roughness: 0.7,
+        metalness: 0.3
+    });
+    
+    const wingGeometry = new THREE.BoxGeometry(0.4, 0.1, 0.2);
+    const wingMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x777777,
+        roughness: 0.7,
+        metalness: 0.3
+    });
+    
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    const head = new THREE.Mesh(headGeometry, headMaterial);
+    const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+    const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+    
+    // Position parts
+    head.position.y = 0.25;
+    leftWing.position.set(-0.2, 0, 0.1);
+    rightWing.position.set(0.2, 0, 0.1);
+    
+    // Create group
+    pigeon = new THREE.Group();
+    pigeon.add(body);
+    pigeon.add(head);
+    pigeon.add(leftWing);
+    pigeon.add(rightWing);
+    
+    pigeon.scale.set(1.2, 1.2, 1.2);
+    pigeon.rotation.x = -Math.PI / 2;
+    
+    scene.remove(player);
+    scene.add(pigeon);
+    player = pigeon;
+    
+
+    // Reinitialize camera to look at the new player object
+    camera.position.set(0, 10, 15);
+    camera.lookAt(player.position);
+    
+    // Recalculate yaw based on new player position
+    yaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+
+    console.log('Fallback pigeon created');
 }
 
 function generateSkyscrapers() {
@@ -295,11 +473,8 @@ function onPointerLockChange() {
 }
 
 function onMouseMove(e) {
-    yaw -= e.movementX * MOUSE_SENS;
-    pitch += e.movementY * MOUSE_SENS;
-    const maxPitch = PI_2 - 0.1;
-    const minPitch = -maxPitch;
-    pitch = Math.max(minPitch, Math.min(maxPitch, pitch));
+    yaw = THREE.MathUtils.lerp(yaw, yaw - e.movementX * MOUSE_SENS, 0.7);
+    pitch += -e.movementY * MOUSE_SENS;
 }
 
 // Flying system
@@ -317,15 +492,48 @@ function toggleFlying() {
     updateFlyStatus();
 }
 
+// --- Update every frame ---
+function updatePigeon(delta) {
+    if (!pigeonLoaded || !mixer) return;
+
+    mixer.update(delta);
+
+    // Choose animation
+    if (isFlying && currentAction !== flapAction) {
+        playAnimation(flapAction);
+    } else if (!isFlying && player.position.y <= 1.2 && currentAction !== landingAction) {
+        playAnimation(landingAction);
+    } else if (!isFlying && player.position.y > 1.2 && currentAction !== takeoffAction) {
+        playAnimation(takeoffAction);
+    }
+}
+
+// --- Animation transition ---
+function playAnimation(action) {
+    if (!action || action === currentAction) return;
+    if (currentAction) currentAction.fadeOut(0.2);
+    action.reset().fadeIn(0.2).play();
+    currentAction = action;
+}
+
 
 // Player movement and physics
 // Extra globals for flight transition
 let isAscendingToFly = false;
 let targetFlyHeight = 0;
 
-function updatePlayer() {
-    if (!player) return;
 
+let frameCount = 0;
+
+
+function updatePlayer() {
+    if (!player || !pigeonLoaded) return;
+    if (frameCount <= 10) {
+        console.log("Frame", frameCount, "Player pos:", player.position);
+    }
+    if (window.playerMarker) {
+        window.playerMarker.position.copy(player.position);
+    }
     const _forward = new THREE.Vector3();
     const _right = new THREE.Vector3();
     const _moveDir = new THREE.Vector3();
@@ -333,6 +541,8 @@ function updatePlayer() {
     // Calculate movement directions based on camera yaw
     _forward.set(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
     _right.crossVectors(_forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+    player.rotation.y = yaw;
 
     // Build move direction from inputs
     _moveDir.set(0, 0, 0);
@@ -438,7 +648,7 @@ if (landed) {
     
 
     updateCamera();
-    return;
+    if (!player)return;
     } else {
     const currentSpeed = speed;
     const halfHeight = 0.5; // player height = 1, so half is 0.5
@@ -508,20 +718,38 @@ if (landed) {
 }
 
 function updateCamera() {
-    const distance = 6;
-    const height = 2.5;
+    if (!player) return;
 
-    const camOffset = new THREE.Vector3(0, 0, -distance)
-        .applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+    // --- CAMERA OFFSETS ---
+    const distanceBehind = 50;   // how far the camera stays behind the player
+    const heightOffset = 2.5;   // height above the player
+    const smoothness = 0.1;     // how smoothly the camera follows
 
-    camera.position.copy(player.position).add(camOffset);
-    camera.position.y += height;
-    camera.lookAt(player.position);
+    // --- Compute desired position ---
+    const targetPos = new THREE.Vector3(
+        player.position.x - Math.sin(yaw) * distanceBehind,
+        player.position.y + heightOffset,
+        player.position.z - Math.cos(yaw) * distanceBehind
+    );
+
+    // --- Smoothly interpolate to that position ---
+    camera.position.lerp(targetPos, smoothness);
+
+    // --- Look slightly ahead of the player ---
+    const lookTarget = new THREE.Vector3(
+        player.position.x + Math.sin(yaw) * 2,
+        player.position.y + 1.0, // aim slightly above center
+        player.position.z + Math.cos(yaw) * 2
+    );
+
+    camera.lookAt(lookTarget);
 }
 
 
 // Check for goal collision
 function checkGoal() {
+    if (!player || !pigeonLoaded) return;
+
     const playerBox = new THREE.Box3().setFromObject(player);
     const goal = scene.getObjectByName('goal');
     
@@ -537,6 +765,8 @@ function checkGoal() {
 // Level update function called by main.js animation loop
 export function updateLevel() {
     updatePlayer();
+    const delta = clock.getDelta(); 
+    updatePigeon(delta);
     checkGoal();
 }
 
