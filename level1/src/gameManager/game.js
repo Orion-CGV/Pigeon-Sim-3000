@@ -29,6 +29,10 @@ export class Game {
         this.prevFlyToggle = false;
         this.flyState = { isAscendingToFly: false, targetFlyHeight: 0 };
 
+    // lifecycle state: game hasn't started until welcome/tutorial complete
+    this.started = false;
+    this.gameOver = false;
+
         // Camera control state (mouse-look)
         this.yaw = 0;
         this.pitch = 0;
@@ -54,12 +58,16 @@ export class Game {
         this._createCrosshair3D();
         this._createScoreUI();
         this._createSpeedBoostUI(); // ADDED: Speed boost UI
+    this._createTimerUI(); // countdown timer (10s)
         
         // Initialize minimap
         this._initMinimap();
-        
+
+        // Prepare timing variables but don't start the main loop yet.
         this.lastTime = performance.now();
-        this.loop();
+
+        // Show welcome -> tutorial -> then start the game
+        this._showWelcomeScreen();
     }
 
     // ADDED: Create speed boost UI elements
@@ -262,6 +270,61 @@ export class Game {
         this.scoreElement.innerHTML = `Items: ${this.score}/${this.totalCollectibles}`;
         
         document.body.appendChild(this.scoreElement);
+    }
+
+    _createTimerUI() {
+        // Remove existing timer UI if any
+        const existing = document.getElementById('game-timer');
+        if (existing) existing.remove();
+    this.timerDuration = 300.0; // seconds (can be changed elsewhere)
+    this.timerRemaining = this.timerDuration;
+    // Do not start counting down until the actual game starts
+    this.timerRunning = false;
+
+        this.timerElement = document.createElement('div');
+        this.timerElement.id = 'game-timer';
+        this.timerElement.style.position = 'absolute';
+        this.timerElement.style.top = '8px';
+        this.timerElement.style.left = '50%';
+        this.timerElement.style.transform = 'translateX(-50%)';
+        this.timerElement.style.color = 'white';
+        this.timerElement.style.fontFamily = 'Arial, sans-serif';
+        this.timerElement.style.fontSize = '20px';
+        this.timerElement.style.fontWeight = 'bold';
+        this.timerElement.style.textShadow = '2px 2px 4px rgba(0,0,0,0.6)';
+        this.timerElement.style.zIndex = '1002';
+        this.timerElement.style.pointerEvents = 'none';
+        // Initialize with formatted minutes:seconds
+        const m = Math.floor(this.timerRemaining / 60);
+        const s = Math.floor(this.timerRemaining % 60).toString().padStart(2, '0');
+        this.timerElement.textContent = `Time: ${m}:${s}`;
+        document.body.appendChild(this.timerElement);
+    }
+
+    _updateTimerUI(delta) {
+        if (!this.timerRunning || !this.timerElement) return;
+        if (this.timerRemaining <= 0) return;
+        this.timerRemaining = Math.max(0, this.timerRemaining - delta);
+
+        // Format as M:SS (minutes:seconds) with zero-padded seconds
+        const minutes = Math.floor(this.timerRemaining / 60);
+        const seconds = Math.floor(this.timerRemaining % 60).toString().padStart(2, '0');
+        this.timerElement.textContent = `Time: ${minutes}:${seconds}`;
+
+        if (this.timerRemaining <= 0) {
+            this.timerRunning = false;
+            // show 0:00 and visual cue
+            this.timerElement.textContent = `Time: 0:00`;
+            this.timerElement.style.color = '#ff4444';
+            // Trigger game over
+            this._onTimerEnd();
+        }
+    }
+
+    _onTimerEnd() {
+        // mark game over and display end screen
+        this.gameOver = true;
+        this._showGameOver();
     }
 
     _updateScoreUI() {
@@ -554,6 +617,176 @@ _updateMinimap() {
     this._drawTokensOnMinimap();
 }
 
+    // Welcome/tutorial/game flow UI
+    _showWelcomeScreen() {
+        // Remove existing if any
+        const existing = document.getElementById('welcome-screen');
+        if (existing) existing.remove();
+
+        const container = document.createElement('div');
+        container.id = 'welcome-screen';
+        container.style.position = 'fixed';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '100%';
+        container.style.height = '100%';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        container.style.background = 'rgba(0,0,0,0.75)';
+        container.style.zIndex = '2000';
+
+        const box = document.createElement('div');
+        box.style.maxWidth = '800px';
+        box.style.padding = '24px';
+        box.style.background = '#111';
+        box.style.color = 'white';
+        box.style.borderRadius = '8px';
+        box.style.boxShadow = '0 8px 30px rgba(0,0,0,0.7)';
+        box.style.fontFamily = 'Arial, sans-serif';
+
+        // Placeholder: user will write the welcome text here
+        const text = document.createElement('div');
+        text.id = 'welcome-text';
+        text.style.fontSize = '20px';
+        text.style.lineHeight = '1.4';
+        text.style.marginBottom = '18px';
+        text.innerHTML = `<h2 style="margin:0 0 8px 0">Welcome</h2><p style="margin:0">Replace this text with your welcome message.</p>`;
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Continue';
+        btn.style.padding = '10px 18px';
+        btn.style.fontSize = '16px';
+        btn.style.cursor = 'pointer';
+
+        btn.addEventListener('click', () => {
+            if (container.parentNode) container.parentNode.removeChild(container);
+            this._showTutorialScreen();
+        });
+
+        box.appendChild(text);
+        box.appendChild(btn);
+        container.appendChild(box);
+        document.body.appendChild(container);
+    }
+
+    _showTutorialScreen() {
+        const existing = document.getElementById('tutorial-screen');
+        if (existing) existing.remove();
+
+        const container = document.createElement('div');
+        container.id = 'tutorial-screen';
+        container.style.position = 'fixed';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '100%';
+        container.style.height = '100%';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        container.style.background = 'rgba(0,0,0,0.8)';
+        container.style.zIndex = '2000';
+
+        const box = document.createElement('div');
+        box.style.maxWidth = '900px';
+        box.style.padding = '20px';
+        box.style.background = '#111';
+        box.style.color = 'white';
+        box.style.borderRadius = '8px';
+        box.style.boxShadow = '0 8px 30px rgba(0,0,0,0.7)';
+        box.style.fontFamily = 'Arial, sans-serif';
+
+        const text = document.createElement('div');
+        text.id = 'tutorial-text';
+        text.style.fontSize = '16px';
+        text.style.lineHeight = '1.4';
+        text.style.marginBottom = '14px';
+        text.innerHTML = `<h3 style="margin:0 0 8px 0">Quick Tutorial</h3><p style="margin:0">Replace this text with your tutorial/instructions.</p>`;
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Start Game';
+        btn.style.padding = '10px 18px';
+        btn.style.fontSize = '16px';
+        btn.style.cursor = 'pointer';
+
+        btn.addEventListener('click', () => {
+            if (container.parentNode) container.parentNode.removeChild(container);
+            this.startGame();
+        });
+
+        box.appendChild(text);
+        box.appendChild(btn);
+        container.appendChild(box);
+        document.body.appendChild(container);
+    }
+
+    startGame() {
+        if (this.started) return;
+        this.started = true;
+        this.gameOver = false;
+        this.timerRunning = true; // begin countdown
+        this.lastTime = performance.now();
+        // kick off the animation loop
+        requestAnimationFrame(this.loop);
+    }
+
+    _showGameOver() {
+        // Remove any existing over screen
+        const existing = document.getElementById('game-over-screen');
+        if (existing) existing.remove();
+
+        const container = document.createElement('div');
+        container.id = 'game-over-screen';
+        container.style.position = 'fixed';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '100%';
+        container.style.height = '100%';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        container.style.background = 'rgba(0,0,0,0.85)';
+        container.style.zIndex = '3000';
+
+        const box = document.createElement('div');
+        box.style.maxWidth = '700px';
+        box.style.padding = '24px';
+        box.style.background = '#111';
+        box.style.color = 'white';
+        box.style.borderRadius = '8px';
+        box.style.boxShadow = '0 8px 30px rgba(0,0,0,0.8)';
+        box.style.textAlign = 'center';
+        box.style.fontFamily = 'Arial, sans-serif';
+
+        const title = document.createElement('div');
+        title.style.fontSize = '36px';
+        title.style.fontWeight = 'bold';
+        title.style.marginBottom = '12px';
+        title.textContent = 'Game Over';
+
+        const score = document.createElement('div');
+        score.style.fontSize = '18px';
+        score.style.marginBottom = '18px';
+        score.textContent = `Items collected: ${this.score}/${this.totalCollectibles}`;
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Restart';
+        btn.style.padding = '10px 18px';
+        btn.style.fontSize = '16px';
+        btn.style.cursor = 'pointer';
+
+        btn.addEventListener('click', () => {
+            // simple restart by reloading the page
+            window.location.reload();
+        });
+
+        box.appendChild(title);
+        box.appendChild(score);
+        box.appendChild(btn);
+        container.appendChild(box);
+        document.body.appendChild(container);
+    }
+
     // Add this new method to create and update token indicators
     
 
@@ -579,7 +812,10 @@ _updateCamera() {
 }
 
     loop = () => {
-        requestAnimationFrame(this.loop);
+        if (this.gameOver) {
+            // stop requesting new frames when game is over
+            return;
+        }
 
         const now = performance.now();
         const delta = (now - this.lastTime) / 1000;
@@ -667,6 +903,9 @@ _updateCamera() {
         this._updateSpeedBoostUI();
         this._updateScreenEffects();
 
+    // Update timer UI
+    this._updateTimerUI(delta);
+
         // Position 3D crosshair
         if (this.crosshair3D) {
             const dir = new THREE.Vector3();
@@ -682,7 +921,21 @@ _updateCamera() {
         // Update procedural player animation (if provided)
         try {
             if (typeof updatePlayer === 'function') {
-                updatePlayer(this.player, now * 0.001, { isFlying: this.isFlying });
+                // Determine grounded state using the scene's ground collider if available
+                let isGrounded = false;
+                const collider = this.scene && this.scene.userData ? this.scene.userData.groundCollider : null;
+                if (collider && typeof collider.getHeightAt === 'function') {
+                    const groundH = collider.getHeightAt(this.player.position.x, this.player.position.z);
+                    // small epsilon to consider as grounded
+                    isGrounded = this.player.position.y <= groundH + 0.05;
+                } else {
+                    // fallback: if not flying and y is close to 0, assume grounded
+                    isGrounded = !this.isFlying && this.player.position.y <= 0.5;
+                }
+
+                const isMoving = input.forward !== 0 || input.right !== 0;
+
+                updatePlayer(this.player, now * 0.001, { isFlying: this.isFlying, isGrounded, isMoving });
             }
         } catch (e) {
             // don't break the game loop if update fails
@@ -696,5 +949,8 @@ _updateCamera() {
         this.renderer.autoClear = false;
         this.renderer.render(this.uiScene, this.uiCamera);
         this.renderer.autoClear = true;
+
+        // schedule next frame if game still running
+        if (!this.gameOver) requestAnimationFrame(this.loop);
     }
 }
