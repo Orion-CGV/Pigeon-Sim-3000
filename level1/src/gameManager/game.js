@@ -7,7 +7,7 @@ import { updateFlying } from "../physics/flight.js";
 import { getSpeedBoostState } from "../physics/flight.js";
 import { getWalkSpeedBoostState as getWalkBoostState } from "../physics/movement.js";
 import { enableCollisionDebug } from "../physics/movement.js";
-import { AudioListener, Audio, PositionalAudio } from 'three';   
+import { AudioListener, Audio } from 'three';   
 
 
 
@@ -41,9 +41,17 @@ export class Game {
         this.medalElement = null;
         this.controlsElement = null;
         this.loadProgressBar = null;
+        this.tokenUIContainer = null;
 
-        
+        this.listener   = new THREE.AudioListener();
+        this.camera.add(this.listener);               // camera is the listener
+        this.sounds     = {};                         // named sound buffers
+        this.music      = null;                       // background track
+        this.isMuted    = false;
 
+
+        this._lastBoostActive = false;
+        this._wasPaused       = false;
         // Loading state
         this.loadingProgress = 0;
 
@@ -90,6 +98,8 @@ export class Game {
 
         clearInterval(progressTimer);
 
+        await this._loadAudio();
+
         this.scene = levelScene;
         this.camera = levelCamera;
 
@@ -102,7 +112,7 @@ export class Game {
         );
 
         this.totalCollectibles = this.scene.userData.collectibles?.length || 0;
-        enableCollisionDebug(this.scene, true);
+        enableCollisionDebug(this.scene, false);
 
         this.gameLoaded = true;
         console.log(`Level ready in ${(performance.now() - start)/1000}s`);
@@ -111,6 +121,46 @@ export class Game {
         console.error('Level load failed:', e);
         this.gameLoaded = false;
     }
+}
+
+async _loadAudio() {
+    const audioLoader = new THREE.AudioLoader();
+
+    const soundList = {
+        collect   : 'assets/sounds/collect.wav',
+        fly       : 'assets/sounds/fly.wav',
+        boost     : 'assets/sounds/boost.wav',
+        pause     : 'assets/sounds/pause.wav',
+        victory   : 'assets/sounds/victory.wav',
+        background: 'assets/music/nyc_ambient.mp3'   // looping music
+    };
+
+    // Load every file in parallel
+    const loadPromises = Object.entries(soundList).map(([name, url]) => {
+        return audioLoader.loadAsync(url).then(buffer => ({ name, buffer }));
+    });
+
+    const results = await Promise.all(loadPromises);
+    results.forEach(({ name, buffer }) => {
+        const sound = new THREE.Audio(this.listener);
+        sound.setBuffer(buffer);
+        sound.setVolume(name === 'background' ? 0.35 : 0.6);
+        this.sounds[name] = sound;
+    });
+
+    // Background music – loop + auto-start
+    this.music = this.sounds.background;
+    this.music.setLoop(true);
+    this.music.play();
+}
+
+_playSound(name, volume = 1) {
+    if (this.isMuted) return;
+    const s = this.sounds[name];
+    if (!s) return console.warn(`Sound "${name}" missing`);
+    s.stop();
+    s.setVolume(volume);
+    s.play();
 }
 
 
@@ -359,8 +409,8 @@ _showWelcomeScreen() {
             <div>WASD: Move</div>
             <div>Mouse: Look</div>
             <div>F: Fly</div>
-            <div>SPACE: Jump <div>
-            <div>tip: toggle V<div>
+            <div>SPACE: Jump </div>
+
         `;
         document.body.appendChild(this.controlsElement);
     }
@@ -385,6 +435,7 @@ _showWelcomeScreen() {
         this.timerElement.textContent = '5:00';
         document.body.appendChild(this.timerElement);
     }
+
 
     _createMedalUI() {
         this.medalElement = document.createElement('div');
@@ -573,8 +624,16 @@ _showWelcomeScreen() {
     }
 
     _endGame() {
+
+        this.timerRunning = false;
         this.timerRunning = false;
         this._awardMedal();
+
+        // stop background music
+        if (this.music) this.music.stop();
+
+        // play victory fanfare
+        this._playSound('victory');
 
         // Victory or Game Over
         const message = this.score >= this.totalCollectibles ?
@@ -718,13 +777,13 @@ _showWelcomeScreen() {
     }
 
     
-    /*// ... REST OF YOUR EXISTING METHODS REMAIN UNCHANGED ...
+    // ... REST OF YOUR EXISTING METHODS REMAIN UNCHANGED ...
    _checkWorldBounds() {
     const worldHalfSize = (25 * 50) / 2; // Based on your level size
     this.player.position.x = THREE.MathUtils.clamp(this.player.position.x, -worldHalfSize, worldHalfSize);
     this.player.position.z = THREE.MathUtils.clamp(this.player.position.z, -worldHalfSize, worldHalfSize);
-}
-
+    }
+/*
 // Optional: Add cleanup method
 destroy() {
     // Clean up event listeners
@@ -772,6 +831,15 @@ destroy() {
                 location.reload();  
             }
         });
+
+        document.addEventListener('keydown', e => {
+        if (e.key.toLowerCase() === 'm') {
+            this.isMuted = !this.isMuted;
+            if (this.isMuted && this.music) this.music.pause();
+            else if (!this.isMuted && this.music) this.music.play();
+            console.log('Audio', this.isMuted ? 'MUTED' : 'UNMUTED');
+        }
+    });
     }
 
     _onMouseMove(e) {
@@ -863,6 +931,7 @@ _checkCollectibleCollisions() {
         const dist = playerPos.distanceTo(token.position);
         if (dist < token.userData.collectionRadius) {
             token.userData.collected = true;
+            this._playSound('collect');
             token.visible = false;                 // hide in 3-D view
 
             // Hide debug sphere immediately
@@ -1010,7 +1079,7 @@ _drawTokensOnMinimap() {
     ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2 - 4, 0, Math.PI * 2);
     ctx.clip();
     
-    // Draw a subtle radifal gradient for better visibility
+    // Draw a subtle radial gradient for better visibility
     const gradient = ctx.createRadialGradient(
         canvas.width / 2, canvas.height / 2, 0,
         canvas.width / 2, canvas.height / 2, canvas.width / 2
@@ -1284,6 +1353,24 @@ _updateCamera() {
             console.warn('updatePlayer failed:', e);
         }
 
+            if (input.flyToggle && !this.prevFlyToggle) {
+            this._playSound('fly', 0.8);
+        }
+    
+    
+        // Speed-boost activation sound
+            const boostState = this.isFlying ? getSpeedBoostState() : getWalkBoostState();
+            if (boostState.active && !this._lastBoostActive) {
+                this._playSound('boost');
+            }
+            this._lastBoostActive = boostState.active;
+
+            // Pause toggle sound
+            if (this.isPaused && !this._wasPaused) {
+                this._playSound('pause');
+            }
+            this._wasPaused = this.isPaused;
+            
         // Render main scene
         this.renderer.render(this.scene, this.camera);
         

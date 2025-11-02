@@ -273,7 +273,7 @@ for (let z = 0; z < layout.length; z++) {
         // ---- CREATE LOD OBJECT ----
         const lod = new LOD();
         lod.addLevel(highMesh, 0);    // High at < 200 units
-        lod.addLevel(lowMesh, 150);   // Low at > 200 units
+        lod.addLevel(lowMesh, 150);   // Low at > 150 units
 
         lod.position.set(
             x * cellSize - offset,
@@ -292,6 +292,8 @@ for (let z = 0; z < layout.length; z++) {
     }
 }
 
+    await new Promise(resolve => requestAnimationFrame(resolve)); 
+    scene.updateMatrixWorld(true);
 
 
     
@@ -565,7 +567,9 @@ function makeParkingLot(worldX, worldZ, width, depth) {
     });
 
     
-// === Collectible Tokens - Air Spawning with Compatibility ===
+
+
+// === Collectible Tokens ===
 const collectibles = [];
 const totalTokens = 10; 
 const TOKEN_SCALE_FACTOR = 4.0;
@@ -857,29 +861,7 @@ placementStrategies.forEach(strategy => {
 });
 
 // NEW: Unified token placement function
-function placeToken(x, z, y, surfaceType) {
-    const tokenType = tokenTypes[Math.floor(Math.random() * tokenTypes.length)];
-    const token = tokenType.createModel();
-    token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
 
-    token.position.set(x, y, z);
-    token.userData = { 
-        type: tokenType.name, 
-        collected: false, 
-        value: 1, 
-        showOnMinimap: true,
-        surfaceType: surfaceType,
-        collectionRadius: 3.0
-    };
-    
-    // Random rotation
-    token.rotation.x = Math.random() * Math.PI;
-    token.rotation.y = Math.random() * Math.PI;
-    token.rotation.z = Math.random() * Math.PI;
-    
-    scene.add(token);
-    collectibles.push(token);
-}
 
 // === DEBUG VISUALIZATION (Toggle with 'V' key in game) ===
 scene.userData.toggleCollectionRadius = () => {
