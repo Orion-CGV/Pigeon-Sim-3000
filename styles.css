@@ -1,11 +1,11 @@
-/* Legacy Arcade - Main Styles */
+/* Timmy's Lost Treasure - Main Styles */
 
 body { 
     margin: 0; 
     padding: 0; 
     overflow: hidden; 
     background: #000;
-    font-family: 'Arial', sans-serif;
+    font-family: 'Jersey 10', sans-serif;
 }
 
 canvas { 
@@ -838,7 +838,7 @@ canvas {
 .credits-scroll {
     text-align: center;
     color: white;
-    font-family: 'Arial', sans-serif;
+    font-family: 'Jersey 10', sans-serif;
     max-width: 800px;
     padding: 0 20px;
 }

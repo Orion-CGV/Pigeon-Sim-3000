@@ -10,6 +10,7 @@ export class SettingsMenu {
         // Settings state
         this.settings = {
             masterVolume: 100,
+            musicVolume: 50,
             mouseSensitivity: 1,
             fullscreen: false,
             soundEffects: true
@@ -17,6 +18,7 @@ export class SettingsMenu {
         
         // Callbacks for when settings change
         this.onVolumeChange = null;
+        this.onMusicVolumeChange = null;
         this.onSensitivityChange = null;
         this.onFullscreenChange = null;
         this.onSoundEffectsChange = null;
@@ -134,6 +136,31 @@ export class SettingsMenu {
             volumeDisplay.textContent = this.settings.masterVolume + '%';
         }
         
+        // Music volume slider
+        const musicVolumeSlider = document.getElementById('music-volume');
+        const musicVolumeDisplay = document.getElementById('music-volume-display');
+        if (musicVolumeSlider && musicVolumeDisplay) {
+            // Remove old listener if exists
+            const newMusicSlider = musicVolumeSlider.cloneNode(true);
+            musicVolumeSlider.parentNode.replaceChild(newMusicSlider, musicVolumeSlider);
+            
+            newMusicSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                musicVolumeDisplay.textContent = value + '%';
+                this.settings.musicVolume = value;
+                this.saveSettings();
+                
+                // Call callback if set
+                if (this.onMusicVolumeChange) {
+                    this.onMusicVolumeChange(value);
+                }
+            });
+            
+            // Set initial value
+            newMusicSlider.value = this.settings.musicVolume;
+            musicVolumeDisplay.textContent = this.settings.musicVolume + '%';
+        }
+        
         // Mouse sensitivity slider
         const sensitivitySlider = document.getElementById('mouse-sensitivity');
         const sensitivityDisplay = document.getElementById('sensitivity-display');
@@ -172,6 +199,16 @@ export class SettingsMenu {
         const volumeDisplay = document.getElementById('volume-display');
         if (volumeDisplay) {
             volumeDisplay.textContent = this.settings.masterVolume + '%';
+        }
+        
+        // Update music volume slider
+        const musicVolumeSlider = document.getElementById('music-volume');
+        if (musicVolumeSlider) {
+            musicVolumeSlider.value = this.settings.musicVolume;
+        }
+        const musicVolumeDisplay = document.getElementById('music-volume-display');
+        if (musicVolumeDisplay) {
+            musicVolumeDisplay.textContent = this.settings.musicVolume + '%';
         }
         
         // Update sensitivity slider
@@ -334,6 +371,8 @@ export class SettingsMenu {
                 const parsed = JSON.parse(saved);
                 // Merge with defaults
                 this.settings = { ...this.settings, ...parsed };
+                // Always default fullscreen to false (don't restore saved fullscreen state)
+                this.settings.fullscreen = false;
             }
         } catch (err) {
             console.warn('Could not load settings from localStorage:', err);
@@ -354,6 +393,14 @@ export class SettingsMenu {
      */
     setOnVolumeChange(callback) {
         this.onVolumeChange = callback;
+    }
+    
+    /**
+     * Sets callback for music volume change
+     * @param {Function} callback - Callback function (receives volume: 0-100)
+     */
+    setOnMusicVolumeChange(callback) {
+        this.onMusicVolumeChange = callback;
     }
     
     /**

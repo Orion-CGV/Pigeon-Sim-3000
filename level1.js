@@ -178,7 +178,7 @@ function createUI() {
     // Re-use the 'game-ui' class for easy global cleanup
     const titleDiv = document.createElement('div');
     titleDiv.className = "game-ui"; 
-    titleDiv.textContent = 'LEVEL 1 - City Exploration';
+    titleDiv.textContent = 'LEVEL 1 - Pigeon Simulator';
     titleDiv.style.cssText = `
         color: white; font-size: 24px; font-weight: bold; position: absolute; 
         top: 20px; left: 50%; transform: translateX(-50%); text-shadow: 2px 2px 4px black;
@@ -536,22 +536,24 @@ function checkGoal() {
 
 // Level update function called by main.js animation loop
 export function updateLevel() {
-    if (window.__stats) window.__stats.begin();
     updatePlayer();
     checkGoal();
-    if (window.__stats) window.__stats.end();
 }
 
 // Cleanup function to be called by main.js
 export function cleanupLevel() {
     // Remove all event listeners and DOM elements
     
-    // Remove level-specific UI elements
+    // Remove level-specific UI elements (but preserve Story UI and Inventory UI)
     const uiElements = document.querySelectorAll('.game-ui');
     uiElements.forEach(el => {
         // Only remove elements that are not part of the main menu system
         const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
-        if (!isMainMenuElement) {
+        // Preserve Story UI and Inventory UI (they should persist)
+        const isStoryUI = el.classList.contains('story-ui');
+        const isInventoryUI = el.classList.contains('inventory-ui');
+        
+        if (!isMainMenuElement && !isStoryUI && !isInventoryUI) {
             el.remove();
         }
     });

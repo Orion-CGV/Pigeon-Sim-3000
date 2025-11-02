@@ -2715,9 +2715,13 @@ function updateBullets(delta) {
 export function cleanupLevel() {
     console.log("Level 3 cleanup started");
     
-    // 1. Remove UI
+    // 1. Remove UI (but preserve Story UI and Inventory UI)
     document.querySelectorAll('.game-ui').forEach(el => {
-        if (el.textContent !== 'LEVEL 3 COMPLETED! Returning to main menu...') {
+        // Preserve Story UI and Inventory UI (they should persist)
+        const isStoryUI = el.classList.contains('story-ui');
+        const isInventoryUI = el.classList.contains('inventory-ui');
+        
+        if (!isStoryUI && !isInventoryUI && el.textContent !== 'LEVEL 3 COMPLETED! Returning to main menu...') {
             el.remove();
         }
     });

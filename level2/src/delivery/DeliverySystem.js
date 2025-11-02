@@ -77,6 +77,22 @@ export class DeliverySystem {
         
         // Reference to lighting system (set externally)
         this.lightingSystem = null;
+        
+        // Completion callback (set externally)
+        this.onCompleteCallback = null;
+        
+        // Track if we're in Story Mode (affects UI display)
+        this.isInStoryMode = false;
+    }
+    
+    /**
+     * Set callback to be called when level is completed
+     * @param {Function} callback - Function to call on completion
+     * @param {boolean} isInStoryMode - Whether we're in Story Mode (hides return button)
+     */
+    setOnComplete(callback, isInStoryMode = false) {
+        this.onCompleteCallback = callback;
+        this.isInStoryMode = isInStoryMode;
     }
     
     /**
@@ -374,6 +390,11 @@ export class DeliverySystem {
                     this.deliveryState = 'has_package';
                     this.pickupTimer = 0;
                     
+                    // Play completion sound effect for pickup
+                    if (window.audioManager) {
+                        window.audioManager.playSoundEffect('complete');
+                    }
+                    
                     // Hide pickup zone and show delivery zone
                     if (this.activePickupZone) this.activePickupZone.visible = false;
                     if (this.activeDeliveryZone) this.activeDeliveryZone.visible = true;
@@ -413,6 +434,11 @@ export class DeliverySystem {
                     this.uiSystem.updateDeliveryStatus('Delivered! 🎉', '#00ff00');
                 }
                 
+                // Play completion sound effect
+                if (window.audioManager) {
+                    window.audioManager.playSoundEffect('complete');
+                }
+                
                 // Transition to next game state after 2 seconds
                 setTimeout(() => {
                     if (this.gameState === 'first_delivery') {
@@ -441,6 +467,11 @@ export class DeliverySystem {
                 }
                 
                 if (this.refuelTimer >= this.refuelRequired) {
+                    // Play completion sound effect for refuel
+                    if (window.audioManager) {
+                        window.audioManager.playSoundEffect('complete');
+                    }
+                    
                     // Refuel complete - transition to night and second pickup
                     this.transitionToNight();
                 }
@@ -552,6 +583,24 @@ export class DeliverySystem {
         // Hide all zones
         if (this.deliveryZone2) this.deliveryZone2.visible = false;
         if (this.deliveryZone2Helper) this.deliveryZone2Helper.visible = false;
+        
+        // Call completion callback if set
+        if (this.onCompleteCallback && typeof this.onCompleteCallback === 'function') {
+            if (this.isInStoryMode) {
+                // Story Mode: Delay callback to allow completion UI to show
+                console.log('✅ Completion callback is set, will call after 3 seconds (or user clicks button)');
+                this.completionTimeout = setTimeout(() => {
+                    console.log('⏰ Auto-returning to hub after completion screen...');
+                    this.onCompleteCallback();
+                }, 3000); // 3 seconds to see completion screen
+            } else {
+                // Main Menu: Wait for user to click button (no auto-return)
+                console.log('✅ Completion callback is set, waiting for user to click Return to Main Menu button');
+                // Don't set timeout - user must click button to return
+            }
+        } else {
+            console.warn('⚠️ No completion callback set! Level will not return automatically.');
+        }
     }
     
     /**
@@ -588,11 +637,32 @@ export class DeliverySystem {
                     <div class="total-value">${scoreData.totalScore}</div>
                 </div>
                 
-                <button class="completion-button" onclick="location.reload()">Play Again</button>
+                ${this.isInStoryMode ? '' : '<button class="completion-button" id="completion-return-btn">Return to Main Menu</button>'}
             </div>
         `;
         
         document.body.appendChild(popup);
+        
+        // Set up return button (only if not in Story Mode)
+        if (!this.isInStoryMode) {
+            const returnBtn = popup.querySelector('#completion-return-btn');
+            if (returnBtn && this.onCompleteCallback) {
+                returnBtn.onclick = () => {
+                    console.log('🔘 User clicked Return to Main Menu button');
+                    // Clear the auto-return timeout if it exists
+                    if (this.completionTimeout) {
+                        clearTimeout(this.completionTimeout);
+                        this.completionTimeout = null;
+                    }
+                    // Immediately call the callback
+                    if (this.onCompleteCallback && typeof this.onCompleteCallback === 'function') {
+                        this.onCompleteCallback();
+                    }
+                };
+            }
+        } else {
+            console.log('📖 Story Mode: Return button hidden (auto-returning to hub)');
+        }
         
         // Trigger animation
         setTimeout(() => {
@@ -787,6 +857,15 @@ export class DeliverySystem {
      * Cleanup delivery system
      */
     cleanup() {
+        // Clear completion timeout if it exists
+        if (this.completionTimeout) {
+            clearTimeout(this.completionTimeout);
+            this.completionTimeout = null;
+        }
+        
+        // Clear completion callback
+        this.onCompleteCallback = null;
+        
         // Remove completion popup if it exists
         const popup = document.getElementById('completion-popup');
         if (popup) {

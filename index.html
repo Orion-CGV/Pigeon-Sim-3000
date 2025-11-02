@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Legacy Arcade</title>
+    <title>Timmy's Lost Treasure</title>
     <script type="importmap">
     {
       "imports": {
@@ -15,6 +15,9 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/cannon@0.6.2/build/cannon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.2/dist/gsap.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jersey+10&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="level2/style.css">
 </head>
@@ -68,7 +71,7 @@
         <div class="arcade-icon">🕹️</div>
         <div class="company-logo">ORION STUDIOS</div>
         <div class="company-subtitle">Presents</div>
-        <div class="game-title">LEGACY ARCADE</div>
+        <div class="game-title">TIMMY'S LOST TREASURE</div>
         <div class="game-subtitle">A child's journey through magical arcade worlds</div>
         <div class="loading-bar">
             <div class="loading-progress"></div>
@@ -85,7 +88,7 @@
         <div class="menu-content">
             <div class="menu-logo">
                 <div class="arcade-icon-large">🕹️</div>
-                <h1 class="menu-title">LEGACY ARCADE</h1>
+                <h1 class="menu-title">TIMMY'S LOST TREASURE</h1>
                 <p class="menu-subtitle">A child's journey through magical arcade worlds</p>
             </div>
             
@@ -165,22 +168,22 @@
             <div class="level-grid">
                 <div class="level-card" onclick="startLevel(1)">
                     <div class="level-icon">🕊️</div>
-                    <h3 class="level-title">Flight Frenzy</h3>
-                    <p class="level-description">City exploration with flying mechanics. Navigate through skyscrapers, use F to toggle flying mode, and find the green goal building.</p>
+                    <h3 class="level-title">Pigeon Simulator</h3>
+                    <p class="level-description">Experience life as a city pigeon! Fly through urban environments, poop on unsuspecting pedestrians, and steal food from street vendors and restaurants. Master the art of being a mischievous bird in this chaotic urban simulator.</p>
                     <div class="level-difficulty">Difficulty: Easy</div>
                 </div>
                 
                 <div class="level-card" onclick="startLevel(2)">
                     <div class="level-icon">🏎️</div>
-                    <h3 class="level-title">Arcade Racing</h3>
-                    <p class="level-description">Drive a sports car through a 3D city! Collect packages from the yellow zone and deliver them to the purple zone. Features realistic physics, boost, and dynamic day/night cycle.</p>
+                    <h3 class="level-title">Speed Delivery Game</h3>
+                    <p class="level-description">Become a delivery driver racing against the clock in a charming small town! Navigate tight streets, dodge traffic, and deliver packages as fast as possible. Master your route, use boost strategically, and become the fastest delivery driver in town!</p>
                     <div class="level-difficulty">Difficulty: Medium</div>
                 </div>
                 
                 <div class="level-card" onclick="startLevel(3)">
                     <div class="level-icon">🔫</div>
-                    <h3 class="level-title">Mystic Trial</h3>
-                    <p class="level-description">Advanced combat level with bullet mechanics. Defeat enemies and navigate through challenging obstacles.</p>
+                    <h3 class="level-title">Gravity Cube Game</h3>
+                    <p class="level-description">Control a mysterious cube with gravity-defying abilities in this mind-bending puzzle adventure! Rotate, flip, and manipulate the cube through increasingly complex puzzles. Master physics and spatial reasoning to unlock each level's secrets.</p>
                     <div class="level-difficulty">Difficulty: Hard</div>
                 </div>
             </div>
@@ -221,6 +224,11 @@
                         <label>Master Volume</label>
                         <input type="range" id="master-volume" min="0" max="100" value="70">
                         <span id="volume-display">70%</span>
+                    </div>
+                    <div class="setting-item">
+                        <label>Music Volume</label>
+                        <input type="range" id="music-volume" min="0" max="100" value="50">
+                        <span id="music-volume-display">50%</span>
                     </div>
                     <div class="setting-item">
                         <label>Sound Effects</label>
@@ -294,25 +302,51 @@
         
         <div class="credits-container">
             <div class="credits-scroll">
-                <div class="credits-title">LEGACY ARCADE</div>
+                <div class="credits-title">TIMMY'S LOST TREASURE</div>
                 <div class="credits-subtitle">A child's journey through magical arcade worlds</div>
                 
                 <div class="credits-section-title">PRODUCED BY</div>
                 <div class="credits-name">ORION STUDIOS</div>
                 
+                <div class="credits-section-title">ORION DEV TEAM</div>
+                
                 <div class="credits-section-title">GAME DIRECTOR</div>
-                <div class="credits-name">Arcade Master</div>
+                <div class="credits-name">Zayd Suliman</div>
                 
-                <div class="credits-section-title">LEAD DEVELOPER</div>
-                <div class="credits-name">Legacy Team</div>
+                <div class="credits-section-title">LEAD DEVELOPERS</div>
+                <div class="credits-name">Zayd Suliman</div>
+                <div class="credits-name">Terence Nkoua MacKyta</div>
                 
-                <div class="credits-section-title">3D ART & DESIGN</div>
-                <div class="credits-name">Retro Artists</div>
-                <div class="credits-name">Pixel Perfectionist</div>
+                <div class="credits-section-title">3D ARTIST</div>
+                <div class="credits-name">Leethee Malebogo</div>
                 
-                <div class="credits-section-title">AUDIO DESIGN</div>
-                <div class="credits-name">Sound Wizard</div>
-                <div class="credits-name">Music Maestro</div>
+                <div class="credits-section-title">AUDIO DESIGNERS</div>
+                <div class="credits-name">Ashly Masipa</div>
+                <div class="credits-name">Zayd Suliman</div>
+                
+                <div class="credits-section-title">UI/UX DESIGN</div>
+                <div class="credits-name">Leethee Malebogo</div>
+                <div class="credits-name">Jaairdan Munusamy</div>
+                
+                <div class="credits-section-title">LEVEL DESIGN</div>
+                <div class="credits-name">Kalala Kafuka</div>
+                <div class="credits-name">Ashly Masipa</div>
+                
+                <div class="credits-section-title">QA/TESTING</div>
+                <div class="credits-name">Jaairdan Munusamy</div>
+                
+                <div class="credits-section-title">ANIMATIONS & CUTSCENES</div>
+                <div class="credits-name">Terence Nkoua MacKyta</div>
+                
+                <div class="credits-section-title">MUSIC CREDITS</div>
+                <div class="credits-name">"Glacier" by SalmonLikeTheFish</div>
+                <div class="credits-name" style="font-size: 1.2rem; opacity: 0.8; margin-top: 0.5rem;">Source: Free Music Archive | License: CC BY</div>
+                <div class="credits-name" style="margin-top: 1.5rem;">"Did you know_ (Curiouser and curiouser)" by Fabian Measures</div>
+                <div class="credits-name" style="font-size: 1.2rem; opacity: 0.8; margin-top: 0.5rem;">Source: Free Music Archive | License: CC BY</div>
+                <div class="credits-name" style="margin-top: 1.5rem;">"Mike and Ron Jam" by The Sluts With Nuts</div>
+                <div class="credits-name" style="font-size: 1.2rem; opacity: 0.8; margin-top: 0.5rem;">Source: Free Music Archive | License: CC BY</div>
+                <div class="credits-name" style="margin-top: 1.5rem;">"The end" by Grzegorz Rusin</div>
+                <div class="credits-name" style="font-size: 1.2rem; opacity: 0.8; margin-top: 0.5rem;">Source: Free Music Archive | License: CC BY</div>
                 
                 <div class="credits-section-title">TECHNOLOGY</div>
                 <div class="credits-name">Three.js Engine</div>
@@ -336,7 +370,7 @@
                 
                 <div class="credits-final">
                     <div class="credits-thank-you">THANK YOU FOR PLAYING</div>
-                    <div class="credits-game-title">LEGACY ARCADE</div>
+                    <div class="credits-game-title">TIMMY'S LOST TREASURE</div>
                 </div>
                 
                 <!-- Extra white space for continued scrolling after text -->
@@ -356,12 +390,6 @@
         </div>
         
         <div class="credits-controls">
-            <div class="speed-control">
-                <label class="speed-label">Scroll Speed</label>
-                <input type="range" id="credits-speed-slider" class="speed-slider" min="10" max="90" value="45" oninput="updateCreditsSpeed(this.value)">
-                <span id="speed-display" class="speed-display">Normal</span>
-            </div>
-            
             <div class="skip-credits">
                 <button class="skip-credits-button" onclick="skipCinematicCredits()">
                     <span class="skip-text">SKIP CREDITS</span>
@@ -410,18 +438,18 @@
                 </div>
                 
                 <div class="instruction-section">
-                    <h3>🕊️ Level 1 - Flight Frenzy</h3>
-                    <p>City exploration with flying mechanics. Navigate through skyscrapers and find the green goal building. Use F to toggle flying mode for easier navigation, WASD to move, and mouse to look around.</p>
+                    <h3>🕊️ Level 1 - Pigeon Simulator</h3>
+                    <p>Experience life as a city pigeon in this chaotic urban simulator! Fly through urban environments, poop on unsuspecting pedestrians, and steal food from street vendors and restaurants. Master the art of being a mischievous bird. Use F to toggle flying mode, WASD to move, and mouse to look around.</p>
                 </div>
                 
                 <div class="instruction-section">
-                    <h3>🏎️ Level 2 - Arcade Racing</h3>
-                    <p>Drive a sports car through a 3D city with realistic physics! Use W/S to accelerate/brake, A/D to steer, Space for boost, Q to cycle camera views, L for headlights (night only), and H for day/night toggle. Collect packages from yellow zones and deliver to purple zones!</p>
+                    <h3>🏎️ Level 2 - Speed Delivery Game</h3>
+                    <p>Become a delivery driver racing against the clock in a charming small town! Navigate tight streets, dodge traffic, and deliver packages as fast as possible. Master your route and use boost strategically to become the fastest delivery driver. Use W/S to accelerate/brake, A/D to steer, Space for boost, Q to cycle camera views, L for headlights (night only), and H for day/night toggle.</p>
                 </div>
                 
                 <div class="instruction-section">
-                    <h3>🔫 Level 3 - Mystic Trial</h3>
-                    <p>Advanced combat level with bullet mechanics. Defeat enemies and navigate through challenging obstacles. Use mouse to aim and shoot, WASD to move, and various keys for combat actions.</p>
+                    <h3>🔫 Level 3 - Gravity Cube Game</h3>
+                    <p>Control a mysterious cube with gravity-defying abilities in this mind-bending puzzle adventure! Rotate, flip, and manipulate the cube through increasingly complex puzzles. Master physics and spatial reasoning to unlock each level's secrets and complete the game. Use WASD to move and mouse to look around.</p>
                 </div>
             </div>
         </div>
@@ -466,23 +494,21 @@
         </div>
     </div>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js"></script>
     <script src="menu.js"></script>
     <script type="module" src="main.js"></script>
     <!-- Story Mode Cutscene -->
 <div id="story-cutscene" class="cutscene-screen hidden">
     <video id="cutscene-video"
-           src="cutscene 1.mp4"
+           src="assets/videos/cutscene1.mp4"
            preload="auto"
            playsinline
-           webkit-playsinline
-           muted>               <!-- start muted (required for autoplay) -->
+           webkit-playsinline>
         Your browser does not support the video tag.
     </video>
     <div class="cutscene-overlay">
     <button id="skip-cutscene" class="cutscene-skip-btn">Skip (S)</button>
     <button id="unmute-cutscene" class="cutscene-unmute-btn">Unmute</button>
-    <div class="cutscene-hint">Click video or press S to skip • Tap Unmute for sound</div>
+    <div class="cutscene-hint">Click anywhere or press S to skip • Tap Mute/Unmute to toggle sound</div>
 </div>
     <div class="cutscene-progress">
         <div id="cutscene-progress-bar"></div>

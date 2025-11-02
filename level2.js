@@ -1,4 +1,4 @@
-// level2.js - Arcade Racing Game Integration
+// level2.js - Speed Delivery Game Integration
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -19,6 +19,8 @@ import { LightingSystem } from './level2/src/lighting/LightingSystem.js';
 import { CameraSystem } from './level2/src/camera/CameraSystem.js';
 import { CarPhysicsSystem } from './level2/src/physics/CarPhysicsSystem.js';
 import { EnvironmentSystem } from './level2/src/environment/EnvironmentSystem.js';
+import { GameRestartSystem } from './level2/src/game/GameRestartSystem.js';
+import { FailureSystem } from './level2/src/game/FailureSystem.js';
 
 let scene, camera, renderer, labelRenderer;
 let returnToMainCallback;
@@ -48,10 +50,19 @@ let world;
 let groundBody;
 let groundHelper;
 let timeStep = 1 / 60;
-let collidersVisible = true;
+let collidersVisible = false; // Start with colliders off
 
 // Boost effect tracking
 let wasBoostingLastFrame = false;
+
+// Game Restart System
+let gameRestartSystem = null;
+let failureSystem = null;
+
+// Resize handler
+let resizeHandler = null;
+
+// Music will be handled by AudioManager (accessible via window.audioManager)
 
 export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, callback) {
     if (!sceneRef || !cameraRef || !rendererRef || !labelRendererRef) {
@@ -86,6 +97,27 @@ function setupLevel() {
     // Show Level 2 UI elements
     showLevel2UI();
     
+    // Initialize Game Restart System (systems will be set when initialized)
+    gameRestartSystem = new GameRestartSystem(
+        scene,
+        null, // carWrapper - will be set when car loads
+        null, // carBody - will be set when car loads
+        null, // carPhysicsSystem - will be set when initialized
+        null, // deliverySystem - will be set when initialized
+        null, // cameraSystem - will be set when initialized
+        null, // uiSystem - will be set when initialized
+        null  // lightingSystem - will be set when initialized
+    );
+    
+    // Initialize Failure System (deliverySystem will be set when initialized)
+    failureSystem = new FailureSystem(
+        scene,
+        null, // deliverySystem - will be set when initialized
+        gameRestartSystem
+    );
+    failureSystem.init();
+    window.failureSystem = failureSystem; // Make globally accessible for collision handler
+    
     // Initialize Camera System (pass existing camera from main.js)
     cameraSystem = new CameraSystem(scene, renderer, camera);
     cameraSystem.init();
@@ -108,16 +140,55 @@ function setupLevel() {
     // Initialize Delivery System (will be initialized later with zones from model)
     deliverySystem = new DeliverySystem(scene, uiSystem);
     
+    // Update failure system with delivery system
+    if (failureSystem) {
+        failureSystem.deliverySystem = deliverySystem;
+    }
+    
+    // Update restart system references with initialized systems
+    if (gameRestartSystem) {
+        gameRestartSystem.updateReferences(
+            null, // carWrapper - will be set when car loads
+            null, // carBody - will be set when car loads
+            carPhysicsSystem,
+            deliverySystem,
+            cameraSystem,
+            uiSystem,
+            null  // lightingSystem - will be set when initialized
+        );
+    }
+    
+    // Get Story Mode status from scene.userData (set by main.js)
+    const isInStoryMode = scene && scene.userData && scene.userData.isInStoryMode === true;
+    
+    // Set completion callback for when level is completed
+    deliverySystem.setOnComplete(() => {
+        console.log('🎉 Level 2 completed! Returning to hub world...');
+        console.log('   returnToMainCallback available:', !!returnToMainCallback);
+        if (returnToMainCallback) {
+            console.log('   Calling returnToMainCallback()...');
+            returnToMainCallback();
+        } else {
+            console.error('⚠️ returnToMainCallback is null! Cannot return to hub.');
+        }
+    }, isInStoryMode); // Pass Story Mode status to hide button if in Story Mode
+    
     // Initialize Lighting System
     lightingSystem = new LightingSystem(scene, uiSystem);
     lightingSystem.init();
     
-    // Expose toggleDayNight globally for the UI button
-    window.toggleDayNight = () => {
-        if (lightingSystem) {
-            lightingSystem.toggleDayNight();
-        }
-    };
+    // Update restart system with lighting system
+    if (gameRestartSystem) {
+        gameRestartSystem.updateReferences(
+            null, // carWrapper - will be set when car loads
+            null, // carBody - will be set when car loads
+            carPhysicsSystem,
+            deliverySystem,
+            cameraSystem,
+            uiSystem,
+            lightingSystem
+        );
+    }
     
     // Initialize Car Physics System
     carPhysicsSystem = new CarPhysicsSystem(scene, world);
@@ -126,8 +197,71 @@ function setupLevel() {
     environmentSystem = new EnvironmentSystem(scene, world);
     environmentSystem.setOnModelLoadedCallback(onEnvironmentModelLoaded);
     
+    // Start level 2 music via AudioManager
+    if (window.audioManager) {
+        // Register level 2 music if not already registered (mono: true to play same in both ears)
+        if (!window.audioManager.musicTracks['level2']) {
+            window.audioManager.registerMusic('level2', 'assets/audio/music/The Sluts With Nuts - Mike and Ron Jam.mp3', true, true);
+        }
+        window.audioManager.playMusic('level2');
+        
+        // Register sound effects for Level 2 if not already registered
+        if (!window.audioManager.soundEffects['complete']) {
+            window.audioManager.registerSoundEffect('complete', 'assets/audio/effects/Complete.wav', 0.3);
+        }
+        if (!window.audioManager.soundEffects['carEngine']) {
+            window.audioManager.registerSoundEffect('carEngine', 'assets/audio/cars/Car2_Engine_Loop.ogg', 0.01);
+        }
+        if (!window.audioManager.soundEffects['pop']) {
+            window.audioManager.registerSoundEffect('pop', 'assets/audio/effects/pop.wav', 0.5);
+        }
+        
+        // Start car engine sound (looping)
+        window.audioManager.playSoundEffect('carEngine', { loop: true });
+    }
+    
     // Load the car model
     environmentSystem.loadModel('./level2/Car.glb');
+    
+    // Set up window resize handler
+    setupResizeHandler();
+}
+
+/**
+ * Sets up window resize handler for Level 2
+ */
+function setupResizeHandler() {
+    // Remove existing handler if any
+    if (resizeHandler) {
+        window.removeEventListener('resize', resizeHandler);
+    }
+    
+    // Create new resize handler
+    resizeHandler = () => {
+        if (!renderer || !camera || !labelRenderer) return;
+        
+        // Update camera aspect ratio
+        if (camera.isPerspectiveCamera) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
+        
+        // Update renderer size
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // Update label renderer size
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // Update camera system if available
+        if (cameraSystem && cameraSystem.handleResize) {
+            cameraSystem.handleResize();
+        }
+    };
+    
+    // Add event listener
+    window.addEventListener('resize', resizeHandler);
+    
+    console.log('✅ Level 2 resize handler set up');
 }
 
 /**
@@ -153,8 +287,6 @@ function showLevel2UI() {
         directionInfo.className = 'game-ui';
         directionInfo.innerHTML = `
             <div>FPS: <span id="fps">60</span></div>
-            <div>Direction: <span id="wheel-direction">Straight</span></div>
-            <div>Heading: <span id="car-heading">0°</span></div>
             <div>Speed: <span id="car-speed">0.0</span></div>
             <div id="headlights-ui" style="display: none;">Headlights: <span id="headlights-status">OFF</span></div>
             <div>
@@ -175,37 +307,34 @@ function showLevel2UI() {
         console.log('✅ Showed existing direction-info');
     }
     
-    // Create day/night toggle button if it doesn't exist
-    if (!document.getElementById('toggle-daynight')) {
-        const toggleBtn = document.createElement('button');
-        toggleBtn.id = 'toggle-daynight';
-        toggleBtn.className = 'toggle-btn game-ui';
-        toggleBtn.textContent = 'Toggle Day/Night (H)';
-        toggleBtn.onclick = () => { if(window.toggleDayNight) window.toggleDayNight(); };
-        toggleBtn.style.display = 'block';
-        document.body.appendChild(toggleBtn);
-        console.log('✅ Created toggle-daynight');
+    // Create keybinds display in bottom left
+    if (!document.getElementById('keybinds-display')) {
+        const keybindsDisplay = document.createElement('div');
+        keybindsDisplay.id = 'keybinds-display';
+        keybindsDisplay.className = 'game-ui';
+        keybindsDisplay.innerHTML = `
+            <div style="font-family: 'Jersey 10', sans-serif; font-size: 14px; font-weight: normal; color: #fff; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;">
+                <div style="font-size: 16px; font-weight: normal; margin-bottom: 8px; color: #00ff00;">KEYBINDS</div>
+                <div>W/S: Accelerate/Reverse</div>
+                <div>A/D: Steer</div>
+                <div>Space: Boost</div>
+                <div>Q: Camera Mode</div>
+                <div>L: Headlights</div>
+                <div>ESC: Pause</div>
+            </div>
+        `;
+        keybindsDisplay.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            pointer-events: none;
+        `;
+        document.body.appendChild(keybindsDisplay);
+        console.log('✅ Created keybinds display');
     } else {
-        document.getElementById('toggle-daynight').style.display = 'block';
-        console.log('✅ Showed existing toggle-daynight');
-    }
-    
-    // Create collider toggle button if it doesn't exist
-    if (!document.getElementById('toggle-colliders')) {
-        const toggleCollidersBtn = document.createElement('button');
-        toggleCollidersBtn.id = 'toggle-colliders';
-        toggleCollidersBtn.className = 'toggle-btn game-ui';
-        toggleCollidersBtn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
-        toggleCollidersBtn.style.display = 'block';
-        toggleCollidersBtn.style.top = '120px';
-        toggleCollidersBtn.onclick = toggleColliders;
-        document.body.appendChild(toggleCollidersBtn);
-        console.log('✅ Created toggle-colliders');
-    } else {
-        const btn = document.getElementById('toggle-colliders');
-        btn.style.display = 'block';
-        btn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
-        console.log('✅ Showed existing toggle-colliders');
+        document.getElementById('keybinds-display').style.display = 'block';
+        console.log('✅ Showed existing keybinds display');
     }
     
     // Create minimap container if it doesn't exist
@@ -216,13 +345,13 @@ function showLevel2UI() {
         
         const minimapCanvas = document.createElement('canvas');
         minimapCanvas.id = 'minimap';
-        minimapCanvas.width = 200;
-        minimapCanvas.height = 200;
+        minimapCanvas.width = 240;
+        minimapCanvas.height = 240;
         
         const minimapOverlay = document.createElement('canvas');
         minimapOverlay.id = 'minimap-overlay';
-        minimapOverlay.width = 200;
-        minimapOverlay.height = 200;
+        minimapOverlay.width = 240;
+        minimapOverlay.height = 240;
         
         minimapContainer.appendChild(minimapCanvas);
         minimapContainer.appendChild(minimapOverlay);
@@ -234,25 +363,6 @@ function showLevel2UI() {
         console.log('✅ Showed existing minimap-container');
     }
     
-    // Create mobile controls if they don't exist
-    if (!document.getElementById('mobile-controls')) {
-        const mobileControls = document.createElement('div');
-        mobileControls.id = 'mobile-controls';
-        mobileControls.className = 'game-ui';
-        mobileControls.innerHTML = `
-            <div id="joystick-container">
-                <div id="joystick-base"></div>
-                <div id="joystick-stick"></div>
-            </div>
-            <div id="mobile-buttons">
-                <div class="mobile-btn" id="mobile-boost">⚡</div>
-                <div class="mobile-btn" id="mobile-camera">📷</div>
-            </div>
-        `;
-        document.body.appendChild(mobileControls);
-        console.log('✅ Created mobile-controls');
-    }
-    
     console.log('✅ All Level 2 UI elements ready');
 }
 
@@ -261,10 +371,8 @@ function hideLevel2UI() {
     
     const uiElements = [
         'direction-info',
-        'toggle-daynight',
-        'toggle-colliders',
-        'minimap-container',
-        'mobile-controls'
+        'keybinds-display',
+        'minimap-container'
     ];
     
     uiElements.forEach(id => {
@@ -317,9 +425,18 @@ function initPhysics() {
 function setupRenderer() {
     if (!renderer) return;
     
+    // Save original renderer settings before modifying them
+    originalRendererSettings.toneMapping = renderer.toneMapping;
+    originalRendererSettings.toneMappingExposure = renderer.toneMappingExposure;
+    // Use outputColorSpace instead of deprecated outputEncoding
+    originalRendererSettings.outputColorSpace = renderer.outputColorSpace || null;
+    originalRendererSettings.logarithmicDepthBuffer = renderer.logarithmicDepthBuffer;
+    
+    console.log('💾 Saved original renderer settings:', originalRendererSettings);
+    
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     
@@ -417,7 +534,30 @@ function onEnvironmentModelLoaded(data) {
         carPhysicsSystem.createPhysicsBody(carWrapper);
         carBody = carPhysicsSystem.getPhysicsBody();
         carHelper = carPhysicsSystem.getCollisionHelper();
+        // Car helper is created with visible = false in CarPhysicsSystem
         carPhysicsOffset = carPhysicsSystem.getPhysicsOffset();
+        
+        // Store initial car position and rotation for restart
+        if (carWrapper && gameRestartSystem) {
+            const box = new THREE.Box3().setFromObject(carWrapper);
+            const center = box.getCenter(new THREE.Vector3());
+            const initialPosition = center.clone();
+            const initialRotation = carWrapper.quaternion.clone();
+            gameRestartSystem.setInitialCarState(initialPosition, initialRotation);
+        }
+        
+        // Update restart system references with loaded car
+        if (gameRestartSystem) {
+            gameRestartSystem.updateReferences(
+                carWrapper,
+                carBody,
+                carPhysicsSystem,
+                deliverySystem,
+                cameraSystem,
+                uiSystem,
+                lightingSystem
+            );
+        }
     }
     
     environmentSystem.createEnvironmentPhysics(collidersVisible);
@@ -467,11 +607,21 @@ function setupCollisionListeners() {
                 color = 0xff6600;
             }
             
+            // Play pop sound effect for collision
+            if (window.audioManager) {
+                window.audioManager.playSoundEffect('pop');
+            }
+            
             // Record collision for scoring (with debounce to prevent double-counting)
             const currentTime = performance.now();
             if (deliverySystem && (currentTime - lastCollisionTime) > collisionCooldown) {
                 deliverySystem.recordCollision();
                 lastCollisionTime = currentTime;
+                
+                // Check for failure condition
+                if (window.failureSystem) {
+                    window.failureSystem.checkFailure();
+                }
             }
             
             if (effectsSystem) {
@@ -523,11 +673,16 @@ function setupInputCallbacks() {
             toggleColliders();
         },
         onPause: () => {
-        if (window.showPauseMenu) {
-            window.showPauseMenu(2);
-        } else {
-            returnToMainCallback();
-        } 
+            // Always try to show pause menu - don't fall back to returning to main menu
+            if (window.showPauseMenu && typeof window.showPauseMenu === 'function') {
+                window.showPauseMenu('level2');
+            } else if (window.pauseMenu && window.pauseMenu.show) {
+                // Fallback: try to show pause menu via main.js pauseMenu instance
+                window.pauseMenu.show(2);
+            } else {
+                // Only if pause menu truly doesn't exist, log a warning (don't return to menu)
+                console.warn('⚠️ Pause menu not available - window.showPauseMenu:', !!window.showPauseMenu, 'window.pauseMenu:', !!window.pauseMenu);
+            }
         }
     });
 }
@@ -535,7 +690,7 @@ function setupInputCallbacks() {
 function toggleColliders() {
     collidersVisible = !collidersVisible;
     
-    console.log(`🔲 Colliders ${collidersVisible ? 'visible' : 'hidden'}`);
+    console.log(`🔲 Colliders ${collidersVisible ? 'visible' : 'hidden'} (F2)`);
     
     if (carHelper) {
         carHelper.visible = collidersVisible;
@@ -550,12 +705,6 @@ function toggleColliders() {
             envObj.object.userData.physicsHelper.visible = collidersVisible;
         }
     });
-    
-    // Update button text to show current state
-    const toggleBtn = document.getElementById('toggle-colliders');
-    if (toggleBtn) {
-        toggleBtn.textContent = `Colliders: ${collidersVisible ? 'ON' : 'OFF'} (C)`;
-    }
 }
 
 // Level update function called by main.js animation loop
@@ -632,13 +781,54 @@ export function updateLevel() {
     }
 }
 
+/**
+ * Restart Level 2 - Resets all game state to initial conditions
+ */
+export function restartLevel() {
+    // Defer restart to next event loop tick to avoid animation loop conflicts
+    // This prevents the FPS doubling issue (see BUG.md)
+    setTimeout(() => {
+        if (gameRestartSystem) {
+            gameRestartSystem.restart();
+            // Reset boost effect tracking
+            wasBoostingLastFrame = false;
+        } else {
+            console.warn('⚠️ GameRestartSystem not initialized - cannot restart level');
+        }
+    }, 0);
+}
+
+// Expose restartLevel globally for failure system and other systems
+window.restartLevel = restartLevel;
+
+// Store original renderer settings before level 2 modifies them
+let originalRendererSettings = {
+    toneMapping: null,
+    toneMappingExposure: null,
+    outputColorSpace: null, // Use outputColorSpace instead of deprecated outputEncoding
+    logarithmicDepthBuffer: null
+};
+
 // Cleanup function
 export function cleanupLevel() {
     // Hide Level 2 UI elements
     hideLevel2UI();
     
-    // Remove global functions
-    delete window.toggleDayNight;
+    // Restore original renderer settings
+    if (renderer && originalRendererSettings.toneMapping !== null) {
+        renderer.toneMapping = originalRendererSettings.toneMapping;
+        renderer.toneMappingExposure = originalRendererSettings.toneMappingExposure;
+        if (originalRendererSettings.outputColorSpace !== null) {
+            renderer.outputColorSpace = originalRendererSettings.outputColorSpace;
+        }
+        if (originalRendererSettings.logarithmicDepthBuffer !== null) {
+            renderer.logarithmicDepthBuffer = originalRendererSettings.logarithmicDepthBuffer;
+        }
+        console.log('✅ Restored renderer settings:', {
+            toneMapping: renderer.toneMapping,
+            toneMappingExposure: renderer.toneMappingExposure
+        });
+    }
     
     // Clean up systems
     if (effectsSystem) effectsSystem.cleanup();
@@ -671,6 +861,32 @@ export function cleanupLevel() {
     groundBody = null;
     groundHelper = null;
     
+    // Cleanup restart system
+    if (gameRestartSystem) {
+        gameRestartSystem = null;
+    }
+    
+    // Cleanup failure system
+    if (failureSystem) {
+        failureSystem.cleanup();
+        failureSystem = null;
+        window.failureSystem = null;
+    }
+    
     // Reset boost tracking
     wasBoostingLastFrame = false;
+    
+    // Stop level 2 music and car engine sound via AudioManager
+    if (window.audioManager) {
+        window.audioManager.stopMusic('level2');
+        window.audioManager.stopSoundEffect('carEngine');
+    }
+    
+    // Remove resize handler
+    if (resizeHandler) {
+        window.removeEventListener('resize', resizeHandler);
+        resizeHandler = null;
+        console.log('✅ Level 2 resize handler removed');
+    }
 }
+
