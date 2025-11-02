@@ -273,6 +273,7 @@ _showWelcomeScreen() {
                 <div><kbd>Mouse</kbd> Look</div>
                 <div><kbd>F</kbd> Fly</div>
                 <div><kbd>SPACE</kbd> Jump</div>
+                <div><kbd>M: Mute</kdb></div>
             </div>
         </div>`;
 

@@ -73,7 +73,7 @@ export function createRoads(scene, roadLocations, cellSize) {
 export const playerStartPosition = { x: -10, y: 5, z: 5 };
 
 
-export async function createLevel(TEST_MODE = false) {  // ← ADD TEST_MODE param
+export async function createLevel() {
     const scene = new THREE.Scene();
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -566,431 +566,283 @@ function makeParkingLot(worldX, worldZ, width, depth) {
         }
     });
 
+        console.log('🧭 PLACING TOKENS IN OPEN SPACES...');
     
+    const collectibles = [];
+    const TOKEN_SCALE_FACTOR = 4.0;
+    const totalTokens = 7; // Total tokens to place
 
-
-// === Collectible Tokens ===
-const collectibles = [];
-const totalTokens = 10; 
-const TOKEN_SCALE_FACTOR = 4.0;
- 
-const tokenTypes = [
-    { 
-        name: "Bread Crumb", 
-        color: 0xf5deb3, 
-        createModel: createBreadCrumbModel,
-        getColliderSize: getBreadCrumbColliderSize,
-        size: 0.3 // ADD THIS for all token types
-    },
-    { 
-        name: "French Fry", 
-        color: 0xffd700, 
-        createModel: createFrenchFryModel,
-        getColliderSize: getFrenchFryColliderSize,
-        size: 0.4
-    },
-    { 
-        name: "Pizza Crust", 
-        color: 0xd2691e, 
-        createModel: createPizzaCrustModel,
-        getColliderSize: getPizzaCrustColliderSize,
-        size: 0.5
-    },
-    { 
-        name: "Popcorn", 
-        color: 0xfff8dc, 
-        createModel: createPopcornModel,
-        getColliderSize: getPopcornColliderSize,
-        size: 0.2
-    },
-    { 
-        name: "Pretzel", 
-        color: 0x8b4513, 
-        createModel: createPretzelModel,
-        getColliderSize: getPretzelColliderSize,
-        size: 0.4
-    },
-    { 
-        name: "Seed", 
-        color: 0xdaa520, 
-        createModel: createSeedModel,
-        getColliderSize: getSeedColliderSize,
-        size: 0.2
-    },
-    { 
-        name: "Hot Dog Bun", 
-        color: 0xffe4b5, 
-        createModel: createHotDogBunModel,
-        getColliderSize: getHotDogBunColliderSize,
-        size: 0.5
-    },
-    { 
-        name: "Bagel Bit", 
-        color: 0xf0e68c, 
-        createModel: createBagelBitModel,
-        getColliderSize: getBagelBitColliderSize,
-        size: 0.4
-    }
-];
-
-// Placement strategies
-const placementStrategies = [
-    { type: 'surface', weight: 40, label: 'Surface' },
-    { type: 'air', weight: 30, label: 'Air' },
-    { type: 'object_top', weight: 20, label: 'Object Top' },
-    { type: 'ground', weight: 10, label: 'Ground' }
-];
-
-// === HELPER: Check if near tree ===
-function isNearTree(x, z, minDist = 3) {
-    for (const box of scene.userData.treeColliders) {
-        const center = box.getCenter(new THREE.Vector3());
-        if (center.distanceTo(new THREE.Vector3(x, 0, z)) < minDist) return true;
-    }
-    return false;
-}
-
-// === HELPER: Get best surface height ===
-function getBestSurfaceHeight(x, z, tokenHalfHeight = 0.25) {
-    let highestY = 0;
-    let surfaceType = 'ground';
-
-    // [Same as before: buildings, sidewalks, roads, parks, lots]
-    for (const building of buildings) {
-        const box = building.userData.collider;
-        if (!box.containsPoint(new THREE.Vector3(x, 0, z))) continue;
-
-        const roofY = box.max.y;
-        if (roofY > highestY) {
-            highestY = roofY;
-            surfaceType = 'building_roof';
+    const tokenTypes = [
+        { 
+            name: "Bread Crumb", 
+            color: 0xf5deb3, 
+            createModel: createBreadCrumbModel,
+            getColliderSize: getBreadCrumbColliderSize,
+            size: 0.3
+        },
+        { 
+            name: "French Fry", 
+            color: 0xffd700, 
+            createModel: createFrenchFryModel,
+            getColliderSize: getFrenchFryColliderSize,
+            size: 0.4
+        },
+        { 
+            name: "Pizza Crust", 
+            color: 0xd2691e, 
+            createModel: createPizzaCrustModel,
+            getColliderSize: getPizzaCrustColliderSize,
+            size: 0.5
+        },
+        { 
+            name: "Popcorn", 
+            color: 0xfff8dc, 
+            createModel: createPopcornModel,
+            getColliderSize: getPopcornColliderSize,
+            size: 0.2
+        },
+        { 
+            name: "Pretzel", 
+            color: 0x8b4513, 
+            createModel: createPretzelModel,
+            getColliderSize: getPretzelColliderSize,
+            size: 0.4
+        },
+        { 
+            name: "Seed", 
+            color: 0xdaa520, 
+            createModel: createSeedModel,
+            getColliderSize: getSeedColliderSize,
+            size: 0.2
+        },
+        { 
+            name: "Hot Dog Bun", 
+            color: 0xffe4b5, 
+            createModel: createHotDogBunModel,
+            getColliderSize: getHotDogBunColliderSize,
+            size: 0.5
+        },
+        { 
+            name: "Bagel Bit", 
+            color: 0xf0e68c, 
+            createModel: createBagelBitModel,
+            getColliderSize: getBagelBitColliderSize,
+            size: 0.4
         }
-    }
-
-    for (const sidewalk of sidewalks.children) {
-        if (sidewalk.userData.collider?.containsPoint(new THREE.Vector3(x, 0, z))) {
-            const y = sidewalk.position.y + 0.2;
-            if (y > highestY) { highestY = y; surfaceType = 'sidewalk'; }
-        }
-    }
-
-    for (const road of roadGroup.children) {
-        if (road.userData.collider?.containsPoint(new THREE.Vector3(x, 0, z))) {
-            const y = 0.01;
-            if (y > highestY) { highestY = y; surfaceType = 'road'; }
-        }
-    }
-
-    for (const park of parks) {
-        if (park.userData?.collider?.containsPoint(new THREE.Vector3(x, 0, z))) {
-            const y = 0.01;
-            if (y > highestY) { highestY = y; surfaceType = 'park'; }
-        }
-    }
-
-    for (const lot of parkingLots) {
-        if (lot.userData?.collider?.containsPoint(new THREE.Vector3(x, 0, z))) {
-            const y = 0.02;
-            if (y > highestY) { highestY = y; surfaceType = 'parking_lot'; }
-        }
-    }
-
-    return { height: highestY + tokenHalfHeight + 0.05, type: surfaceType };
-}
-
-// === COLLISION CHECK ===
-function isPositionClear(x, y, z, tokenHalfSize = 0.25) {
-    const padding = 0.15;
-    const tokenBox = new THREE.Box3().setFromCenterAndSize(
-        new THREE.Vector3(x, y, z),
-        new THREE.Vector3(tokenHalfSize * 2 + padding, tokenHalfSize * 2 + padding, tokenHalfSize * 2 + padding)
-    );
-
-    const allColliders = [
-        ...buildings.map(b => b.userData.collider),
-        ...scene.userData.treeColliders,
-        ...scene.userData.benchColliders,
-        ...scene.userData.carColliders,
-        ...sidewalks.children.map(s => {
-            if (!s.userData.collider) {
-                s.userData.collider = new THREE.Box3().setFromObject(s);
-            }
-            return s.userData.collider;
-        }),
-        ...roadGroup.children.map(r => r.userData.collider),
-        ...(parks || []).map(p => p.userData?.collider).filter(Boolean),
-        ...(parkingLots || []).map(l => l.userData?.collider).filter(Boolean)
-    ].filter(Boolean);
-
-    for (const c of allColliders) {
-        if (c.intersectsBox(tokenBox)) return false;
-    }
-    return true;
-}
-
-// === OBJECT TOP PLACEMENT ===
-function getObjectTopPosition(x, z, tokenHalfSize = 0.25) {
-    const testPoint = new THREE.Vector3(x, 0, z);
-    for (const c of scene.userData.treeColliders) {
-        if (c.containsPoint(testPoint)) return { height: c.max.y + tokenHalfSize + 0.05, type: 'tree_top' };
-    }
-    for (const c of scene.userData.benchColliders) {
-        if (c.containsPoint(testPoint)) return { height: c.max.y + tokenHalfSize + 0.05, type: 'bench_top' };
-    }
-    for (const c of scene.userData.carColliders) {
-        if (c.containsPoint(testPoint)) return { height: c.max.y + tokenHalfSize + 0.05, type: 'car_top' };
-    }
-    return null;
-}
-
-// === GENERATE CANDIDATES (FIXED) ===
-function generateCandidates(count, strategy) {
-    const candidates = [];
-
-    for (let i = 0; i < count; i++) {
-        let x, z, yInfo;
-
-        if (strategy.type === 'surface' || strategy.type === 'ground') {
-            let attempts = 0;
-            while (attempts < 50) {
-                const gridX = Math.floor(Math.random() * layout[0].length);
-                const gridZ = Math.floor(Math.random() * layout.length);
-                if (![2,3,4].includes(layout[gridZ][gridX])) { attempts++; continue; }
-
-                const world = gridToWorld(gridX, gridZ);
-                x = world.x + (Math.random() - 0.5) * cellSize * 0.6;
-                z = world.z + (Math.random() - 0.5) * cellSize * 0.6;
-
-                if (isNearTree(x, z, 3)) { attempts++; continue; }
-
-                yInfo = strategy.type === 'ground'
-                    ? { height: 0.3, type: 'ground' }
-                    : getBestSurfaceHeight(x, z);
-
-                if (isPositionInBounds(x, z, worldSize)) {
-                    candidates.push({ x, z, ...yInfo });
-                    break;
-                }
-                attempts++;
-            }
-        }
-
-        else if (strategy.type === 'air') {
-            x = (Math.random() - 0.5) * worldSize * 0.8;
-            z = (Math.random() - 0.5) * worldSize * 0.8;
-            const surface = getBestSurfaceHeight(x, z);
-            const minH = surface.height + 5;
-            const maxH = surface.height + 20;
-
-            let validH = null;
-            for (let h = minH; h <= maxH; h += 2) {
-                if (isPositionClear(x, h, z, 0.3)) {
-                    validH = h;
-                    break;
-                }
-            }
-            if (validH && isPositionInBounds(x, z, worldSize)) {
-                candidates.push({ x, z, height: validH, type: 'air' });
-            }
-        }
-
-        else if (strategy.type === 'object_top') {
-            const all = [...scene.userData.treeColliders, ...scene.userData.benchColliders, ...scene.userData.carColliders];
-            if (all.length === 0) continue;
-            const obj = all[Math.floor(Math.random() * all.length)];
-            const center = obj.getCenter(new THREE.Vector3());
-            x = center.x + (Math.random() - 0.5) * 2;
-            z = center.z + (Math.random() - 0.5) * 2;
-            yInfo = getObjectTopPosition(x, z);
-            if (yInfo && isPositionInBounds(x, z, worldSize)) {
-                candidates.push({ x, z, ...yInfo });
-            }
-        }
-    }
-    return candidates;
-}
-
-// === PLACE TOKEN ===
-function placeToken(x, z, y, surfaceType) {
-    const type = tokenTypes[Math.floor(Math.random() * tokenTypes.length)];
-    const token = type.createModel();
-    token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
-    token.position.set(x, y, z);
-    token.userData = {
-        type: type.name,
-        collected: false,
-        value: 1,
-        showOnMinimap: true,
-        surfaceType,
-        collectionRadius: 3.0
-    };
-    token.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-    scene.add(token);
-    collectibles.push(token);
-}
-
-// === MAIN PLACEMENT LOOP ===
-console.log("Creating smart tokens...");
-placementStrategies.forEach(strategy => {
-    const count = Math.floor(totalTokens * strategy.weight / 100);
-    console.log(`Placing ${count} ${strategy.label} tokens...`);
-    const candidates = generateCandidates(count * 5, strategy); // 5x buffer
-    let placed = 0;
-
-    for (const c of candidates) {
-        if (placed >= count) break;
-        if (isPositionClear(c.x, c.height, c.z, 0.3)) {
-            placeToken(c.x, c.z, c.height, c.type);
-            placed++;
-            continue;
-        }
-
-        // Jitter
-        for (let a = 0; a < 10; a++) {
-            const jx = c.x + (Math.random() - 0.5) * 6;
-            const jz = c.z + (Math.random() - 0.5) * 6;
-            const jy = c.height + (Math.random() - 0.5) * 1;
-            if (isPositionInBounds(jx, jz, worldSize) && isPositionClear(jx, jy, jz, 0.3)) {
-                placeToken(jx, jz, jy, c.type);
-                placed++;
-                break;
-            }
-        }
-    }
-    console.log(`Placed ${placed}/${count} ${strategy.label} tokens`);
-});
-
-// NEW: Unified token placement function
-
-
-// === DEBUG VISUALIZATION (Toggle with 'V' key in game) ===
-scene.userData.toggleCollectionRadius = () => {
-    // Remove existing debug spheres
-    if (scene.userData.collectionDebugGroup) {
-        scene.remove(scene.userData.collectionDebugGroup);
-        scene.userData.collectionDebugGroup = null;
-        return;
-    }
-
-    const group = new THREE.Group();
-
-    const debugMaterial = new THREE.MeshStandardMaterial({
-        color: 0x00ff88,
-        transparent: true,
-        opacity: 0.25,
-        emissive: 0x00ff88,
-        emissiveIntensity: 0.3,
-        roughness: 0.7,
-        metalness: 0.1,
-        side: THREE.DoubleSide
-    });
-
-    scene.userData.collectibles.forEach(token => {
-        if (token.userData.collected) return;
-
-        const radius = token.userData.collectionRadius;
-        const geo = new THREE.SphereGeometry(radius, 24, 16);
-        const sphere = new THREE.Mesh(geo, debugMaterial);
-        
-        sphere.position.copy(token.position);
-        sphere.position.y += 0.01;
-
-        // Link token → sphere 
-        token.userData.debugSphere = sphere;
-
-        group.add(sphere);
-    });
-
-    scene.add(group);
-    scene.userData.collectionDebugGroup = group;
-};
-
-// === REMOVE DEBUG SPHERE WHEN TOKEN IS COLLECTED ===
-scene.userData.removeTokenDebugSphere = (token) => {
-    if (!token.userData.debugSphere) return;
-
-    const sphere = token.userData.debugSphere;
-    const group = scene.userData.collectionDebugGroup;
-
-    if (group && group.children.includes(sphere)) {
-        group.remove(sphere);
-        sphere.geometry.dispose();
-        sphere.material.dispose();
-    }
-
-    // Clean up references
-    delete token.userData.debugSphere;
-    delete sphere.userData.token;
-};
-
-console.log(`🎉 Total tokens placed: ${collectibles.length}`);
-console.log("💡 Press 'V' in-game to toggle token debug visualization");
-
-// === TEST MODE: 5 TOKENS NEAR PLAYER ===
-if (TEST_MODE) {
-    console.log('🧪 TEST MODE: Spawning 5 tokens near player!');
-    
-    const playerPos = playerStartPosition;
-    const tokenSpacing = 4;
-    const testTokens = [
-        { x: playerPos.x + 0, z: playerPos.z + tokenSpacing, y: 0.5, type: 'Bread Crumb' },
-        { x: playerPos.x + tokenSpacing, z: playerPos.z + 0, y: 0.5, type: 'French Fry' },
-        { x: playerPos.x + tokenSpacing, z: playerPos.z + tokenSpacing, y: 1.2, type: 'Pizza Crust' },
-        { x: playerPos.x - tokenSpacing, z: playerPos.z + tokenSpacing, y: 0.5, type: 'Popcorn' },
-        { x: playerPos.x + tokenSpacing*0.7, z: playerPos.z + tokenSpacing*1.5, y: 2.0, type: 'Pretzel' }
     ];
 
-    testTokens.forEach((pos, i) => {
+    // === FIND OPEN SPACES FOR TOKEN PLACEMENT ===
+    function findOpenSpaces(layout, cellSize, offset) {
+        const openSpaces = [];
+        
+        for (let z = 0; z < layout.length; z++) {
+            for (let x = 0; x < layout[z].length; x++) {
+                // Only place tokens in non-building areas (roads, parks, parking lots)
+                if (layout[z][x] !== 1) {
+                    const worldX = x * cellSize - offset;
+                    const worldZ = z * cellSize - offset;
+                    
+                    // Add some randomness within the cell
+                    const randomX = worldX + (Math.random() - 0.5) * cellSize * 0.8;
+                    const randomZ = worldZ + (Math.random() - 0.5) * cellSize * 0.8;
+                    
+                    openSpaces.push({
+                        x: randomX,
+                        z: randomZ,
+                        gridX: x,
+                        gridZ: z,
+                        type: layout[z][x] // 2=road, 3=park, 4=parking lot
+                    });
+                }
+            }
+        }
+        
+        return openSpaces;
+    }
+
+    // === CHECK IF POSITION IS CLEAR OF COLLIDERS ===
+    function isPositionClear(x, y, z, tokenSize = 0.3) {
+        const tokenBox = new THREE.Box3().setFromCenterAndSize(
+            new THREE.Vector3(x, y, z),
+            new THREE.Vector3(tokenSize, tokenSize, tokenSize)
+        );
+
+        // Check against all colliders
+        const allColliders = [
+            ...buildings.map(b => b.userData.collider),
+            ...scene.userData.treeColliders,
+            ...scene.userData.benchColliders,
+            ...scene.userData.carColliders
+        ].filter(Boolean);
+
+        for (const collider of allColliders) {
+            if (collider.intersectsBox(tokenBox)) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    // === GET SURFACE HEIGHT AT POSITION ===
+    function getSurfaceHeight(x, z) {
+        // Default ground height
+        let height = 0.3;
+        
+        // Check if on road
+        for (const road of roadGroup.children) {
+            if (road.userData.collider?.containsPoint(new THREE.Vector3(x, 0, z))) {
+                return 0.1;
+            }
+        }
+        
+        // Check if on sidewalk
+        for (const sidewalk of sidewalks.children) {
+            const box = new THREE.Box3().setFromObject(sidewalk);
+            if (box.containsPoint(new THREE.Vector3(x, 0, z))) {
+                return sidewalk.position.y + 0.2;
+            }
+        }
+        
+        // Check if on park
+        for (const park of parks) {
+            const box = new THREE.Box3().setFromObject(park);
+            if (box.containsPoint(new THREE.Vector3(x, 0, z))) {
+                return 0.1;
+            }
+        }
+        
+        // Check if on parking lot
+        for (const lot of parkingLots) {
+            const box = new THREE.Box3().setFromObject(lot);
+            if (box.containsPoint(new THREE.Vector3(x, 0, z))) {
+                return 0.12;
+            }
+        }
+        
+        return height;
+    }
+
+    // === PLACE TOKENS IN OPEN SPACES ===
+    const openSpaces = findOpenSpaces(layout, cellSize, offset);
+    let tokensPlaced = 0;
+    const maxAttempts = totalTokens * 3; // Prevent infinite loop
+    
+    console.log(`Found ${openSpaces.length} potential open spaces for tokens`);
+
+    for (let attempt = 0; attempt < maxAttempts && tokensPlaced < totalTokens; attempt++) {
+        const space = openSpaces[Math.floor(Math.random() * openSpaces.length)];
+        const tokenType = tokenTypes[Math.floor(Math.random() * tokenTypes.length)];
+        
+        // Get surface height
+        const surfaceHeight = getSurfaceHeight(space.x, space.z);
+        const tokenHeight = surfaceHeight + 0.3; // Slightly above surface
+        
+        // Check if position is clear
+        if (isPositionClear(space.x, tokenHeight, space.z)) {
+            const token = tokenType.createModel();
+            
+            // Set scale first
+            token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
+            
+            // Set position in world coordinates
+            token.position.set(space.x, tokenHeight, space.z);
+            
+            // Apply world matrix transformation
+            token.updateMatrix();
+            token.updateMatrixWorld(true);
+            
+            // Determine surface type for token data
+            let surfaceType = 'ground';
+            switch (space.type) {
+                case 2: surfaceType = 'road'; break;
+                case 3: surfaceType = 'park'; break;
+                case 4: surfaceType = 'parking_lot'; break;
+            }
+            
+            token.userData = {
+                type: tokenType.name,
+                collected: false,
+                value: 1,
+                showOnMinimap: true,
+                surfaceType: surfaceType,
+                collectionRadius: 3.0,
+                minimapColor: tokenType.color || 0xffff00
+            };
+            
+            // Add random rotation
+            token.rotation.set(
+                Math.random() * Math.PI * 0.1,
+                Math.random() * Math.PI,
+                Math.random() * Math.PI * 0.1
+            );
+            
+            scene.add(token);
+            collectibles.push(token);
+            tokensPlaced++;
+            
+            console.log(`  🥐 Token ${tokensPlaced}: ${tokenType.name} at (${space.x.toFixed(1)}, ${tokenHeight.toFixed(1)}, ${space.z.toFixed(1)}) on ${surfaceType}`);
+        }
+    }
+
+    console.log(`✅ Successfully placed ${tokensPlaced}/${totalTokens} tokens in open spaces!`);
+
+    // Place a few tokens near player start for easy finding
+    console.log('🎯 Placing starter tokens near player...');
+    const playerStartTokens = [
+        { x: playerStartPosition.x + 2, z: playerStartPosition.z + 2, type: 'Bread Crumb' },
+        { x: playerStartPosition.x - 2, z: playerStartPosition.z + 2, type: 'French Fry' },
+        { x: playerStartPosition.x, z: playerStartPosition.z + 4, type: 'Pizza Crust' }
+    ];
+
+    playerStartTokens.forEach((pos, i) => {
         const tokenType = tokenTypes.find(t => t.name === pos.type) || tokenTypes[0];
         const token = tokenType.createModel();
+        
         token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
-        token.position.set(pos.x, pos.y, pos.z);
+        token.position.set(pos.x, 0.5, pos.z);
+        token.updateMatrix();
+        token.updateMatrixWorld(true);
         
         token.userData = {
-            type: pos.type,
+            type: tokenType.name,
             collected: false,
             value: 1,
             showOnMinimap: true,
-            surfaceType: 'test',
+            surfaceType: 'starter',
             collectionRadius: 3.0,
-            minimapColor: tokenType.color || 0xffff00  // Gold for minimap
+            minimapColor: tokenType.color || 0xffff00
         };
         
-        token.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
         scene.add(token);
         collectibles.push(token);
-        
-        console.log(`  🥐 Token ${i+1}: ${pos.type} at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})`);
+        console.log(`  🎯 Starter token ${i+1}: ${pos.type} near player`);
     });
-    
-    console.log('✅ Test tokens ready! Collect all 5 for VICTORY + GOLD MEDAL!');
+    // Set up token positions for minimap
+    scene.userData.tokenPositions = collectibles.map(token => ({
+        x: token.position.x,
+        z: token.position.z,
+        color: tokenTypes.find(t => t.name === token.userData.type)?.color || 0xffffff,
+        collected: false,
+        type: token.userData.type,
+        surface: token.userData.surfaceType
+    }));
+
+    // Add this function to check if a position is within world bounds
+    function isPositionInBounds(x, z, worldSize) {
+        const halfSize = worldSize / 2;
+        return Math.abs(x) <= halfSize && Math.abs(z) <= halfSize;
+    }
+
+    scene.userData.collectibles = collectibles;
+    scene.userData.buildings = buildings;
+
+    console.log('Collision objects loaded:');
+    console.log('- Buildings:', scene.userData.buildings?.length || 0);
+    console.log('- Tree colliders:', scene.userData.treeColliders?.length || 0);
+    console.log('- Bench colliders:', scene.userData.benchColliders?.length || 0);
+    console.log('- Car colliders:', scene.userData.carColliders?.length || 0);
+    console.log('- Tokens:', scene.userData.collectibles?.length || 0);
+
+    return { scene, camera };
 }
-
-// Set up token positions for minimap
-scene.userData.tokenPositions = collectibles.map(token => ({
-    x: token.position.x,
-    z: token.position.z,
-    color: tokenTypes.find(t => t.name === token.userData.type)?.color || 0xffffff,
-    collected: false,
-    type: token.userData.type,
-    surface: token.userData.surfaceType
-}));
-
-// Add this function to check if a position is within world bounds
-function isPositionInBounds(x, z, worldSize) {
-    const halfSize = worldSize / 2;
-    return Math.abs(x) <= halfSize && Math.abs(z) <= halfSize;
-}
-
-scene.userData.collectibles = collectibles; // ← ADD THIS
-scene.userData.buildings = buildings;
-
-console.log('Collision objects loaded:');
-console.log('- Buildings:', scene.userData.buildings?.length || 0);
-console.log('- Tree colliders:', scene.userData.treeColliders?.length || 0); // FIXED NAME
-console.log('- Bench colliders:', scene.userData.benchColliders?.length || 0); // FIXED NAME
-console.log('- Car colliders:', scene.userData.carColliders?.length || 0); // FIXED NAME
-
-return { scene, camera };
-}
-
