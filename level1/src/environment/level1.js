@@ -18,49 +18,6 @@ import {
 } from '../models/tokens/index.js';
 
 
-
-    async function createBuildingMaterial() {
-        const textureLoader = new THREE.TextureLoader();
-        
-        try {
-            // Load all the PBR textures for your facade
-            const colorMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Color.jpg');
-            const normalMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_NormalGL.jpg');
-            const roughnessMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Roughness.jpg');
-            const metalnessMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Metalness.jpg');
-            const displacementMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Displacement.jpg');
-
-            // Configure texture settings
-            [colorMap, normalMap, roughnessMap, metalnessMap, displacementMap].forEach(texture => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.colorSpace = THREE.SRGBColorSpace; // For color map only
-            });
-
-            // Create PBR material
-            const buildingMat = new THREE.MeshStandardMaterial({
-                map: colorMap,
-                normalMap: normalMap,
-                roughnessMap: roughnessMap,
-                metalnessMap: metalnessMap,
-                displacementMap: displacementMap,
-                displacementScale: 0, // Adjust based on your displacement texture
-                metalness: 0.1, // Base metalness
-                roughness: 0.8, // Base roughness
-            });
-
-            return buildingMat;
-        } catch (error) {
-            console.warn('Failed to load facade textures, falling back to basic material:', error);
-            // Fallback to basic material
-            return new THREE.MeshStandardMaterial({ 
-                color: 0x444444, 
-                metalness: 0.3, 
-                roughness: 0.6 
-            });
-        }
-    }
-
 export function createRoads(scene, roadLocations, cellSize) {
     const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
 
@@ -105,7 +62,7 @@ export function createRoads(scene, roadLocations, cellSize) {
     // Merge all road geometries into one mesh for performance
     const finalGeometry = roadMeshes.length ? BufferGeometryUtils.mergeBufferGeometries(roadMeshes) : null;
     if(finalGeometry) {
-        const roadMesh = new THREE.Mesh(finalGeometry, roadMaterial);
+        const roadMesh = new THREE.Mesh(finalGeometry, roadMaterial.clone());
         scene.add(roadMesh);
     }
 
@@ -115,8 +72,56 @@ export function createRoads(scene, roadLocations, cellSize) {
 export const playerStartPosition = { x: -10, y: 5, z: 5 };
 
 
-export async function createLevel() {
+export async function createLevel(TEST_MODE = false) {  // ← ADD TEST_MODE param
     const scene = new THREE.Scene();
+
+    async function createBuildingMaterial() {
+        const textureLoader = new THREE.TextureLoader();
+        
+        try {
+            // Load all the PBR textures for your facade
+            const colorMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Color.jpg');
+            const normalMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_NormalGL.jpg');
+            const roughnessMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Roughness.jpg');
+            const metalnessMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Metalness.jpg');
+            const displacementMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Displacement.jpg');
+
+            // Configure texture settings
+            [colorMap, normalMap, roughnessMap, metalnessMap, displacementMap].forEach((texture, index) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                
+                // ONLY colorMap gets SRGB!
+                if (index === 0) {  // colorMap is first
+                    texture.colorSpace = THREE.SRGBColorSpace;
+                }
+                // Others default to NoColorSpace (correct for PBR)
+            });
+
+            // Create PBR material
+            const buildingMat = new THREE.MeshStandardMaterial({
+                map: colorMap,
+                normalMap: normalMap,
+                roughnessMap: roughnessMap,
+                metalnessMap: metalnessMap,
+                displacementMap: displacementMap,
+                displacementScale: 0, // Adjust based on your displacement texture
+                metalness: 0.1, // Base metalness
+                roughness: 0.8, // Base roughness
+            });
+
+            return buildingMat;
+        } catch (error) {
+            console.warn('Failed to load facade textures, falling back to basic material:', error);
+            // Fallback to basic material
+            return new THREE.MeshStandardMaterial({ 
+                color: 0x444444, 
+                metalness: 0.3, 
+                roughness: 0.6 
+            });
+        } 
+    }
+
 
     scene.userData.treeColliders = [];
     scene.userData.benchColliders = [];
@@ -225,11 +230,8 @@ export async function createLevel() {
                 if (buildingMat.metalnessMap) buildingMat.metalnessMap.repeat.set(repeatX, repeatY);
                 if (buildingMat.displacementMap) buildingMat.displacementMap.repeat.set(repeatX, repeatY);
 
-                const buildingBox = new THREE.Box3();
-                buildingBox.setFromCenterAndSize(
-                    building.position,
-                    new THREE.Vector3(width, height, depth)
-                );
+                building.updateMatrixWorld(); 
+                const buildingBox = new THREE.Box3().setFromObject(building);
 
                 building.userData.collider = buildingBox;
                 building.userData.isBuilding = true;
@@ -299,7 +301,7 @@ export async function createLevel() {
 
     layoutData.roads.forEach((road, index) => {
         const geo = new THREE.PlaneGeometry(cellSize, cellSize);
-        const mesh = new THREE.Mesh(geo, roadMat);
+        const mesh = new THREE.Mesh(geo, roadMat.clone());
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.set(road.x, 0.01, road.z);
         
@@ -336,25 +338,25 @@ for (const building of buildings) {
 
     // FRONT sidewalk
     const frontGeo = new THREE.BoxGeometry(size.x + sidewalkWidth * 2, sidewalkHeight, sidewalkThickness);
-    const frontMesh = new THREE.Mesh(frontGeo, sidewalkMat);
+    const frontMesh = new THREE.Mesh(frontGeo, sidewalkMat.clone());
     frontMesh.position.set(x, y, z + halfD + sidewalkThickness / 2);
     sidewalks.add(frontMesh);
 
     // BACK sidewalk
     const backGeo = new THREE.BoxGeometry(size.x + sidewalkWidth * 2, sidewalkHeight, sidewalkThickness);
-    const backMesh = new THREE.Mesh(backGeo, sidewalkMat);
+    const backMesh = new THREE.Mesh(backGeo, sidewalkMat.clone());
     backMesh.position.set(x, y, z - halfD - sidewalkThickness / 2);
     sidewalks.add(backMesh);
 
     // LEFT sidewalk
     const leftGeo = new THREE.BoxGeometry(sidewalkThickness, sidewalkHeight, size.z + sidewalkWidth * 2);
-    const leftMesh = new THREE.Mesh(leftGeo, sidewalkMat);
+    const leftMesh = new THREE.Mesh(leftGeo, sidewalkMat.clone());
     leftMesh.position.set(x - halfW - sidewalkThickness / 2, y, z);
     sidewalks.add(leftMesh);
 
     // RIGHT sidewalk
     const rightGeo = new THREE.BoxGeometry(sidewalkThickness, sidewalkHeight, size.z + sidewalkWidth * 2);
-    const rightMesh = new THREE.Mesh(rightGeo, sidewalkMat);
+    const rightMesh = new THREE.Mesh(rightGeo, sidewalkMat.clone());
     rightMesh.position.set(x + halfW + sidewalkThickness / 2, y, z);
     sidewalks.add(rightMesh);
 }
@@ -365,13 +367,14 @@ console.log(`Generated ${sidewalks.children.length} sidewalks around buildings.`
     // -----------------------------------------
     // PARKS: create a few grassy plazas with instanced trees & benches
     // -----------------------------------------
-    const parkColor = 0x7a105;
-    const parkMaterial = new THREE.MeshStandardMaterial({ color: parkColor, roughness: 0.3, metalness: 0 });
+    const parkColor = 0x3d8b3d;
+    const parkMaterial = new THREE.MeshStandardMaterial({ color: parkColor, roughness: 0.8, metalness: 0 });
 
  
     function makePark(worldX, worldZ, size) {
     const grassGeo = new THREE.PlaneGeometry(size, size);
-    const grassMesh = new THREE.Mesh(grassGeo, parkMaterial);
+    const grassMaterial = parkMaterial.clone();
+    const grassMesh = new THREE.Mesh(grassGeo, grassMaterial);
     grassMesh.rotation.x = -Math.PI / 2;
     grassMesh.position.set(worldX, 0.01, worldZ);
     grassMesh.receiveShadow = false;
@@ -507,6 +510,9 @@ function makeParkingLot(worldX, worldZ, width, depth) {
     
 // === Collectible Tokens - Air Spawning with Compatibility ===
 const collectibles = [];
+const totalTokens = 10; 
+const TOKEN_SCALE_FACTOR = 4.0;
+ 
 const tokenTypes = [
     { 
         name: "Bread Crumb", 
@@ -566,197 +572,370 @@ const tokenTypes = [
     }
 ];
 
-// --- UTIL: Get height at position for token placement ---
-// FIXED: Now properly uses collision boxes to find surfaces
-// === DEBUG TOKEN PLACEMENT SYSTEM ===
-let debugTokens = []; // Store debug information
+// Placement strategies
+const placementStrategies = [
+    { type: 'surface', weight: 40, label: 'Surface' },
+    { type: 'air', weight: 30, label: 'Air' },
+    { type: 'object_top', weight: 20, label: 'Object Top' },
+    { type: 'ground', weight: 10, label: 'Ground' }
+];
 
-// Enhanced debug version of getTokenHeightAtPosition
-function getTokenHeightAtPosition(worldX, worldZ, tokenHalfHeight = 0.25, allowAir = true, debugId = null) {
-    let bestSurfaceY = 0;
-    let surfaceType = "ground";
-    const testPoint = new THREE.Vector3(worldX, 0, worldZ);
-    
-    // Check all collision objects
+// === HELPER: Check if near tree ===
+function isNearTree(x, z, minDist = 3) {
+    for (const box of scene.userData.treeColliders) {
+        const center = box.getCenter(new THREE.Vector3());
+        if (center.distanceTo(new THREE.Vector3(x, 0, z)) < minDist) return true;
+    }
+    return false;
+}
+
+// === HELPER: Get best surface height ===
+function getBestSurfaceHeight(x, z, tokenHalfHeight = 0.25) {
+    let highestY = 0;
+    let surfaceType = 'ground';
+
+    // [Same as before: buildings, sidewalks, roads, parks, lots]
     for (const building of buildings) {
-        if (building.userData.collider) {
-            if (Math.abs(worldX - building.position.x) <= (building.geometry.parameters.width / 2) &&
-                Math.abs(worldZ - building.position.z) <= (building.geometry.parameters.depth / 2)) {
-                const roofY = building.position.y + (building.geometry.parameters.height / 2);
-                if (roofY > bestSurfaceY) {
-                    bestSurfaceY = roofY;
-                    surfaceType = "building_roof";
+        const box = building.userData.collider;
+        if (!box.containsPoint(new THREE.Vector3(x, 0, z))) continue;
+
+        const roofY = box.max.y;
+        if (roofY > highestY) {
+            highestY = roofY;
+            surfaceType = 'building_roof';
+        }
+    }
+
+    for (const sidewalk of sidewalks.children) {
+        if (sidewalk.userData.collider?.containsPoint(new THREE.Vector3(x, 0, z))) {
+            const y = sidewalk.position.y + 0.2;
+            if (y > highestY) { highestY = y; surfaceType = 'sidewalk'; }
+        }
+    }
+
+    for (const road of roadGroup.children) {
+        if (road.userData.collider?.containsPoint(new THREE.Vector3(x, 0, z))) {
+            const y = 0.01;
+            if (y > highestY) { highestY = y; surfaceType = 'road'; }
+        }
+    }
+
+    for (const park of parks) {
+        if (park.userData?.collider?.containsPoint(new THREE.Vector3(x, 0, z))) {
+            const y = 0.01;
+            if (y > highestY) { highestY = y; surfaceType = 'park'; }
+        }
+    }
+
+    for (const lot of parkingLots) {
+        if (lot.userData?.collider?.containsPoint(new THREE.Vector3(x, 0, z))) {
+            const y = 0.02;
+            if (y > highestY) { highestY = y; surfaceType = 'parking_lot'; }
+        }
+    }
+
+    return { height: highestY + tokenHalfHeight + 0.05, type: surfaceType };
+}
+
+// === COLLISION CHECK ===
+function isPositionClear(x, y, z, tokenHalfSize = 0.25) {
+    const padding = 0.15;
+    const tokenBox = new THREE.Box3().setFromCenterAndSize(
+        new THREE.Vector3(x, y, z),
+        new THREE.Vector3(tokenHalfSize * 2 + padding, tokenHalfSize * 2 + padding, tokenHalfSize * 2 + padding)
+    );
+
+    const allColliders = [
+        ...buildings.map(b => b.userData.collider),
+        ...scene.userData.treeColliders,
+        ...scene.userData.benchColliders,
+        ...scene.userData.carColliders,
+        ...sidewalks.children.map(s => {
+            if (!s.userData.collider) {
+                s.userData.collider = new THREE.Box3().setFromObject(s);
+            }
+            return s.userData.collider;
+        }),
+        ...roadGroup.children.map(r => r.userData.collider),
+        ...(parks || []).map(p => p.userData?.collider).filter(Boolean),
+        ...(parkingLots || []).map(l => l.userData?.collider).filter(Boolean)
+    ].filter(Boolean);
+
+    for (const c of allColliders) {
+        if (c.intersectsBox(tokenBox)) return false;
+    }
+    return true;
+}
+
+// === OBJECT TOP PLACEMENT ===
+function getObjectTopPosition(x, z, tokenHalfSize = 0.25) {
+    const testPoint = new THREE.Vector3(x, 0, z);
+    for (const c of scene.userData.treeColliders) {
+        if (c.containsPoint(testPoint)) return { height: c.max.y + tokenHalfSize + 0.05, type: 'tree_top' };
+    }
+    for (const c of scene.userData.benchColliders) {
+        if (c.containsPoint(testPoint)) return { height: c.max.y + tokenHalfSize + 0.05, type: 'bench_top' };
+    }
+    for (const c of scene.userData.carColliders) {
+        if (c.containsPoint(testPoint)) return { height: c.max.y + tokenHalfSize + 0.05, type: 'car_top' };
+    }
+    return null;
+}
+
+// === GENERATE CANDIDATES (FIXED) ===
+function generateCandidates(count, strategy) {
+    const candidates = [];
+
+    for (let i = 0; i < count; i++) {
+        let x, z, yInfo;
+
+        if (strategy.type === 'surface' || strategy.type === 'ground') {
+            let attempts = 0;
+            while (attempts < 50) {
+                const gridX = Math.floor(Math.random() * layout[0].length);
+                const gridZ = Math.floor(Math.random() * layout.length);
+                if (![2,3,4].includes(layout[gridZ][gridX])) { attempts++; continue; }
+
+                const world = gridToWorld(gridX, gridZ);
+                x = world.x + (Math.random() - 0.5) * cellSize * 0.6;
+                z = world.z + (Math.random() - 0.5) * cellSize * 0.6;
+
+                if (isNearTree(x, z, 3)) { attempts++; continue; }
+
+                yInfo = strategy.type === 'ground'
+                    ? { height: 0.3, type: 'ground' }
+                    : getBestSurfaceHeight(x, z);
+
+                if (isPositionInBounds(x, z, worldSize)) {
+                    candidates.push({ x, z, ...yInfo });
+                    break;
+                }
+                attempts++;
+            }
+        }
+
+        else if (strategy.type === 'air') {
+            x = (Math.random() - 0.5) * worldSize * 0.8;
+            z = (Math.random() - 0.5) * worldSize * 0.8;
+            const surface = getBestSurfaceHeight(x, z);
+            const minH = surface.height + 5;
+            const maxH = surface.height + 20;
+
+            let validH = null;
+            for (let h = minH; h <= maxH; h += 2) {
+                if (isPositionClear(x, h, z, 0.3)) {
+                    validH = h;
+                    break;
                 }
             }
+            if (validH && isPositionInBounds(x, z, worldSize)) {
+                candidates.push({ x, z, height: validH, type: 'air' });
+            }
         }
-    }
-    
-    for (const road of roadGroup.children) {
-        if (road.userData.collider && road.userData.collider.containsPoint(testPoint)) {
-            const roadY = road.position.y + 0.01;
-            if (roadY > bestSurfaceY) {
-                bestSurfaceY = roadY;
-                surfaceType = "road";
+
+        else if (strategy.type === 'object_top') {
+            const all = [...scene.userData.treeColliders, ...scene.userData.benchColliders, ...scene.userData.carColliders];
+            if (all.length === 0) continue;
+            const obj = all[Math.floor(Math.random() * all.length)];
+            const center = obj.getCenter(new THREE.Vector3());
+            x = center.x + (Math.random() - 0.5) * 2;
+            z = center.z + (Math.random() - 0.5) * 2;
+            yInfo = getObjectTopPosition(x, z);
+            if (yInfo && isPositionInBounds(x, z, worldSize)) {
+                candidates.push({ x, z, ...yInfo });
             }
         }
     }
-    
-    for (const sidewalk of sidewalks.children) {
-        if (sidewalk.userData.collider && sidewalk.userData.collider.containsPoint(testPoint)) {
-            const sidewalkY = sidewalk.position.y + (sidewalkHeight / 2);
-            if (sidewalkY > bestSurfaceY) {
-                bestSurfaceY = sidewalkY;
-                surfaceType = "sidewalk";
-            }
-        }
-    }
-    
-    for (const park of parks) {
-        if (park.userData && park.userData.collider && park.userData.collider.containsPoint(testPoint)) {
-            const parkY = park.position.y + 0.01;
-            if (parkY > bestSurfaceY) {
-                bestSurfaceY = parkY;
-                surfaceType = "park";
-            }
-        }
-    }
-    
-    for (const parkingLot of parkingLots) {
-        if (parkingLot.userData && parkingLot.userData.collider && parkingLot.userData.collider.containsPoint(testPoint)) {
-            const lotY = parkingLot.position.y + 0.02;
-            if (lotY > bestSurfaceY) {
-                bestSurfaceY = lotY;
-                surfaceType = "parking_lot";
-            }
-        }
-    }
-    
-    let finalHeight;
-    let placementType = "surface";
-    
-    if (bestSurfaceY > 0) {
-        finalHeight = bestSurfaceY + tokenHalfHeight + 0.05;
-    
-    } else {
-        finalHeight = tokenHalfHeight + 0.05;
-        placementType = "ground";
-    }
-    
-    // Store debug information
-    if (debugId !== null) {
-        debugTokens.push({
-            id: debugId,
-            x: worldX,
-            z: worldZ,
-            height: finalHeight,
-            surfaceType: surfaceType,
-            placementType: placementType,
-            surfaceY: bestSurfaceY
-        });
-    }
-    
-    return finalHeight;
+    return candidates;
 }
 
-// Enhanced debug version of isPositionValidForToken
-function isPositionValidForToken(worldX, worldZ, worldY, tokenHalfSize = 0.25, debugId = null) {
-    const pad = 0.1;
-    const tokenBox = new THREE.Box3();
-    tokenBox.setFromCenterAndSize(
-        new THREE.Vector3(worldX, worldY, worldZ),
-        new THREE.Vector3(tokenHalfSize * 2 + pad, tokenHalfSize * 2 + pad, tokenHalfSize * 2 + pad)
-    );
-    
-    let collisionType = "none";
-    
-    // Check all collision types
-    for (const building of buildings) {
-        if (building.userData.collider && building.userData.collider.intersectsBox(tokenBox)) {
-            collisionType = "building";
-            break;
-        }
-    }
-    
-    if (collisionType === "none") {
-        for (const treeCollider of scene.userData.treeColliders) {
-            if (treeCollider.intersectsBox(tokenBox)) {
-                collisionType = "tree";
-                break;
-            }
-        }
-    }
-    
-    if (collisionType === "none") {
-        for (const benchCollider of scene.userData.benchColliders) {
-            if (benchCollider.intersectsBox(tokenBox)) {
-                collisionType = "bench";
-                break;
-            }
-        }
-    }
-    
-    if (collisionType === "none") {
-        for (const carCollider of scene.userData.carColliders) {
-            if (carCollider.intersectsBox(tokenBox)) {
-                collisionType = "car";
-                break;
-            }
-        }
-    }
-    
-    // Update debug info if this token has debug data
-    if (debugId !== null) {
-        const debugToken = debugTokens.find(t => t.id === debugId);
-        if (debugToken) {
-            debugToken.collisionType = collisionType;
-            debugToken.valid = collisionType === "none";
-        }
-    }
-    
-    return collisionType === "none";
+// === PLACE TOKEN ===
+function placeToken(x, z, y, surfaceType) {
+    const type = tokenTypes[Math.floor(Math.random() * tokenTypes.length)];
+    const token = type.createModel();
+    token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
+    token.position.set(x, y, z);
+    token.userData = {
+        type: type.name,
+        collected: false,
+        value: 1,
+        showOnMinimap: true,
+        surfaceType,
+        collectionRadius: 3.0
+    };
+    token.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    scene.add(token);
+    collectibles.push(token);
 }
 
-// Function to visualize debug information
-function createDebugVisualization() {
-    const debugGroup = new THREE.Group();
-    
-    debugTokens.forEach((debugToken, index) => {
-        // Create a colored marker based on placement type
-        const markerGeometry = new THREE.SphereGeometry(0.5, 8, 6);
-        let markerColor;
-        
-        switch (debugToken.placementType) {
-            case "air": markerColor = 0x00ff00; break; // Green for air
-            case "surface": markerColor = 0x0000ff; break; // Blue for surface
-            case "ground": markerColor = 0xffff00; break; // Yellow for ground
-            default: markerColor = 0xff0000; // Red for unknown
+// === MAIN PLACEMENT LOOP ===
+console.log("Creating smart tokens...");
+placementStrategies.forEach(strategy => {
+    const count = Math.floor(totalTokens * strategy.weight / 100);
+    console.log(`Placing ${count} ${strategy.label} tokens...`);
+    const candidates = generateCandidates(count * 5, strategy); // 5x buffer
+    let placed = 0;
+
+    for (const c of candidates) {
+        if (placed >= count) break;
+        if (isPositionClear(c.x, c.height, c.z, 0.3)) {
+            placeToken(c.x, c.z, c.height, c.type);
+            placed++;
+            continue;
         }
+
+        // Jitter
+        for (let a = 0; a < 10; a++) {
+            const jx = c.x + (Math.random() - 0.5) * 6;
+            const jz = c.z + (Math.random() - 0.5) * 6;
+            const jy = c.height + (Math.random() - 0.5) * 1;
+            if (isPositionInBounds(jx, jz, worldSize) && isPositionClear(jx, jy, jz, 0.3)) {
+                placeToken(jx, jz, jy, c.type);
+                placed++;
+                break;
+            }
+        }
+    }
+    console.log(`Placed ${placed}/${count} ${strategy.label} tokens`);
+});
+
+// NEW: Unified token placement function
+function placeToken(x, z, y, surfaceType) {
+    const tokenType = tokenTypes[Math.floor(Math.random() * tokenTypes.length)];
+    const token = tokenType.createModel();
+    token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
+
+    token.position.set(x, y, z);
+    token.userData = { 
+        type: tokenType.name, 
+        collected: false, 
+        value: 1, 
+        showOnMinimap: true,
+        surfaceType: surfaceType,
+        collectionRadius: 3.0
+    };
+    
+    // Random rotation
+    token.rotation.x = Math.random() * Math.PI;
+    token.rotation.y = Math.random() * Math.PI;
+    token.rotation.z = Math.random() * Math.PI;
+    
+    scene.add(token);
+    collectibles.push(token);
+}
+
+// === DEBUG VISUALIZATION (Toggle with 'V' key in game) ===
+scene.userData.toggleCollectionRadius = () => {
+    // Remove existing debug spheres
+    if (scene.userData.collectionDebugGroup) {
+        scene.remove(scene.userData.collectionDebugGroup);
+        scene.userData.collectionDebugGroup = null;
+        return;
+    }
+
+    const group = new THREE.Group();
+
+    const debugMaterial = new THREE.MeshStandardMaterial({
+        color: 0x00ff88,
+        transparent: true,
+        opacity: 0.25,
+        emissive: 0x00ff88,
+        emissiveIntensity: 0.3,
+        roughness: 0.7,
+        metalness: 0.1,
+        side: THREE.DoubleSide
+    });
+
+    scene.userData.collectibles.forEach(token => {
+        if (token.userData.collected) return;
+
+        const radius = token.userData.collectionRadius;
+        const geo = new THREE.SphereGeometry(radius, 24, 16);
+        const sphere = new THREE.Mesh(geo, debugMaterial);
         
-        const markerMaterial = new THREE.MeshBasicMaterial({ 
-            color: markerColor,
-            transparent: true,
-            opacity: 0.7
-        });
+        sphere.position.copy(token.position);
+        sphere.position.y += 0.01;
+
+        // Link token → sphere 
+        token.userData.debugSphere = sphere;
+
+        group.add(sphere);
+    });
+
+    scene.add(group);
+    scene.userData.collectionDebugGroup = group;
+};
+
+// === REMOVE DEBUG SPHERE WHEN TOKEN IS COLLECTED ===
+scene.userData.removeTokenDebugSphere = (token) => {
+    if (!token.userData.debugSphere) return;
+
+    const sphere = token.userData.debugSphere;
+    const group = scene.userData.collectionDebugGroup;
+
+    if (group && group.children.includes(sphere)) {
+        group.remove(sphere);
+        sphere.geometry.dispose();
+        sphere.material.dispose();
+    }
+
+    // Clean up references
+    delete token.userData.debugSphere;
+    delete sphere.userData.token;
+};
+
+console.log(`🎉 Total tokens placed: ${collectibles.length}`);
+console.log("💡 Press 'V' in-game to toggle token debug visualization");
+
+// === TEST MODE: 5 TOKENS NEAR PLAYER ===
+if (TEST_MODE) {
+    console.log('🧪 TEST MODE: Spawning 5 tokens near player!');
+    
+    const playerPos = playerStartPosition;
+    const tokenSpacing = 4;
+    const testTokens = [
+        { x: playerPos.x + 0, z: playerPos.z + tokenSpacing, y: 0.5, type: 'Bread Crumb' },
+        { x: playerPos.x + tokenSpacing, z: playerPos.z + 0, y: 0.5, type: 'French Fry' },
+        { x: playerPos.x + tokenSpacing, z: playerPos.z + tokenSpacing, y: 1.2, type: 'Pizza Crust' },
+        { x: playerPos.x - tokenSpacing, z: playerPos.z + tokenSpacing, y: 0.5, type: 'Popcorn' },
+        { x: playerPos.x + tokenSpacing*0.7, z: playerPos.z + tokenSpacing*1.5, y: 2.0, type: 'Pretzel' }
+    ];
+
+    testTokens.forEach((pos, i) => {
+        const tokenType = tokenTypes.find(t => t.name === pos.type) || tokenTypes[0];
+        const token = tokenType.createModel();
+        token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
+        token.position.set(pos.x, pos.y, pos.z);
         
-        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-        marker.position.set(debugToken.x, debugToken.height + 1, debugToken.z);
-        debugGroup.add(marker);
+        token.userData = {
+            type: pos.type,
+            collected: false,
+            value: 1,
+            showOnMinimap: true,
+            surfaceType: 'test',
+            collectionRadius: 3.0,
+            minimapColor: tokenType.color || 0xffff00  // Gold for minimap
+        };
         
-        // Add text label (you'll need THREE.TextGeometry for this)
-        // For now, just log the information
-        console.log(`Token ${index}:`, {
-            position: `(${debugToken.x.toFixed(1)}, ${debugToken.z.toFixed(1)})`,
-            height: debugToken.height.toFixed(1),
-            surface: debugToken.surfaceType,
-            placement: debugToken.placementType,
-            collision: debugToken.collisionType || "none",
-            valid: debugToken.valid !== false
-        });
+        token.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        scene.add(token);
+        collectibles.push(token);
+        
+        console.log(`  🥐 Token ${i+1}: ${pos.type} at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})`);
     });
     
-    scene.add(debugGroup);
-    return debugGroup;
+    console.log('✅ Test tokens ready! Collect all 5 for VICTORY + GOLD MEDAL!');
 }
+
+// Set up token positions for minimap
+scene.userData.tokenPositions = collectibles.map(token => ({
+    x: token.position.x,
+    z: token.position.z,
+    color: tokenTypes.find(t => t.name === token.userData.type)?.color || 0xffffff,
+    collected: false,
+    type: token.userData.type,
+    surface: token.userData.surfaceType
+}));
 
 // Add this function to check if a position is within world bounds
 function isPositionInBounds(x, z, worldSize) {
@@ -764,296 +943,8 @@ function isPositionInBounds(x, z, worldSize) {
     return Math.abs(x) <= halfSize && Math.abs(z) <= halfSize;
 }
 
-// Replace your existing token creation section with this enhanced version:
-
-console.log("Creating tokens in north-eastern diagonal line...");
-
-const diagonalTokensCount = 5;
-const spacing = 15;
-const minRadius = 3;
-const maxRadius = 8;
-const TOKEN_SCALE_FACTOR = 2.0;
-
-for (let i = 0; i < diagonalTokensCount; i++) {
-    const tokenType = tokenTypes[Math.floor(Math.random() * tokenTypes.length)];
-    const token = tokenType.createModel();
-    
-    token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
-    
-    const distance = (i + 1) * spacing;
-    const posX = 0 - distance;
-    const posZ = 0 + distance;
-
-    const radius = minRadius + Math.random() * (maxRadius - minRadius);
-    const angle = Math.random() * Math.PI * 2;
-    let finalX = posX + Math.cos(angle) * radius;
-    let finalZ = posZ + Math.sin(angle) * radius;
-
-    // BOUNDS CHECKING - Skip if out of bounds
-    if (!isPositionInBounds(finalX, finalZ, worldSize)) {
-        console.warn(`Diagonal token ${i} out of bounds at (${finalX.toFixed(1)}, ${finalZ.toFixed(1)}), skipping`);
-        continue;
-    }
-
-    const tokenHalf = tokenType.size / 2;
-    const debugId = `diagonal_${i}`;
-    
-    let tokenHeight = getTokenHeightAtPosition(finalX, finalZ, tokenHalf, false, debugId);
-
-    let placed = isPositionValidForToken(finalX, finalZ, tokenHeight, tokenHalf, debugId);
-    let tries = 0;
-    
-    while (!placed && tries < 8) {
-        tries++;
-        const testY = tokenHeight + tries * 2;
-        if (isPositionValidForToken(finalX, finalZ, testY, tokenHalf, debugId)) {
-            tokenHeight = testY;
-            placed = true;
-            const debugToken = debugTokens.find(t => t.id === debugId);
-            if (debugToken) {
-                debugToken.adjusted = true;
-                debugToken.adjustmentTries = tries;
-                debugToken.finalHeight = tokenHeight;
-            }
-            break;
-        }
-        
-        const jitter = 1 + tries * 0.6;
-        const newAngle = Math.random() * Math.PI * 2;
-        const nx = posX + Math.cos(newAngle) * (radius * (0.8 + Math.random() * 0.4));
-        const nz = posZ + Math.sin(newAngle) * (radius * (0.8 + Math.random() * 0.4));
-        
-        // BOUNDS CHECKING for new position
-        if (!isPositionInBounds(nx, nz, worldSize)) {
-            continue;
-        }
-        
-        const newY = getTokenHeightAtPosition(nx, nz, tokenHalf, true, debugId);
-        if (isPositionValidForToken(nx, nz, newY, tokenHalf, debugId)) {
-            finalX = nx; finalZ = nz; tokenHeight = newY; 
-            placed = true; 
-            const debugToken = debugTokens.find(t => t.id === debugId);
-            if (debugToken) {
-                debugToken.adjusted = true;
-                debugToken.adjustmentTries = tries;
-                debugToken.repositioned = true;
-                debugToken.finalPosition = { x: finalX, z: finalZ };
-                debugToken.finalHeight = tokenHeight;
-            }
-            break;
-        }
-    }
-
-    if (!placed) {
-        console.warn(`Could not place diagonal token ${i}, skipping`);
-        const debugToken = debugTokens.find(t => t.id === debugId);
-        if (debugToken) debugToken.failed = true;
-        continue;
-    }
-
-    token.position.set(finalX, tokenHeight, finalZ);
-    token.userData = { 
-        type: tokenType.name, 
-        collected: false, 
-        value: 1, 
-        showOnMinimap: true 
-    };
-    
-    token.rotation.x = Math.random() * Math.PI;
-    token.rotation.y = Math.random() * Math.PI;
-    token.rotation.z = Math.random() * Math.PI;
-
-    scene.add(token);
-    collectibles.push(token);
-
-    console.log(`Created ${tokenType.name} at (${finalX.toFixed(1)}, ${finalZ.toFixed(1)}) height: ${tokenHeight.toFixed(1)}`);
-}
-
-
-
-console.log("Creating remaining tokens using layout matrix...");
-const tokensToCreate = 15;
-let tokensCreated = 0;
-let attempts = 0;
-const maxAttempts = 800;
-
-while (tokensCreated < tokensToCreate && attempts < maxAttempts) {
-    attempts++;
-
-    const gridX = Math.floor(Math.random() * layout[0].length);
-    const gridZ = Math.floor(Math.random() * layout.length);
-
-    if (layout[gridZ][gridX] === 2 || layout[gridZ][gridX] === 3 || layout[gridZ][gridX] === 4) {
-        const tokenType = tokenTypes[Math.floor(Math.random() * tokenTypes.length)];
-        const token = tokenType.createModel();
-        token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
-
-        // Convert grid to world
-        const world = gridToWorld(gridX, gridZ);
-        const variation = cellSize * 0.3;
-        let finalX = world.x + (Math.random() - 0.5) * variation;
-        let finalZ = world.z + (Math.random() - 0.5) * variation;
-
-        // BOUNDS CHECKING
-        if (!isPositionInBounds(finalX, finalZ, worldSize)) {
-            // Try to bring it back within bounds
-            finalX = Math.max(-worldSize/2, Math.min(worldSize/2, finalX));
-            finalZ = Math.max(-worldSize/2, Math.min(worldSize/2, finalZ));
-        }
-
-        const tokenHalf = tokenType.size / 2;
-        const debugId = `remaining_${tokensCreated}`;
-        
-        let tokenHeight = getTokenHeightAtPosition(finalX, finalZ, tokenHalf, false, debugId);
-
-        let placed = isPositionValidForToken(finalX, finalZ, tokenHeight, tokenHalf, debugId);
-        let localTries = 0;
-        
-        while (!placed && localTries < 10) {
-            localTries++;
-            const tryY = tokenHeight + localTries * 2;
-            if (isPositionValidForToken(finalX, finalZ, tryY, tokenHalf, debugId)) {
-                tokenHeight = tryY; 
-                placed = true; 
-                const debugToken = debugTokens.find(t => t.id === debugId);
-                if (debugToken) {
-                    debugToken.adjusted = true;
-                    debugToken.adjustmentTries = localTries;
-                    debugToken.finalHeight = tokenHeight;
-                }
-                break;
-            }
-            
-            finalX = world.x + (Math.random() - 0.5) * variation;
-            finalZ = world.z + (Math.random() - 0.5) * variation;
-            
-            // BOUNDS CHECKING for new position
-            if (!isPositionInBounds(finalX, finalZ, worldSize)) {
-                finalX = Math.max(-worldSize/2, Math.min(worldSize/2, finalX));
-                finalZ = Math.max(-worldSize/2, Math.min(worldSize/2, finalZ));
-            }
-            
-            tokenHeight = getTokenHeightAtPosition(finalX, finalZ, tokenHalf, true, debugId);
-            if (isPositionValidForToken(finalX, finalZ, tokenHeight, tokenHalf, debugId)) {
-                placed = true; 
-                const debugToken = debugTokens.find(t => t.id === debugId);
-                if (debugToken) {
-                    debugToken.adjusted = true;
-                    debugToken.adjustmentTries = localTries;
-                    debugToken.repositioned = true;
-                    debugToken.finalPosition = { x: finalX, z: finalZ };
-                    debugToken.finalHeight = tokenHeight;
-                }
-                break;
-            }
-        }
-
-        if (!placed) {
-            const debugToken = debugTokens.find(t => t.id === debugId);
-            if (debugToken) debugToken.failed = true;
-            continue;
-        }
-
-        token.position.set(finalX, tokenHeight, finalZ);
-        token.userData = { 
-            type: tokenType.name, 
-            collected: false, 
-            value: 1, 
-            showOnMinimap: true 
-        };
-        
-        token.rotation.x = Math.random() * Math.PI;
-        token.rotation.y = Math.random() * Math.PI;
-        token.rotation.z = Math.random() * Math.PI;
-
-        scene.add(token);
-        collectibles.push(token);
-        tokensCreated++;
-
-        console.log(`Created ${tokenType.name} at grid [${gridZ}][${gridX}] -> world (${finalX.toFixed(1)}, ${finalZ.toFixed(1)}) height: ${tokenHeight.toFixed(1)}`);
-    }
-}
-
-    if (tokensCreated < tokensToCreate) {
-        console.warn(`Only created ${tokensCreated} of ${tokensToCreate} ground tokens after ${attempts} attempts`);
-    }
-
-    // Maintain original tokenPositions structure for minimap compatibility
-    scene.userData.tokenPositions = collectibles.map(token => ({
-        x: token.position.x,
-        z: token.position.z,
-        color: token.userData.type ? 
-            tokenTypes.find(t => t.name === token.userData.type)?.color || 0xffffff 
-        : 0xffffff,
-        collected: false,
-        type: token.userData.type
-    }));
-
-    scene.userData.buildings = buildings;
-    scene.userData.collectibles = collectibles;
-    scene.userData.parks = parks;
-    scene.userData.parkingLots = parkingLots;
-    scene.userData.sidewalks = sidewalks.children;
-    
-    console.log('buildings:', buildings.length);
-    console.log('parks:', parks ? parks.length : 0);
-    console.log('parking lots:', parkingLots ? parkingLots.length : 0);
-    console.log('sidewalks:', sidewalks.children.length);
-    console.log('tokens:', collectibles.length);
-
-    console.log(`Stored ${scene.userData.tokenPositions.length} token positions for minimap`);
-
-    console.log(`Total collectibles created: ${collectibles.length}`);
-    console.log("Tokens placed at various heights including air and flying-only tokens!");
-
-
-    // Add this debug function to check collisions
-function debugPlayerCollision(playerX, playerZ) {
-    const playerBox = new THREE.Box3();
-    playerBox.setFromCenterAndSize(
-        new THREE.Vector3(playerX, 0, playerZ),
-        new THREE.Vector3(2, 2, 2) // Approximate player size
-    );
-    
-    // Check buildings
-    buildings.forEach((building, i) => {
-        if (building.userData.collider.intersectsBox(playerBox)) {
-            console.log(`Player colliding with building ${i} at`, building.position);
-        }
-    });
-    
-    // Check sidewalks (if they have colliders)
-    sidewalks.children.forEach((sidewalk, i) => {
-        if (sidewalk.userData.collider && sidewalk.userData.collider.intersectsBox(playerBox)) {
-            console.log(`Player colliding with sidewalk ${i} at`, sidewalk.position);
-        }
-    });
-}
-
-// Add this function to check token placement in real-time
-function printTokenDebugSummary() {
-    console.log("=== TOKEN PLACEMENT DEBUG SUMMARY ===");
-    console.log(`Total tokens placed: ${collectibles.length}`);
-    console.log(`Total debug tokens: ${debugTokens.length}`);
-    
-    const placementStats = {};
-    const surfaceStats = {};
-    
-    debugTokens.forEach(token => {
-        placementStats[token.placementType] = (placementStats[token.placementType] || 0) + 1;
-        surfaceStats[token.surfaceType] = (surfaceStats[token.surfaceType] || 0) + 1;
-    });
-    
-    console.log("Placement Types:", placementStats);
-    console.log("Surface Types:", surfaceStats);
-    console.log("Failed placements:", debugTokens.filter(t => t.failed).length);
-    console.log("Adjusted placements:", debugTokens.filter(t => t.adjusted).length);
-    console.log("================================");
-}
-createDebugVisualization();
-
-printTokenDebugSummary();
-
+scene.userData.collectibles = collectibles; // ← ADD THIS
+scene.userData.buildings = buildings;
 
 console.log('Collision objects loaded:');
 console.log('- Buildings:', scene.userData.buildings?.length || 0);

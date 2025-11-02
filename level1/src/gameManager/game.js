@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createLevel, playerStartPosition } from "../environment/level1.js";
+import { createLevel, createRoads, playerStartPosition } from "../environment/level1.js";
 import { createPlayer, updatePlayer } from "../models/player.js";
 import { setupInput, input } from "../input/inputHandler.js";
 import { updateWalking } from "../physics/movement.js";
@@ -15,84 +15,394 @@ export class Game {
         this.renderer = renderer;
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 4000);
-
         setupInput();
 
         // Game state
         this.score = 0;
         this.collectedItems = {};
-        this.totalCollectibles = this.scene.userData.collectibles ? this.scene.userData.collectibles.length : 0;
-
+        this.totalCollectibles = 0;
         this.isFlying = false;
         this.prevFlyToggle = false;
         this.flyState = { isAscendingToFly: false, targetFlyHeight: 0 };
+        this.gameLoaded = false;
 
-        // Camera control state (mouse-look)
+        // Timer & Medals
+        this.gameTime = 5 * 60;
+        this.timerRunning = false;
+        this.gameStartTime = 0;
+        this.medal = null;
+
+        // UI Elements
+        this.welcomeScreen = null;
+        this.timerElement = null;
+        this.medalElement = null;
+        this.controlsElement = null;
+        this.loadProgressBar = null;
+
+        // Loading state
+        this.loadingProgress = 0;
+
+        // Camera
         this.yaw = 0;
         this.pitch = 0;
         this.MOUSE_SENS = 0.0025;
 
-        // Create a separate scene for UI elements (including minimap)
+        // Scenes
         this.uiScene = new THREE.Scene();
         this.uiCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
 
-        // Bind handlers - MAKE SURE THESE METHODS EXIST!
+        // Bind methods
         this._onPointerLockChange = this._onPointerLockChange.bind(this);
         this._onMouseMove = this._onMouseMove.bind(this);
         this._requestLock = this._requestLock.bind(this);
+        this._startGame = this._startGame.bind(this);
+        this._updateLoadProgress = this._updateLoadProgress.bind(this);
 
-        // Setup pointer lock
-        if (this.renderer && this.renderer.domElement) {
-            this.renderer.domElement.addEventListener('click', this._requestLock);
-            document.addEventListener('pointerlockchange', this._onPointerLockChange);
-        }
+        // Event listeners
+        this.renderer.domElement.addEventListener('click', this._requestLock);
+        document.addEventListener('pointerlockchange', this._onPointerLockChange);
 
-        this.init();
+        // Show welcome + start loading
+        this._showWelcomeScreen();
+        this._loadLevel();
     }
 
-    async init() {
-        try {
-            // Load the level
-            const { scene: levelScene, camera: levelCamera } = await createLevel();
-            
-            
-            // Add level scene to main scene
-            this.scene = levelScene;
-            this.camera = levelCamera;
-            
-            // Create player
-            this.player = createPlayer();
-            this.scene.add(this.player);
+  async _loadLevel() {
+    try {
+        console.log('Loading level...');
+        const start = performance.now();
 
-            this.player.position.set(
-                playerStartPosition.x, 
-                playerStartPosition.y, 
-                playerStartPosition.z
-            );
+        // Animate loading progress
+        const animateProgress = () => {
+            this.loadingProgress = Math.min(this.loadingProgress + 0.02, 0.95);
+        };
+        const progressTimer = setInterval(animateProgress, 50);
 
-            // Set total collectibles after level is loaded
-            this.totalCollectibles = this.scene.userData.collectibles ? this.scene.userData.collectibles.length : 0;
+        // TEST MODE = TRUE!
+        const { scene: levelScene, camera: levelCamera } = await createLevel(true);
 
-            // Enable collision visualization (remove this line after debugging)
-            enableCollisionDebug(this.scene, true);
+        clearInterval(progressTimer);
 
-            // Create UI elements
-            this._createCrosshair();
-            this._createCrosshair3D();
-            this._createScoreUI();
-            this._createSpeedBoostUI();
-            this._createScreenEffect();
+        this.scene = levelScene;
+        this.camera = levelCamera;
 
-            // Initialize minimap
-            this._initMinimap();
-            
-            this.lastTime = performance.now();
-            this.loop();
-            
-        } catch (error) {
-            console.error('Failed to create level:', error);
+        this.player = createPlayer();
+        this.scene.add(this.player);
+        this.player.position.set(
+            playerStartPosition.x,
+            playerStartPosition.y,
+            playerStartPosition.z
+        );
+
+        this.totalCollectibles = this.scene.userData.collectibles?.length || 0;
+        enableCollisionDebug(this.scene, true);
+
+        this.gameLoaded = true;
+        console.log(`Level ready in ${(performance.now() - start)/1000}s`);
+        console.log(`🎯 TEST MODE: ${this.totalCollectibles} tokens loaded!`);
+    } catch (e) {
+        console.error('Level load failed:', e);
+        this.gameLoaded = false;
+    }
+}
+
+    _updateLoadProgress() {
+        if (!this.loadProgressBar) return;
+
+        const fake = Math.min(this.loadingProgress, 0.95);
+        this.loadProgressBar.style.width = `${fake * 100}%`;
+
+        const btn = document.getElementById('start-game-btn');
+        if (!btn) return;
+
+        if (this.gameLoaded) {
+            this.loadProgressBar.style.width = '100%';
+            this.loadProgressBar.style.background = '#00ff88';
+            btn.textContent = 'START GAME';
+            btn.disabled = false;
+            btn.style.cursor = 'pointer';
+        } else {
+            btn.textContent = 'Loading...';
+            btn.disabled = true;
         }
     }
+
+    _showWelcomeScreen() {
+        if (this.welcomeScreen) this.welcomeScreen.remove();
+
+        this.welcomeScreen = document.createElement('div');
+        this.welcomeScreen.id = 'welcome-screen';
+        this.welcomeScreen.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #0c0c2f 0%, #1a0033 50%, #000 100%);
+            color: white; font-family: 'Arial Black', Arial, sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 9999; text-align: center; padding: 40px; box-sizing: border-box;
+            box-shadow: inset 0 0 100px rgba(0,255,255,0.1);
+        `;
+
+        this.welcomeScreen.innerHTML = `
+            <div style="animation: glow 2s ease-in-out infinite alternate;">
+                <h1 style="
+                    font-size: clamp(48px, 8vw, 80px); margin: 0; 
+                    background: linear-gradient(45deg, #00ffff, #ff00ff, #ffff00);
+                    background-size: 300% 300%; -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent; background-clip: text;
+                    text-shadow: 0 0 40px #00ffff;
+                    filter: drop-shadow(0 0 20px #00ffff);
+                ">
+                    Pigeon Sim 3000
+                </h1>
+            </div>
+            <p style="
+                font-size: clamp(18px, 3vw, 28px); margin: 30px 0; 
+                color: #a0d8ff; text-shadow: 0 0 10px #00ffff;
+                max-width: 600px;
+            ">
+                Collect all glowing tokens before time runs out! Use flying and speed boosts to dominate.
+            </p>
+
+            <div style="
+                background: rgba(255,255,255,0.08); backdrop-filter: blur(10px);
+                padding: 25px; border-radius: 20px; margin: 20px; max-width: 500px;
+                border: 1px solid rgba(0,255,255,0.3);
+            ">
+                <h3 style="color: #ffd700; margin: 0 0 15px 0; font-size: 22px;">
+                    🎮 QUICK START
+                </h3>
+                <div style="display: flex; justify-content: space-between; font-size: 16px;">
+                    <span>WASD</span><span>Move</span>
+                    <span>Mouse</span><span>Look</span>
+                    <span>F</span><span>Fly</span>
+                    <span>SPACE</span><span>Jump</span>
+
+                </div>
+            </div>
+
+            <div id="progress-container" style="
+                margin: 40px 0; width: 400px; height: 20px;
+                background: rgba(0,0,0,0.5); border-radius: 10px;
+                border: 2px solid #00ffff; overflow: hidden;
+            ">
+                <div id="load-progress-bar" style="
+                    height: 100%; width: 0%; background: #666;
+                    transition: width 0.3s ease, background 0.5s;
+                    border-radius: 8px;
+                "></div>
+            </div>
+
+            <button id="start-game-btn" style="
+                padding: 18px 50px; font-size: 24px; font-weight: bold;
+                background: linear-gradient(45deg, #00ff88, #00cc66);
+                color: black; border: none; border-radius: 50px;
+                cursor: pointer; box-shadow: 0 10px 30px rgba(0,255,136,0.4);
+                transition: all 0.3s; position: relative; overflow: hidden;
+                text-transform: uppercase; letter-spacing: 2px;
+            " disabled>
+                Loading Level...
+            </button>
+
+            <style>
+                @keyframes glow {
+                    0% { filter: drop-shadow(0 0 20px #00ffff); }
+                    100% { filter: drop-shadow(0 0 40px #00ffff); }
+                }
+                #start-game-btn:not([disabled]):hover {
+                    transform: translateY(-3px) scale(1.05);
+                    box-shadow: 0 15px 40px rgba(0,255,136,0.6);
+                }
+                #start-game-btn:not([disabled]) {
+                    animation: pulse 2s infinite;
+                }
+                @keyframes pulse {
+                    0%, 100% { box-shadow: 0 10px 30px rgba(0,255,136,0.4); }
+                    50% { box-shadow: 0 10px 40px rgba(0,255,136,0.7); }
+                }
+            </style>
+        `;
+
+        document.body.appendChild(this.welcomeScreen);
+
+        // Cache elements
+        this.loadProgressBar = document.getElementById('load-progress-bar');
+        document.getElementById('start-game-btn').addEventListener('click', this._startGame);
+
+        // Start progress updates
+        this.progressInterval = setInterval(this._updateLoadProgress, 50);
+    }
+
+    _startGame() {
+        if (!this.gameLoaded) return;
+
+        clearInterval(this.progressInterval);
+        if (this.welcomeScreen) {
+            this.welcomeScreen.style.transition = 'opacity 0.8s';
+            this.welcomeScreen.style.opacity = '0';
+            setTimeout(() => this.welcomeScreen.remove(), 800);
+        }
+
+        // Create persistent controls
+        this._createPersistentControls();
+
+        // Start timer & game
+        this.timerRunning = true;
+        this.gameStartTime = performance.now();
+        this._createTimerUI();
+        this._createMedalUI();
+
+        // Initialize game systems
+        this._createCrosshair();
+        this._createCrosshair3D();
+        this._createScoreUI();
+        this._createSpeedBoostUI();
+        this._createScreenEffect();
+        this._setupDebugKeys();
+        this._initMinimap();
+
+        this.lastTime = performance.now();
+        this.loop();
+    }
+
+    _createPersistentControls() {
+        if (this.controlsElement) return;
+
+        this.controlsElement = document.createElement('div');
+        this.controlsElement.id = 'persistent-controls';
+        this.controlsElement.style.cssText = `
+            position: absolute; bottom: 20px; right: 20px;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
+            border-radius: 15px; padding: 15px; z-index: 1002;
+            border: 1px solid rgba(0,255,255,0.5); min-width: 160px;
+            font-family: Arial; font-size: 12px; color: #a0d8ff;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+        `;
+        this.controlsElement.innerHTML = `
+            <div style="font-weight: bold; color: #00ffff; margin-bottom: 8px;">CONTROLS</div>
+            <div>WASD: Move</div>
+            <div>Mouse: Look</div>
+            <div>SPACE: Fly</div>
+            <div>SHIFT: Boost</div>
+        `;
+        document.body.appendChild(this.controlsElement);
+    }
+
+    _createTimerUI() {
+        if (this.timerElement) this.timerElement.remove();
+
+        this.timerElement = document.createElement('div');
+        this.timerElement.id = 'game-timer';
+        this.timerElement.style.cssText = `
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffffff; font-family: 'Arial Black', Arial;
+            font-size: 40px; font-weight: bold; z-index: 1001;
+            background: linear-gradient(135deg, rgba(0,0,0,0.8), rgba(20,20,50,0.8));
+            padding: 12px 24px; border-radius: 20px;
+            border: 3px solid #00ff88; box-shadow: 0 0 20px rgba(0,255,136,0.5);
+            text-shadow: 2px 2px 8px black;
+        `;
+        this.timerElement.textContent = '5:00';
+        document.body.appendChild(this.timerElement);
+    }
+
+    _createMedalUI() {
+        this.medalElement = document.createElement('div');
+        this.medalElement.id = 'medal-display';
+        this.medalElement.style.cssText = `
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            width: 80px;
+            height: 80px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 1s;
+            border: 4px solid #333;
+        `;
+        document.body.appendChild(this.medalElement);
+    }
+
+    _updateTimer() {
+        if (!this.timerRunning) return;
+
+        const elapsed = (performance.now() - this.gameStartTime) / 1000;
+        const remaining = Math.max(0, this.gameTime - elapsed);
+
+        const mins = Math.floor(remaining / 60);
+        const secs = Math.floor(remaining % 60);
+        this.timerElement.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+        // Flash red when low
+        if (remaining < 60) {
+            this.timerElement.style.borderColor = '#ff0000';
+            this.timerElement.style.color = remaining < 10 ? '#ff0000' : '#ffff00';
+        }
+
+        if (remaining <= 0) {
+            this.timerRunning = false;
+            this._endGame();
+        }
+    }
+
+    _awardMedal() {
+        const percent = this.score / this.totalCollectibles;
+        let medal = '';
+        let color = '';
+        let emoji = '';
+
+        if (percent >= 1.0) {
+            medal = 'GOLD'; emoji = '🥇'; color = '#ffd700';
+        } else if (percent >= 0.8) {
+            medal = 'SILVER'; emoji = '🥈'; color = '#c0c0c0';
+        } else if (percent >= 0.5) {
+            medal = 'BRONZE'; emoji = '🥉'; color = '#cd7f32';
+        } else {
+            medal = 'NONE'; emoji = '💔'; color = '#666';
+        }
+
+        this.medal = medal;
+        this.medalElement.innerHTML = emoji;
+        this.medalElement.style.background = color;
+        this.medalElement.style.opacity = '1';
+        this.medalElement.style.borderColor = color;
+    }
+
+    _endGame() {
+        this.timerRunning = false;
+        this._awardMedal();
+
+        // Victory or Game Over
+        const message = this.score >= this.totalCollectibles ?
+            `<h1 style="color: gold;">VICTORY! ${this.medal} MEDAL</h1>` :
+            `<h1 style="color: #ff3366;">TIME'S UP!</h1><p>You collected ${this.score}/${this.totalCollectibles}</p><h2>${this.medal} MEDAL</h2>`;
+
+        const endScreen = document.createElement('div');
+        endScreen.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); color: white; z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-family: Arial; text-align: center;
+        `;
+        endScreen.innerHTML = `
+            ${message}
+            <button onclick="location.reload()" style="
+                margin-top: 30px; padding: 15px 40px; font-size: 24px;
+                background: #00ff88; color: black; border: none; border-radius: 10px;
+                cursor: pointer;
+            ">PLAY AGAIN</button>
+        `;
+        document.body.appendChild(endScreen);
+    }
+
+ 
 
     // ADDED: Create speed boost UI elements
     _createSpeedBoostUI() {
@@ -250,6 +560,23 @@ destroy() {
         }
     }
 
+    _setupDebugKeys() {
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'v' || e.key === 'V') {
+                if (this.scene.userData.toggleCollectionRadius) {
+                    this.scene.userData.toggleCollectionRadius();
+                }
+            }
+            // keep your existing V-toggle for token debug if you want
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'T' || e.key === 't') {
+                location.reload();  
+            }
+        });
+    }
+
     _onMouseMove(e) {
         this.yaw -= e.movementX * this.MOUSE_SENS;
         this.pitch += e.movementY * this.MOUSE_SENS;
@@ -292,7 +619,7 @@ destroy() {
         const material = new THREE.SpriteMaterial({ color: 0xffffff });
         const sprite = new THREE.Sprite(material);
         sprite.scale.set(0.4, 0.4, 0.4);
-        sprite.renderOrder = 999;
+        sprite.material.depthTest = false;
         this.crosshair3D = sprite;
         this.scene.add(this.crosshair3D);
     }
@@ -330,39 +657,47 @@ destroy() {
 _checkCollectibleCollisions() {
     if (!this.scene.userData.collectibles || !this.scene.userData.tokenPositions) return;
 
-    const playerBox = new THREE.Box3();
-    playerBox.setFromCenterAndSize(
-        this.player.position,
-        new THREE.Vector3(0.8, 1.0, 0.8)
-    );
+    const playerPos = this.player.position;
+    const tokenPositions = this.scene.userData.tokenPositions;
 
-    this.scene.userData.collectibles.forEach((collectible, index) => {
-        if (!collectible.userData.collected) {
-            const collectibleBox = new THREE.Box3().setFromObject(collectible);
+    this.scene.userData.collectibles.forEach((token, idx) => {
+        if (token.userData.collected) return;
+
+        const dist = playerPos.distanceTo(token.position);
+        if (dist < token.userData.collectionRadius) {
+            token.userData.collected = true;
+            token.visible = false;                 // hide in 3-D view
+
+            // Hide debug sphere immediately
+            if (token.userData.debugSphere) {
+                token.userData.debugSphere.visible = false;
+                // Optional: remove from group to save memory
+                if (this.scene.userData.collectionDebugGroup) {
+                   this.scene.userData.collectionDebugGroup.remove(token.userData.debugSphere);
+                }
+                // Clean up reference
+                delete token.userData.debugSphere;
+            }
+            // ---- UPDATE MINIMAP ----
+            if (tokenPositions[idx]) {
+                tokenPositions[idx].collected = true;
+            }
             
-            if (playerBox.intersectsBox(collectibleBox)) {
-                // Collect the item
-                collectible.userData.collected = true;
-                this.scene.remove(collectible);
-                
-                // Also mark the token position as collected
-                if (this.scene.userData.tokenPositions[index]) {
-                    this.scene.userData.tokenPositions[index].collected = true;
-                }
-                
-                // Update score and collected items
-                this.score++;
-                const itemType = collectible.userData.type;
-                this.collectedItems[itemType] = (this.collectedItems[itemType] || 0) + 1;
-                
-                // Update UI
-                this._updateScoreUI();
-                
-                console.log(`Collected: ${itemType}! Total: ${this.score}/${this.totalCollectibles}`);
-                
-                if (this.score >= this.totalCollectibles) {
-                    this._showVictoryMessage();
-                }
+
+            // ---- SCORE ----
+            this.score++;
+            const type = token.userData.type;
+            this.collectedItems[type] = (this.collectedItems[type] || 0) + 1;
+
+            // ---- UI ----
+            this._updateScoreUI();
+
+            console.log(`Collected ${type} (radius ${token.userData.collectionRadius}) – ${this.score}/${this.totalCollectibles}`);
+
+            // ---- VICTORY CHECK ----
+            if (this.score >= this.totalCollectibles) {
+                this.timerRunning = false;
+                this._endGame();
             }
         }
     });
@@ -393,6 +728,8 @@ _checkCollectibleCollisions() {
             }
         }, 5000);
     }
+
+
 
     // MINIMAP METHODS (make sure these exist too)
 
@@ -465,8 +802,10 @@ _drawTokensOnMinimap() {
     const canvas = this.minimapTokenCanvas;
     
     // Clear canvas with background color
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = 'rgba(40, 40, 60, 0.9)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
     
     // Create circular clipping area
     ctx.save();
@@ -637,6 +976,7 @@ _updateCamera() {
 
 
     loop = () =>{
+        this._updateTimer();
         requestAnimationFrame(this.loop);
 
         const now = performance.now();
