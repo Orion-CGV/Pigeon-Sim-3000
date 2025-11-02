@@ -90,7 +90,6 @@ let platePositions = {
     plate13: new THREE.Vector3(43.9, 3, 15)     // Model 13 position
 };
 
-let cubeMixers = [];   // { cube, mixer, action, wasPlaying }
 let doorBodies = []; // Array to store door physics bodies
 
 // ── GOAL CONDITION VARIABLE ─────────────────────────────────────
@@ -134,6 +133,82 @@ const MIN_CUBE_DISTANCE = 5;           // Minimum distance between cube and play
 const MAX_CUBE_DISTANCE = 30;          // Maximum distance for cube dragging
 const SCROLL_SENSITIVITY = 10;        // How fast scroll changes distance
 let lastValidBoxPos = new THREE.Vector3();
+
+// Add these variables at the top with your other module-level variables
+let walkingSound = null;
+let isWalking = false;
+let walkSoundInterval = null;
+
+let doorLockedSound = null;
+
+let doorOpenSound = null;
+
+// Add this function to initialize the walking sound
+function initWalkingSound() {
+    // Create audio listener and sound
+    const listener = new THREE.AudioListener();
+    camera.add(listener);
+    
+    walkingSound = new THREE.Audio(listener);
+    
+    // Create audio loader
+    const audioLoader = new THREE.AudioLoader();
+    
+    // Load walking sound
+    audioLoader.load('./walking.mp3', (buffer) => {
+        walkingSound.setBuffer(buffer);
+        walkingSound.setLoop(true);
+        walkingSound.setVolume(0.3); // Adjust volume as needed
+        console.log("Walking sound loaded successfully");
+    }, undefined, (error) => {
+        console.error('Error loading walking sound:', error);
+    });
+
+    // Load door locked sound
+    audioLoader.load('./door locked.mp3', (buffer) => {
+        doorLockedSound = new THREE.Audio(listener);
+        doorLockedSound.setBuffer(buffer);
+        doorLockedSound.setLoop(false); // No loop for effect sound
+        doorLockedSound.setVolume(0.5); // Adjust volume as needed
+        console.log("Door locked sound loaded successfully");
+    }, undefined, (error) => {
+        console.error('Error loading door locked sound:', error);
+    });
+
+    // Load door open sound
+    audioLoader.load('./door.mp3', (buffer) => {
+        doorOpenSound = new THREE.Audio(listener);
+        doorOpenSound.setBuffer(buffer);
+        doorOpenSound.setLoop(false); // No loop for effect sound
+        doorOpenSound.setVolume(1); // Adjust volume as needed
+        console.log("Door open sound loaded successfully");
+    }, undefined, (error) => {
+        console.error('Error loading door open sound:', error);
+    });
+}
+
+// Add this function to handle walking sound state
+function updateWalkingSound() {
+    const isMoving = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'];
+    const isGrounded = isPlayerOnFloor();
+    
+    // Start walking sound if moving and grounded, but not already walking
+    if (isMoving && isGrounded && !isWalking) {
+        isWalking = true;
+        if (walkingSound && !walkingSound.isPlaying) {
+            walkingSound.play();
+            console.log("Walking sound started");
+        }
+    }
+    // Stop walking sound if not moving or not grounded, but currently walking
+    else if ((!isMoving || !isGrounded) && isWalking) {
+        isWalking = false;
+        if (walkingSound && walkingSound.isPlaying) {
+            walkingSound.stop();
+            console.log("Walking sound stopped");
+        }
+    }
+}
 
 // ── CHECK FOR DEATH ON DEADLY FLOORS ──────────────────────────────
 function checkForDeath() {
@@ -344,25 +419,6 @@ function createMovableBox(position) {
                 body.userData = body.userData || {};
                 body.userData.mesh = cube;      // optional, handy for debugging
             }
-
-            // ── ANIMATION SETUP (unchanged) ───────────────────────────
-            const mixer = new THREE.AnimationMixer(cube);
-            const anim = gltf.animations[0];
-            if (anim) {
-                const action = mixer.clipAction(anim);
-                action.setLoop(THREE.LoopOnce);
-                action.clampWhenFinished = true;
-
-                cubeMixers.push({
-                    cube,
-                    mixer,
-                    action,
-                    wasPlaying: false
-                });
-                console.log('Sci-fi cube animation loaded');
-            } else {
-                console.warn('No animation found in sci-fi_cube.glb');
-            }
         },
         undefined,
         err => console.error('Failed to load sci-fi_cube.glb', err)
@@ -388,6 +444,11 @@ function createPuzzleElements() {
     // hall 4
     createMovableBox(new THREE.Vector3(9, 1, -45));
     createMovableBox(new THREE.Vector3( 8, 1, -40));
+    // hall 5
+    createMovableBox(new THREE.Vector3(-9, 1, 44.5));
+    createMovableBox(new THREE.Vector3( -8, 1, 45));
+    createMovableBox(new THREE.Vector3(-9, 1, 47));
+    createMovableBox(new THREE.Vector3( -8, 1, 40));
     // hall 6
     createMovableBox(new THREE.Vector3(-20, 1, -30));
     createMovableBox(new THREE.Vector3( -20, 1, 0));
@@ -399,6 +460,7 @@ function createPuzzleElements() {
     createMovableBox(new THREE.Vector3( -30, 1, -20));
 }
 
+// Update the initLevel function to initialize the walking sound
 export function initLevel(levelScene, levelCamera, levelRenderer, levelLabelRenderer, callback) {
     // Store references to the passed parameters
     scene = levelScene;
@@ -420,6 +482,9 @@ export function initLevel(levelScene, levelCamera, levelRenderer, levelLabelRend
     
     // **START LOOKING TOWARD POSITIVE Z**
     camera.rotation.set(0, Math.PI, 0); // Y rotation = PI (180 degrees)
+    
+    // **INITIALIZE WALKING SOUND**
+    initWalkingSound();
 }
 
 // Add this array to store floor bodies at the module level
@@ -443,6 +508,97 @@ function setupScene() {
     floorBodies = [];
 
     createGridLights();
+
+    // ADD CEILING PHYSICS BODY
+    const ceilingBody = new CANNON.Body({
+        shape: new CANNON.Box(new CANNON.Vec3(50, 50, 0.1)), // Large ceiling covering the level
+        mass: 0
+    });
+    ceilingBody.position.set(0, 10, 0); // Position at Y=10
+    ceilingBody.quaternion.setFromEuler(Math.PI / 2, 0, 0); // Rotate 90 degrees along X axis
+    world.addBody(ceilingBody);
+    floorBodies.push(ceilingBody);
+    console.log("Ceiling physics body added at position (0, 10, 0)");
+
+    // Add silver thin box at (18, 2.5, -46)
+const silverBoxGeo = new THREE.BoxGeometry(2, 2, 0.1);
+const silverBoxMat = new THREE.MeshStandardMaterial({ 
+    color: 0xC0C0C0, // Silver color
+    metalness: 0.8,
+    roughness: 0.2,
+    friction: 0.7
+});
+const silverBoxMesh = new THREE.Mesh(silverBoxGeo, silverBoxMat);
+silverBoxMesh.position.set(17.4, 3.3, -46);
+silverBoxMesh.rotation.x = -Math.PI / 2; // Rotate to make it horizontal
+scene.add(silverBoxMesh);
+
+// Create physics body for the silver box
+const silverBoxBody = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.05)), // 2x2x0.1 dimensions
+    mass: 0 // Static object
+});
+silverBoxBody.position.copy(silverBoxMesh.position);
+silverBoxBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Match the rotation
+world.addBody(silverBoxBody);
+silverBoxMesh.userData.physicsBody = silverBoxBody;
+
+// Add to floor bodies array so player can jump from it
+floorBodies.push(silverBoxBody);
+
+console.log("Silver thin box added at position (18, 2.5, -46)");
+
+// Add silver thin box at (18, 2.5, -46)
+const silver2BoxGeo = new THREE.BoxGeometry(2, 2, 0.1);
+const silver2BoxMat = new THREE.MeshStandardMaterial({ 
+    color: 0xC0C0C0, // Silver color
+    metalness: 0.8,
+    roughness: 0.2,
+    friction: 0.7
+});
+const silver2BoxMesh = new THREE.Mesh(silver2BoxGeo, silver2BoxMat);
+silver2BoxMesh.position.set(-10.4, 3.3, -46);
+silver2BoxMesh.rotation.x = -Math.PI / 2; // Rotate to make it horizontal
+scene.add(silver2BoxMesh);
+
+// Create physics body for the silver box
+const silver2BoxBody = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.05)), // 2x2x0.1 dimensions
+    mass: 0 // Static object
+});
+silver2BoxBody.position.copy(silver2BoxMesh.position);
+silver2BoxBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Match the rotation
+world.addBody(silver2BoxBody);
+silver2BoxMesh.userData.physicsBody = silver2BoxBody;
+
+// Add to floor bodies array so player can jump from it
+floorBodies.push(silver2BoxBody);
+
+// Add silver thin box at (18, 2.5, -46)
+const silver3BoxGeo = new THREE.BoxGeometry(2, 2, 0.1);
+const silver3BoxMat = new THREE.MeshStandardMaterial({ 
+    color: 0xC0C0C0, // Silver color
+    metalness: 0.8,
+    roughness: 0.2,
+    friction: 0.7
+});
+const silver3BoxMesh = new THREE.Mesh(silver3BoxGeo, silver3BoxMat);
+silver3BoxMesh.position.set(-8, 1.3, -46);
+silver3BoxMesh.rotation.x = -Math.PI / 2; // Rotate to make it horizontal
+scene.add(silver3BoxMesh);
+
+// Create physics body for the silver box
+const silver3BoxBody = new CANNON.Body({
+    shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.05)), // 2x2x0.1 dimensions
+    mass: 0 // Static object
+});
+silver3BoxBody.position.copy(silver3BoxMesh.position);
+silver3BoxBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Match the rotation
+world.addBody(silver3BoxBody);
+silver3BoxMesh.userData.physicsBody = silver3BoxBody;
+
+// Add to floor bodies array so player can jump from it
+floorBodies.push(silver3BoxBody);
 
     // Create platform 1 (green)
     const floor1Body = new CANNON.Body({
@@ -735,7 +891,7 @@ function setupScene() {
     // Rest of your existing setupScene code continues...
     // Define positions for the 13 models
     const modelPositions = [
-        new THREE.Vector3(38.5, 5, 45),   // Model 1
+        new THREE.Vector3(38.5, 3, 45),   // Model 1
         new THREE.Vector3(43.9, 3, 0),   // Model 2
         new THREE.Vector3(39.5, 3.5, -48.9),   // Model 3
         new THREE.Vector3(38.5, 1, 0),   // Model 4
@@ -744,7 +900,7 @@ function setupScene() {
         new THREE.Vector3(48, 4, -48.9),    // Model 7
         new THREE.Vector3(38.5, 1.5, 20),    // Model 8
         new THREE.Vector3(43.5, 3, -48.9),    // Model 9
-        new THREE.Vector3(48.9, 5, -4.2),   // Model 10
+        new THREE.Vector3(48.9, 3, -4.2),   // Model 10
         new THREE.Vector3(43.9, 3, 10),    // Model 11
         new THREE.Vector3(44, 3.5, 48.9),   // Model 12
         new THREE.Vector3(43.9, 3, 15)     // Model 13
@@ -819,7 +975,7 @@ function setupScene() {
     scene.add(directionalLight.target);
 
     // Add ambient light
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.7);
+    const ambientLight = new THREE.AmbientLight(0x404040, 20);
     scene.add(ambientLight);
 
     // Add clock model
@@ -1064,7 +1220,7 @@ function setupContactMaterials() {
 // Update the jump function to use floor contact detection
 function jump() {
     if (isPlayerOnFloor() && canJump) {
-        boxBody.velocity.y = 40; // Adjust this value for higher/lower jumps
+        boxBody.velocity.y = 10; // Adjust this value for higher/lower jumps
         canJump = false;
         
         setTimeout(() => {
@@ -1080,7 +1236,7 @@ function addPlayer() {
     boxMesh = new THREE.Mesh(boxGeo, boxMat);
 
     // SPAWN ON PLATFORM
-    boxMesh.position.set(47.3, 3, 0);  // Center of first green platform
+    boxMesh.position.set(-9, 3, 48);  // Center of first green platform
     
     
     // 🔥 ROTATE PLAYER MESH TO FACE POSITIVE Z
@@ -1172,33 +1328,37 @@ export function updateLevel() {
 
     updateBullets(delta);
 
-// ── UPDATE CUBE ANIMATIONS ───────────────────────────────────────
-cubeMixers.forEach(entry => {
-    const isSelected = selectedBox === entry.cube;
-
-    if (isSelected && !entry.wasPlaying) {
-        // Start playing from beginning
-        entry.action.reset().play();
-        entry.wasPlaying = true;
-    } else if (!isSelected && entry.wasPlaying) {
-        // Reverse to start when deselected
-        entry.action.timeScale = -1;
-        entry.action.paused = false;
-        entry.wasPlaying = false;
-    } else if (!isSelected && entry.action.time > 0 && entry.action.timeScale === -1) {
-        // Keep rewinding until time === 0
-        if (entry.action.time <= 0) {
-            entry.action.time = 0;
-            entry.action.paused = true;
-            entry.action.timeScale = 1;
+    // ── PERFORMANCE OPTIMIZATION: Hide distant objects ─────────────────
+    const playerPos = boxBody ? boxBody.position : new CANNON.Vec3(0, 0, 0);
+    
+    // Optimize movable boxes visibility
+    movableBoxes.forEach(box => {
+        if (box.position.distanceTo(playerPos) > 50) {
+            box.visible = false; // stop rendering it completely
+        } else {
+            box.visible = true;
         }
-    } else if (isSelected) {
-        // Normal forward play (already handled by reset().play())
-        entry.action.timeScale = 1;
-    }
-
-    entry.mixer.update(delta);
-});
+    });
+    
+    // Optimize rainbow cubes visibility
+    rainbowCubes.forEach(cube => {
+        if (cube.position.distanceTo(playerPos) > 40) {
+            cube.visible = false;
+        } else {
+            cube.visible = true;
+        }
+    });
+    
+    // Optimize door visibility
+    doors.forEach(door => {
+        if (door.model.position.distanceTo(playerPos) > 30) {
+            door.model.visible = false;
+        } else {
+            door.model.visible = true;
+        }
+    });
+    // ── UPDATE WALKING SOUND ─────────────────────────────────────────
+    updateWalkingSound();
 
 // ── CHECK CUBE ON FIRST PLATE ──────────────────────────────────
 if (!firstDoorOpenable) {
@@ -1588,11 +1748,9 @@ function createBuilding() {
     // CREATE VISIBLE BLUE PLATE FOR DOOR 0
     const firstPlateGeo = new THREE.BoxGeometry(3, 0.2, 3); // Larger size for visibility
     const firstPlateMat = new THREE.MeshStandardMaterial({
-        color: 0x0000ff,          // Bright blue
-        emissive: 0x0000ff,       // Make it glow
-        emissiveIntensity: 0.3,
-        roughness: 0.7,
-        metalness: 0.3,
+        color: 0x808080,          
+        roughness: 0.2,
+        metalness: 0.8,
         side: THREE.DoubleSide,
     });
     const firstPlateMesh = new THREE.Mesh(firstPlateGeo, firstPlateMat);
@@ -1661,17 +1819,39 @@ function getTargetedDoor() {
 function initInput() {
     document.addEventListener('keydown', e => {
         if (e.code === 'KeyE') {
-            const door = getTargetedDoor();
-            if (door && door.action && !door.isOpen) {
-                door.action.reset().play();
-                door.isOpen = true;
-                
-                // Remove the physics body for this door
+            const door = getLookedAtDoor();
+            if (door) {
                 const doorIndex = doors.indexOf(door);
-                if (doorBodies[doorIndex]) {
-                    world.removeBody(doorBodies[doorIndex]);
-                    doorBodies[doorIndex] = null; // Clear the reference
-                    console.log(`Door ${doorIndex} physics body removed`);
+                let isOpenable = true;
+
+                // Check openable status for specified doors
+                if (doorIndex === 0) isOpenable = firstDoorOpenable;
+                else if (doorIndex === 1) isOpenable = secondDoorOpenable;
+                else if (doorIndex === 6) isOpenable = door7Openable;
+                else if (doorIndex === 7) isOpenable = door8Openable;
+                else if (doorIndex === 8) isOpenable = door9Openable;
+
+                if (!isOpenable && [0, 1, 6, 7, 8].includes(doorIndex)) {
+                    // Play locked sound for specified doors
+                    if (doorLockedSound && !doorLockedSound.isPlaying) {
+                        doorLockedSound.play();
+                        console.log(`Door ${doorIndex} is locked - playing sound`);
+                    }
+                } else if (door.action && !door.isOpen) {
+                    door.action.reset().play();
+                    door.isOpen = true;
+                    
+                    // Remove the physics body for this door
+                    if (doorBodies[doorIndex]) {
+                        world.removeBody(doorBodies[doorIndex]);
+                        doorBodies[doorIndex] = null;
+                        console.log(`Door ${doorIndex} physics body removed`);
+                    }
+                    // Play open sound
+    if (doorOpenSound && !doorOpenSound.isPlaying) {
+        doorOpenSound.play();
+        console.log(`Door ${doorIndex} opening - playing sound`);
+    }
                 }
             }
         }
@@ -1735,22 +1915,53 @@ function updateBullets(delta) {
 export function cleanupLevel() {
     console.log("Level 3 cleanup started");
     
+    // Stop walking sound if playing
+    if (walkingSound && walkingSound.isPlaying) {
+        walkingSound.stop();
+    }
+    walkingSound = null;
+    isWalking = false;
+
+    // Stop and cleanup door locked sound
+    if (doorLockedSound && doorLockedSound.isPlaying) {
+        doorLockedSound.stop();
+    }
+    doorLockedSound = null;
+
+    // Stop and cleanup door open sound
+    if (doorOpenSound && doorOpenSound.isPlaying) {
+        doorOpenSound.stop();
+    }
+    doorOpenSound = null;
+    
+    // Remove the audio listener from camera
+    if (camera) {
+        const listener = camera.children.find(child => child instanceof THREE.AudioListener);
+        if (listener) {
+            camera.remove(listener);
+        }
+    }console.log("Level 3 cleanup started");
+    
     // Replace the UI removal block:
     document.querySelectorAll('.game-ui').forEach(el => {
         if (el.id !== 'victory-message') {  // 🔥 Keep victory, remove ALL else (incl. death)
             el.remove();
         }
     });
-// Clear lava materials
+
+    // Clear lava materials
     lavaMaterials.length = 0;
-    // Clear rainbow cubes
+    
+    // Clear rainbow cubes and make them visible again
     rainbowCubes.forEach(cube => {
+        cube.visible = true; // Reset visibility
         if (cube.userData.physicsBody) {
             world.removeBody(cube.userData.physicsBody);
         }
         scene.remove(cube);
     });
     rainbowCubes = [];
+    
     // Reset floor mesh references
     floor4Mesh = null;
     floor8Mesh = null;
@@ -1796,31 +2007,37 @@ export function cleanupLevel() {
         cubeOnPlateTimer = null;
     }
 
-    // 4. Remove door bodies
+    // 4. Remove door bodies and reset door visibility
     doorBodies.forEach((body, index) => {
         if (body && world) {
             world.removeBody(body);
         }
     });
+    
+    // Reset door visibility
+    doors.forEach(door => {
+        door.model.visible = true;
+    });
+
     // In cleanupLevel(), add these reset lines:
-door9Openable = false;
+    door9Openable = false;
 
-numberPlates3Occupied = {
-    one3: false,
-    two3: false,
-    three3: false,
-    four3: false,
-    five3: false,
-    six3: false,
-    seven3: false
-};
+    numberPlates3Occupied = {
+        one3: false,
+        two3: false,
+        three3: false,
+        four3: false,
+        five3: false,
+        six3: false,
+        seven3: false
+    };
 
-Object.keys(numberPlate3Timers).forEach(plateKey => {
-    if (numberPlate3Timers[plateKey]) {
-        clearTimeout(numberPlate3Timers[plateKey]);
-        numberPlate3Timers[plateKey] = null;
-    }
-});
+    Object.keys(numberPlate3Timers).forEach(plateKey => {
+        if (numberPlate3Timers[plateKey]) {
+            clearTimeout(numberPlate3Timers[plateKey]);
+            numberPlate3Timers[plateKey] = null;
+        }
+    });
 
     // 5. Reset puzzle state
     secondDoorOpenable = false;
@@ -1850,19 +2067,16 @@ Object.keys(numberPlate3Timers).forEach(plateKey => {
 
     doorBodies = [];
     
-    // 6. Clear bullets and boxes
+    // 6. Clear bullets and boxes, reset box visibility
     bullets.forEach(b => b.destroy());
     bullets = [];
+    
+    // Reset box visibility before clearing
+    movableBoxes.forEach(box => {
+        box.visible = true;
+    });
     movableBoxes = [];
     selectedBox = null;
-
-    // 7. Reset cube mixers
-    cubeMixers.forEach(entry => {
-        if (entry.mixer) {
-            entry.mixer.stopAllAction();
-        }
-    });
-    cubeMixers = [];
 
     // 8. Clear physics world
     if (world) {
@@ -2355,13 +2569,13 @@ function getColorName(color) {
 // Add this function to load the third set of number models
 function loadNumberModels3() {
     const numberPositions3 = [
-        { model: 'one', position: new THREE.Vector3(-48.9, 6, 44), plateKey: 'one3', rotation: Math.PI/2 }, // 90 degrees
+        { model: 'one', position: new THREE.Vector3(-48.9, 3, 44), plateKey: 'one3', rotation: Math.PI/2 }, // 90 degrees
         { model: 'two', position: new THREE.Vector3(-38.6, 3, -30), plateKey: 'two3', rotation: -Math.PI/2 }, // -90 degrees
-        { model: 'three', position: new THREE.Vector3(-43, 7, 48.9), plateKey: 'three3', rotation: Math.PI }, // -90 degrees (default from your original condition)
+        { model: 'three', position: new THREE.Vector3(-43, 4, 48.9), plateKey: 'three3', rotation: Math.PI }, // -90 degrees (default from your original condition)
         { model: 'four', position: new THREE.Vector3(-48.9, 2, -44), plateKey: 'four3', rotation: Math.PI/2 }, // 90 degrees
         { model: 'five', position: new THREE.Vector3(-38.6, 4, 0), plateKey: 'five3', rotation: -Math.PI/2 }, // -90 degrees
         { model: 'six', position: new THREE.Vector3(-43, 1, -48.9), plateKey: 'six3', rotation: 0 }, // 180 degrees
-        { model: 'seven', position: new THREE.Vector3(-38.6, 5, 30), plateKey: 'seven3', rotation: -Math.PI/2 } // -90 degrees
+        { model: 'seven', position: new THREE.Vector3(-38.6, 2, 30), plateKey: 'seven3', rotation: -Math.PI/2 } // -90 degrees
     ];
 
     numberPositions3.forEach(numberData => {
@@ -2736,7 +2950,7 @@ function createGridLights() {
     
     xValues.forEach(x => {
         zValues.forEach(z => {
-            const pointLight = new THREE.PointLight(0xffffff, 15, 25); // Color, intensity, distance
+            const pointLight = new THREE.PointLight(0xffffff, 500, 25); // Color, intensity, distance
             pointLight.position.set(x, yValue, z);
             
             // Configure shadow properties for better performance/quality
@@ -2754,4 +2968,22 @@ function createGridLights() {
     });
     
     console.log(`Total point lights created: ${lightCount}`);
+}
+
+function getLookedAtDoor() {
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    raycaster.set(camera.position, direction);
+    raycaster.far = DOOR_INTERACT_DISTANCE;
+
+    for (const door of doors) {
+        const hits = raycaster.intersectObject(door.model, true);
+        if (hits.length > 0) {
+            const dist = camera.position.distanceTo(door.model.position);
+            if (dist <= DOOR_INTERACT_DISTANCE && !door.isOpen) {
+                return door;
+            }
+        }
+    }
+    return null;
 }
