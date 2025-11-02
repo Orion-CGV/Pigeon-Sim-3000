@@ -30,7 +30,7 @@ export class Game {
         this.pauseStartTime = 0;
 
         // Timer & Medals
-        this.gameTime = 5 * 60;
+        this.gameTime = 30;
         this.timerRunning = false;
         this.gameStartTime = 0;
         this.medal = null;
@@ -151,7 +151,7 @@ async _loadAudio() {
     // Background music – loop + auto-start
     this.music = this.sounds.background;
     this.music.setLoop(true);
-    this.music.play();
+    this.music.stop();
 }
 
 _playSound(name, volume = 1) {
@@ -159,7 +159,7 @@ _playSound(name, volume = 1) {
     const s = this.sounds[name];
     if (!s) return console.warn(`Sound "${name}" missing`);
     s.stop();
-    s.setVolume(volume);
+    s.setVolume(0);
     s.play();
 }
 
@@ -508,19 +508,19 @@ _showWelcomeScreen() {
         let emoji = '';
 
         if (percent >= 1.0) {
-            medal = 'GOLD'; emoji = '🥇'; color = '#ffd700';
+            medal = 'GOLD'; emoji = ''; color = '#ffd700';
         } else if (percent >= 0.8) {
-            medal = 'SILVER'; emoji = '🥈'; color = '#c0c0c0';
+            medal = 'SILVER'; emoji = ''; color = '#c0c0c0';
         } else if (percent >= 0.5) {
-            medal = 'BRONZE'; emoji = '🥉'; color = '#cd7f32';
+            medal = 'BRONZE'; emoji = ''; color = '#cd7f32';
         } else {
-            medal = 'NONE'; emoji = '💔'; color = '#666';
+            medal = 'NONE'; emoji = ''; color = '#666';
         }
 
         this.medal = medal;
         this.medalElement.innerHTML = emoji;
         this.medalElement.style.background = color;
-        this.medalElement.style.opacity = '1';
+        this.medalElement.style.opacity = '0';
         this.medalElement.style.borderColor = color;
     }
 
