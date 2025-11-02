@@ -1,8 +1,8 @@
-# Level 2 - Arcade Racing Game Integration
+# Level 2 - Speed Delivery Game Integration
 
 ## ✅ Setup Complete!
 
-The Arcade Racing game has been integrated as Level 2 of Legacy Arcade!
+The Speed Delivery Game has been integrated as Level 2 of Timmy's Lost Treasure!
 
 ## 📁 Required File Structure
 
@@ -184,7 +184,7 @@ Unlike the simple cube demo, Level 2 is a **fully-featured 3D racing game** with
 - Dynamic lighting and effects
 - Complete game loop integration with pause system
 
-This is the same codebase from the Arcade folder, but now properly integrated into the Legacy Arcade menu system!
+This is the same codebase from the Arcade folder, but now properly integrated into the Timmy's Lost Treasure menu system!
 
 ---
 

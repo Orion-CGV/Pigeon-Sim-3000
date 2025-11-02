@@ -81,20 +81,40 @@ export class PauseMenu {
      * Restarts the current level
      */
     restart() {
-        if (this.currentPausedLevel) {
+        // Store level number before resume() clears it
+        const levelToRestart = this.currentPausedLevel;
+        
+        if (levelToRestart) {
             // Resume first to clean up
             this.resume();
             
-            // Call restart callback
+            // Call restart callback with the stored level number
             if (this.onRestart) {
-                this.onRestart(this.currentPausedLevel);
+                this.onRestart(levelToRestart);
             } else if (window.loadLevel) {
                 // Fallback to global loadLevel function
-                window.loadLevel(this.currentPausedLevel);
+                window.loadLevel(levelToRestart);
             }
         } else {
-            // If no specific level, just resume
-            this.resume();
+            // If no specific level, try to get it from currentLevel variable or just resume
+            if (window.currentLevel && window.currentLevel !== 'main') {
+                // Extract level number from currentLevel (e.g., 'level2' -> 2)
+                const levelMatch = window.currentLevel.match(/level(\d+)/);
+                if (levelMatch) {
+                    const levelNum = parseInt(levelMatch[1]);
+                    this.resume();
+                    if (this.onRestart) {
+                        this.onRestart(levelNum);
+                    } else if (window.loadLevel) {
+                        window.loadLevel(levelNum);
+                    }
+                } else {
+                    this.resume();
+                }
+            } else {
+                // If no specific level, just resume
+                this.resume();
+            }
         }
     }
     

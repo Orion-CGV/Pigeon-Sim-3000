@@ -89,6 +89,7 @@ export class CarPhysicsSystem {
             opacity: 0.7
         });
         this.carHelper = new THREE.Mesh(helperGeometry, helperMaterial);
+        this.carHelper.visible = false; // Start hidden (controlled by F2 toggle)
         this.scene.add(this.carHelper);
         
         // Debug: check position after a few frames
