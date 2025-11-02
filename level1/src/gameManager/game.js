@@ -479,7 +479,25 @@ _showWelcomeScreen() {
 
         if (remaining <= 0) {
             this.timerRunning = false;
-            this._endGame();
+            
+            // Check if we're in a wrapper context (integrated with main.js)
+            // If so, mark level as complete and return immediately
+            if (this._isWrappedContext && this._onLevelComplete) {
+                this._awardMedal(); // Still award medal before returning
+                // Stop music
+                if (this.music) this.music.stop();
+                // Play victory sound
+                this._playSound('victory');
+                // Call completion callback to return to basement
+                setTimeout(() => {
+                    if (this._onLevelComplete) {
+                        this._onLevelComplete();
+                    }
+                }, 1000); // Brief 1 second delay to show completion state
+            } else {
+                // Original behavior - show full end game screen
+                this._endGame();
+            }
         }
     }
 
@@ -964,7 +982,19 @@ _checkCollectibleCollisions() {
             // ---- VICTORY CHECK ----
             if (this.score >= this.totalCollectibles) {
                 this.timerRunning = false;
-                this._endGame();
+                // Use completion callback if in wrapped context, otherwise use normal end game
+                if (this._isWrappedContext && this._onLevelComplete) {
+                    this._awardMedal();
+                    if (this.music) this.music.stop();
+                    this._playSound('victory');
+                    setTimeout(() => {
+                        if (this._onLevelComplete) {
+                            this._onLevelComplete();
+                        }
+                    }, 1500);
+                } else {
+                    this._endGame();
+                }
             }
         }
     });

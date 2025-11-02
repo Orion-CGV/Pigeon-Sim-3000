@@ -1,806 +1,471 @@
-// level1.js - City Level with Skyscrapers
+// level1.js - Wrapper for level1 directory Game class
 import * as THREE from 'three';
-import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { Game } from './level1/src/gameManager/game.js';
+import { input } from './level1/src/input/inputHandler.js';
+import { updateWalking } from './level1/src/physics/movement.js';
+import { updateFlying, getSpeedBoostState } from './level1/src/physics/flight.js';
+import { getWalkSpeedBoostState as getWalkBoostState } from './level1/src/physics/movement.js';
 
-let clock = new THREE.Clock()
+let gameInstance = null;
 let scene, camera, renderer, labelRenderer;
 let returnToMainCallback;
+let isInitialized = false;
+let gameLoopRunning = false;
+let lastUpdateTime = performance.now();
 
-// Player controls variables (same as main.js)
-let keys = {};
-let spaceHeld = false;
-let spaceLocked = false;
-let yaw = 0;
-let pitch = 0;
-const PI_2 = Math.PI / 2;
-const MOUSE_SENS = 0.0025;
+// Store reference to original Game loop so we can override it
+let originalGameLoop = null;
 
-// Physics variables (same as main.js)
-const speed = 0.15;
-const gravity = -0.03;
-const jumpStrength = 0.45;
-let velocityY = 0;
-const flightVelocity = new THREE.Vector3();
-let currentFlightSpeed = 0;
-const FLIGHT_ACCEL = 0.01;
-const FLIGHT_MAX_SPEED = 0.35; // slightly faster than walking
-
-
-//pigeon model variable
-
-let pigeon, mixer;
-let takeoffAction, flapAction, landingAction;
-let currentAction = null;
-
-// Player reference
-let player;
-
-// Flying system variables
-let isFlying = false;
-const FLY_HEIGHT = 10; // Height player floats to when starting to fly
-const FLY_SPEED = 0.25; // Speed while flying (faster than walking)
-let flyKeyLocked = false; // Prevent rapid toggling
-
-// Dedicated array for collision objects (Optimization)
-let collisionBoxes = []; 
-
+/**
+ * Initialize level 1 - adapts Game class to work with main.js system
+ */
 export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, callback) {
     scene = sceneRef;
     camera = cameraRef;
     renderer = rendererRef;
     labelRenderer = labelRendererRef;
     returnToMainCallback = callback;
+    isInitialized = true;
 
     // Clear the scene (main.js handles most cleanup, but this ensures a clean slate)
     while(scene.children.length > 0) { 
         scene.remove(scene.children[0]); 
     }
-    
-    // Reset control state for the level
-    keys = {};
-    spaceHeld = false;
-    spaceLocked = false;
-    velocityY = 0;
-    isFlying = false;
-    flyKeyLocked = false;
-    
-    // Reset camera orientation
-    yaw = 0;
-    pitch = 0;
 
-    setupLevel1();
-    setupLevelInput();
+    // Patch texture loading to fix paths (textures are in level1/src/models/textures)
+    // This fixes the relative path issue when running from root index.html
+    const originalTextureLoad = THREE.TextureLoader.prototype.load;
+    THREE.TextureLoader.prototype.load = function(url, onLoad, onProgress, onError) {
+        // Fix relative paths that expect to be in level1/src/
+        if (url && typeof url === 'string') {
+            // If path starts with ./models/textures, fix it
+            if (url.startsWith('./models/textures/') || url.startsWith('models/textures/')) {
+                url = url.replace(/^\.?\/?models\/textures\//, 'level1/src/models/textures/');
+            }
+            // Also handle ./models/ paths for other models
+            if (url.startsWith('./models/') && !url.includes('textures')) {
+                url = url.replace(/^\.?\/?models\//, 'level1/src/models/');
+            }
+        }
+        return originalTextureLoad.call(this, url, onLoad, onProgress, onError);
+    };
+
+    // Patch GLTFLoader to fix paths for models (like pigeon.glb)
+    // Store original for potential restoration
+    let originalGLTFLoad = null;
+    if (GLTFLoader && GLTFLoader.prototype) {
+        originalGLTFLoad = GLTFLoader.prototype.load;
+        GLTFLoader.prototype.load = function(url, onLoad, onProgress, onError) {
+            // Fix paths for models in level1/src/models
+            if (url && typeof url === 'string') {
+                if (url.startsWith('./models/') || url.startsWith('models/')) {
+                    url = url.replace(/^\.?\/?models\//, 'level1/src/models/');
+                }
+                // Fix /assets/models/pigeon.glb to level1/src/models/pigeon.glb
+                if (url.startsWith('/assets/models/')) {
+                    url = url.replace('/assets/models/', 'level1/src/models/');
+                }
+            }
+            return originalGLTFLoad.call(this, url, onLoad, onProgress, onError);
+        };
+    }
+
+    // Create Game instance - it will use the provided renderer
+    gameInstance = new Game(renderer);
+
+    // Restore original loaders after Game is created (in case other systems need original behavior)
+    // Actually, we'll keep the patch active for the duration of the level
+
+    // Override Game's _loadAudio to fix asset paths (they're in level1/src/assets, not root assets)
+    const originalLoadAudio = gameInstance._loadAudio.bind(gameInstance);
+    gameInstance._loadAudio = async function() {
+        const audioLoader = new THREE.AudioLoader();
+        
+        // Fix paths to point to level1/src/assets from root
+        const soundList = {
+            collect   : 'level1/src/assets/sounds/collect.wav',
+            fly       : 'level1/src/assets/sounds/fly.wav',
+            boost     : 'level1/src/assets/sounds/boost.wav',
+            pause     : 'level1/src/assets/sounds/pause.wav',
+            victory   : 'level1/src/assets/sounds/victory.wav',
+            background: 'level1/src/assets/music/nyc_ambient.mp3'
+        };
+        
+        // Load every file in parallel
+        const loadPromises = Object.entries(soundList).map(([name, url]) => {
+            return audioLoader.loadAsync(url).then(buffer => ({ name, buffer }));
+        });
+        
+        const results = await Promise.all(loadPromises);
+        results.forEach(({ name, buffer }) => {
+            const sound = new THREE.Audio(this.listener);
+            sound.setBuffer(buffer);
+            sound.setVolume(name === 'background' ? 0.35 : 0.6);
+            this.sounds[name] = sound;
+        });
+        
+        // Background music – loop + auto-start
+        this.music = this.sounds.background;
+        if (this.music) {
+            this.music.setLoop(true);
+            this.music.play();
+        }
+    };
+
+    // Override Game's _startGame to prevent it from starting its own render loop
+    const originalStartGame = gameInstance._startGame.bind(gameInstance);
+    gameInstance._startGame = function() {
+        // Call original to set up UI and game state
+        originalStartGame();
+        
+        // Set lastTime for delta calculations
+        this.lastTime = performance.now();
+        
+        // Override loop to prevent requestAnimationFrame
+        // Store original loop logic for reference
+        const originalLoop = this.loop;
+        
+        // Replace loop with controlled version (no requestAnimationFrame)
+        this.loop = () => {
+            // Don't call requestAnimationFrame - main.js handles the loop
+            // All update logic will be handled in updateLevel()
+            if (gameLoopRunning && this.gameLoaded) {
+                // Just ensure lastTime is set
+                if (!this.lastTime) {
+                    this.lastTime = performance.now();
+                }
+            }
+        };
+        
+        // Start our controlled update flag
+        gameLoopRunning = true;
+        
+        console.log('✅ Level 1 game started (integrated with main.js loop)');
+    };
+
+    // Override Game's pause system to use main.js pause menu
+    const originalTogglePause = gameInstance._togglePause;
+    gameInstance._togglePause = function(e) {
+        if (e.key !== 'Escape' || !this.gameLoaded) return;
+        
+        e.preventDefault();
+        e.stopPropagation(); // Prevent main.js from also handling ESC
+        
+        // Use main.js pause menu
+        if (window.pauseMenu && window.pauseMenu.show) {
+            if (this.isPaused) {
+                // Resume
+                window.pauseMenu.resume();
+                this.isPaused = false;
+                if (this.timerRunning && this.pauseStartTime) {
+                    const pauseDuration = (performance.now() - this.pauseStartTime) / 1000;
+                    this.gameStartTime += pauseDuration * 1000;
+                }
+                this._requestLock();
+            } else {
+                // Pause
+                window.pauseMenu.show(1);
+                this.isPaused = true;
+                if (this.timerRunning) {
+                    this.pauseStartTime = performance.now();
+                }
+                document.exitPointerLock();
+            }
+        } else {
+            // Fallback to original pause system
+            originalTogglePause.call(this, e);
+        }
+    };
+
+    // Mark Game instance as being in wrapped context
+    gameInstance._isWrappedContext = true;
+    
+    // Set callback for when level completes (timer expires or all items collected)
+    gameInstance._onLevelComplete = () => {
+        // Award medal and show brief completion state
+        if (gameInstance._awardMedal) {
+            gameInstance._awardMedal();
+        }
+        
+        // Stop music
+        if (gameInstance.music) {
+            gameInstance.music.stop();
+        }
+        
+        // Play victory sound
+        if (gameInstance._playSound) {
+            gameInstance._playSound('victory');
+        }
+        
+        // Brief delay to show completion, then return to basement
+        setTimeout(() => {
+            if (returnToMainCallback) {
+                returnToMainCallback();
+            }
+        }, 1500); // 1.5 second delay to show completion state
+    };
+
+    // Override Game's end game to call return callback
+    const originalEndGame = gameInstance._endGame;
+    gameInstance._endGame = function() {
+        // If we're in wrapped context and have completion callback, use it
+        if (this._isWrappedContext && this._onLevelComplete) {
+            this._awardMedal();
+            // Stop music
+            if (this.music) this.music.stop();
+            // Play victory sound
+            this._playSound('victory');
+            // Call completion callback
+            setTimeout(() => {
+                if (this._onLevelComplete) {
+                    this._onLevelComplete();
+                }
+            }, 1500);
+        } else {
+            // Original behavior for standalone mode
+            originalEndGame.call(this);
+        }
+    };
+
+    console.log('✅ Level 1 wrapper initialized');
 }
 
-function setupLevel1() {
-    collisionBoxes = []; // Reset collision array
-    
-    // Sky background
-    scene.background = new THREE.Color(0x87CEEB);
+/**
+ * Update game state - extracted from Game's loop
+ */
+function updateGameState() {
+    if (!gameInstance || !gameInstance.gameLoaded || gameInstance.isPaused || !gameInstance.timerRunning) {
+        return;
+    }
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-    scene.add(ambientLight);
-    
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    directionalLight.position.set(50, 100, 50);
-    scene.add(directionalLight);
+    const now = performance.now();
+    const delta = (now - (gameInstance.lastTime || now)) / 1000;
+    gameInstance.lastTime = now;
 
-    
-    // Large ground
-    const groundGeometry = new THREE.PlaneGeometry(200, 200);
-    const groundMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0x2d5a2d, 
-        side: THREE.DoubleSide 
-    });
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    scene.add(ground);
+    // Update timer
+    gameInstance._updateTimer();
 
+    // Check for collectible collisions
+    gameInstance._checkCollectibleCollisions();
 
-    // Create player
-    /*const PLAYER_SIZE = { x: 1, y: 1, z: 1 };
-    const playerGeometry = new THREE.BoxGeometry(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z);
-    const playerMaterial = new THREE.MeshBasicMaterial({visible: false});
-    player = new THREE.Mesh(playerGeometry, playerMaterial);
-    player.position.set(0, PLAYER_SIZE.y / 2, 0); // Player stands on ground (y=1)
-    player.name = 'player';
-    scene.add(player);
-    */
+    // Animate collectibles
+    if (gameInstance.scene && gameInstance.scene.userData.collectibles) {
+        gameInstance.scene.userData.collectibles.forEach(collectible => {
+            if (!collectible.userData.collected) {
+                collectible.rotation.y += delta * 0.5;
+                collectible.position.y = 0.5 + Math.sin(now * 0.001) * 0.1;
+            }
+        });
+    }
 
-    // Generate skyscrapers and populate collisionBoxes
-    generateSkyscrapers();
+    // Handle flying toggle
+    if (input.flyToggle && !gameInstance.prevFlyToggle) {
+        gameInstance.isFlying = !gameInstance.isFlying;
+        if (gameInstance.isFlying) {
+            gameInstance.flyState.isAscendingToFly = true;
+            gameInstance.flyState.targetFlyHeight = gameInstance.player.position.y + 10;
+            gameInstance._playSound('fly', 0.8);
+        }
+    }
+    gameInstance.prevFlyToggle = input.flyToggle;
 
-    // Create roads (no collision boxes needed)
-    createRoads();
+    // Update physics
+    if (gameInstance.isFlying) {
+        const landed = updateFlying(gameInstance.player, gameInstance.camera, gameInstance.scene, delta, gameInstance.flyState);
+        if (landed) {
+            gameInstance.isFlying = false;
+            gameInstance.flyState.isAscendingToFly = false;
+        }
+    } else {
+        updateWalking(gameInstance.player, gameInstance.camera, gameInstance.scene, delta);
+    }
 
-    // Goal area
-    const goalGeometry = new THREE.BoxGeometry(4, 2, 4);
-    const goalMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    const goal = new THREE.Mesh(goalGeometry, goalMaterial);
-    goal.position.set(80, 1, 80);
-    goal.name = 'goal';
-    scene.add(goal);
-
-    // UI
-    createUI();
-    
-    // Initial camera position (third-person view)
-
-
-
-    loadPigeon();
-
-        // --- Debug marker ---
-    const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(0.1, 8, 8),
-        new THREE.MeshBasicMaterial({ color: 0xff0000 })
-    );
-    scene.add(marker);
-
-    // Store marker globally so updatePlayer can access it
-    window.playerMarker = marker; 
-}
-
-
-let pigeonLoaded = false;
-
-function loadPigeon() {
-    const loader = new GLTFLoader();
-    
-    loader.load('/assets/models/pigeon.glb', 
-        (gltf) => {
-            console.log('Pigeon model loaded successfully');
+    // Update player rotation
+    if (!gameInstance.isFlying) {
+        if (input.forward !== 0 || input.right !== 0) {
+            const cameraForward = new THREE.Vector3();
+            gameInstance.camera.getWorldDirection(cameraForward);
+            cameraForward.normalize();
             
-            pigeon = new THREE.Group();
-            const pigeonModel = gltf.scene;
+            const cameraRight = new THREE.Vector3();
+            cameraRight.crossVectors(new THREE.Vector3(0, 1, 0), cameraForward).normalize();
+            
+            const moveDirection = new THREE.Vector3();
+            moveDirection.addScaledVector(cameraForward, input.forward);
+            moveDirection.addScaledVector(cameraRight, -input.right);
+            moveDirection.normalize();
+            
+            const yaw = Math.atan2(moveDirection.x, moveDirection.z);
+            const pitch = -Math.asin(moveDirection.y);
+            
+            gameInstance.player.rotation.y = yaw;
+            gameInstance.player.rotation.x = pitch;
+        }
+    } else {
+        const camDirection = new THREE.Vector3();
+        gameInstance.camera.getWorldDirection(camDirection);
+        camDirection.normalize();
+        
+        const yaw = Math.atan2(camDirection.x, camDirection.z);
+        const pitch = -Math.asin(camDirection.y);
+        
+        gameInstance.player.rotation.y = yaw;
+        gameInstance.player.rotation.x = pitch;
+    }
 
-            // DEBUG 1: Check raw model center
-            const rawBox = new THREE.Box3().setFromObject(pigeonModel);
-            const rawCenter = rawBox.getCenter(new THREE.Vector3());
-            console.log('DEBUG 1 - Raw model center:', rawCenter);
+    // Update camera
+    gameInstance._updateCamera();
 
-            // Apply transformations FIRST
-            pigeonModel.scale.set(0.5, 0.5, 0.5);
-            pigeonModel.rotation.x = -Math.PI / 2; 
-            pigeonModel.rotation.z = -Math.PI/2;
+    // Update minimap
+    gameInstance._updateMinimap();
 
-            // DEBUG 2: Check center after transformations
-            const transformedBox = new THREE.Box3().setFromObject(pigeonModel);
-            const transformedCenter = transformedBox.getCenter(new THREE.Vector3());
-            console.log('DEBUG 2 - Center after transformations:', transformedCenter);
+    // Update UI
+    gameInstance._updateSpeedBoostUI();
+    gameInstance._updateScreenEffects();
 
-            // Center the model within the group AFTER transformations
-            pigeonModel.position.x = -transformedCenter.x;
-            pigeonModel.position.y = -transformedCenter.y;
-            pigeonModel.position.z = -transformedCenter.z;
+    // Update 3D crosshair
+    if (gameInstance.crosshair3D) {
+        const dir = new THREE.Vector3();
+        gameInstance.camera.getWorldDirection(dir);
+        dir.normalize();
+        const distance = 5.0;
+        const targetPos = gameInstance.player.position.clone().add(dir.multiplyScalar(distance));
+        targetPos.y = gameInstance.player.position.y + 0.6;
+        gameInstance.crosshair3D.position.copy(targetPos);
+        gameInstance.crosshair3D.lookAt(gameInstance.camera.position);
+    }
 
-            // Add to group
-            pigeon.add(pigeonModel);
+    // Speed boost sounds
+    const boostState = gameInstance.isFlying ? getSpeedBoostState() : getWalkBoostState();
+    if (boostState.active && !gameInstance._lastBoostActive) {
+        gameInstance._playSound('boost');
+    }
+    gameInstance._lastBoostActive = boostState.active;
+}
 
-            // DEBUG 3: Check group center after everything
-            const finalBox = new THREE.Box3().setFromObject(pigeon);
-            const finalCenter = finalBox.getCenter(new THREE.Vector3());
-            console.log('DEBUG 3 - Final group center:', finalCenter);
+/**
+ * Update level - called by main.js animation loop
+ */
+export function updateLevel() {
+    if (!gameInstance || !isInitialized) return;
 
-            // Position group at ground level
-            pigeon.position.set(0, 0.5, 0);
-
-            console.log('DEBUG 4 - Final pigeon position:', pigeon.position);
-
-            scene.add(pigeon);
-            player = pigeon;
-            pigeonLoaded = true;
-
-            // Setup animation mixer
-            mixer = new THREE.AnimationMixer(pigeonModel);
-
-            console.log("Available animations:", gltf.animations.map(a => a.name));
-
-            // Animation setup...
-            gltf.animations.forEach((clip) => {
-                const clipName = clip.name.toLowerCase();
-                if (clipName.includes('flap')) {
-                    currentAction = mixer.clipAction(clip);
-                    currentAction.setLoop(THREE.LoopRepeat, Infinity);
-                    currentAction.play();
+    // Update game state
+    if (gameInstance.gameLoaded && gameLoopRunning) {
+        updateGameState();
+        
+        // Sync Game's scene/camera to main.js references
+        // This ensures main.js renders Game's scene
+        if (gameInstance.scene && gameInstance.camera) {
+            // Copy all objects from Game's scene to main.js scene
+            // (only copy children that aren't already there to avoid duplicates)
+            gameInstance.scene.children.forEach(child => {
+                if (child.parent !== scene) {
+                    scene.add(child);
                 }
             });
-
-            initializeCamera();
-        },
-        (progress) => {
-            console.log(`Loading progress: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
-        }
-    );
-}
-
-function initializeCamera() {
-    if (!player) return;
-    
-    player.position.set(0, 0.5, 0);
-
-
-    // Set initial camera position (third-person view)
-    camera.position.set(0, 10, 15);
-    camera.lookAt(player.position);
-    
-    // Initialize yaw based on initial camera position
-    yaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
-    
-    console.log('Camera initialized with player');
-}
-
-
-// Fallback pigeon with basic colors
-function createFallbackPigeon() {
-    console.log('Creating fallback pigeon');
-    
-    // Create a simple pigeon-like shape with basic colors
-    const bodyGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x888888, // Gray pigeon color
-        roughness: 0.7,
-        metalness: 0.3
-    });
-    
-    const headGeometry = new THREE.SphereGeometry(0.15, 6, 6);
-    const headMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x666666,
-        roughness: 0.7,
-        metalness: 0.3
-    });
-    
-    const wingGeometry = new THREE.BoxGeometry(0.4, 0.1, 0.2);
-    const wingMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x777777,
-        roughness: 0.7,
-        metalness: 0.3
-    });
-    
-    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    const head = new THREE.Mesh(headGeometry, headMaterial);
-    const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
-    const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
-    
-    // Position parts
-    head.position.y = 0.25;
-    leftWing.position.set(-0.2, 0, 0.1);
-    rightWing.position.set(0.2, 0, 0.1);
-    
-    // Create group
-    pigeon = new THREE.Group();
-    pigeon.add(body);
-    pigeon.add(head);
-    pigeon.add(leftWing);
-    pigeon.add(rightWing);
-    
-    pigeon.scale.set(1.2, 1.2, 1.2);
-    pigeon.rotation.x = -Math.PI / 2;
-    
-    scene.remove(player);
-    scene.add(pigeon);
-    player = pigeon;
-    
-
-    // Reinitialize camera to look at the new player object
-    camera.position.set(0, 10, 15);
-    camera.lookAt(player.position);
-    
-    // Recalculate yaw based on new player position
-    yaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
-
-    console.log('Fallback pigeon created');
-}
-
-function generateSkyscrapers() {
-    const buildingColors = [
-        0x666666, 0x777777, 0x888888, 0x999999, 
-        0x555555, 0x444444, 0x333333, 0x222222
-    ];
-    
-    for (let x = -80; x <= 80; x += 20) {
-        for (let z = -80; z <= 80; z += 20) {
-            if (Math.abs(x) < 30 && Math.abs(z) < 30) continue;
             
-            const width = 8 + Math.random() * 6;
-            const depth = 8 + Math.random() * 6;
-            const height = 20 + Math.random() * 50; 
-            const color = buildingColors[Math.floor(Math.random() * buildingColors.length)];
-            
-            createSkyscraper(x, 0, z, width, height, depth, color);
+            // Sync camera properties (position, rotation, etc.)
+            camera.position.copy(gameInstance.camera.position);
+            camera.rotation.copy(gameInstance.camera.rotation);
+            camera.quaternion.copy(gameInstance.camera.quaternion);
+            camera.fov = gameInstance.camera.fov;
+            camera.aspect = gameInstance.camera.aspect;
+            camera.near = gameInstance.camera.near;
+            camera.far = gameInstance.camera.far;
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        
+        // Render UI scene on top (Game's UI elements)
+        if (gameInstance.uiScene && gameInstance.uiCamera) {
+            renderer.autoClear = false;
+            renderer.render(gameInstance.uiScene, gameInstance.uiCamera);
+            renderer.autoClear = true;
         }
     }
-}
-
-function createSkyscraper(x, y, z, width, height, depth, color) {
-    const geometry = new THREE.BoxGeometry(width, height, depth);
-    const material = new THREE.MeshBasicMaterial({ color: color });
-    const building = new THREE.Mesh(geometry, material);
-    building.position.set(x, y + height/2, z);
     
-    // Store collision box in dedicated array
-    const boundingBox = new THREE.Box3().setFromObject(building);
-    collisionBoxes.push(boundingBox);
-    
-    scene.add(building);
-    return building;
+    // Note: main.js will render the scene after this, so we don't render here
 }
 
-function createRoads() {
-    const roadMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0x333333, 
-        side: THREE.DoubleSide 
-    });
-    
-    // Roads (for visual)
-    for (let x = -90; x <= 90; x += 20) {
-        const roadGeometry = new THREE.PlaneGeometry(4, 200);
-        const road = new THREE.Mesh(roadGeometry, roadMaterial);
-        road.rotation.x = -Math.PI / 2;
-        road.position.set(x, 0.1, 0);
-        scene.add(road);
-    }
-    
-    for (let z = -90; z <= 90; z += 20) {
-        const roadGeometry = new THREE.PlaneGeometry(200, 4);
-        const road = new THREE.Mesh(roadGeometry, roadMaterial);
-        road.rotation.x = -Math.PI / 2;
-        road.position.set(0, 0.1, z);
-        scene.add(road);
-    }
-}
-
-function createUI() {
-    // Re-use the 'game-ui' class for easy global cleanup
-    const titleDiv = document.createElement('div');
-    titleDiv.className = "game-ui"; 
-    titleDiv.textContent = 'LEVEL 1 - Pigeon Simulator';
-    titleDiv.style.cssText = `
-        color: white; font-size: 24px; font-weight: bold; position: absolute; 
-        top: 20px; left: 50%; transform: translateX(-50%); text-shadow: 2px 2px 4px black;
-        z-index: 1000; pointer-events: none;
-    `;
-    document.body.appendChild(titleDiv);
-
-    const instructionsDiv = document.createElement('div');
-    instructionsDiv.className = "game-ui";
-    instructionsDiv.innerHTML = 'Find the green goal building!<br>WASD: Move, Mouse: Look, Space: Jump, F: Toggle Fly, ESC: Pause Menu';
-    instructionsDiv.style.cssText = `
-        color: white; font-size: 16px; position: absolute; top: 60px; left: 50%; 
-        transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
-        z-index: 1000; pointer-events: none;
-    `;
-    document.body.appendChild(instructionsDiv);
-
-    // Flying status indicator
-    const flyStatusDiv = document.createElement('div');
-    flyStatusDiv.className = "game-ui";
-    flyStatusDiv.id = "fly-status";
-    flyStatusDiv.textContent = 'Fly Mode: OFF';
-    flyStatusDiv.style.cssText = `
-        color: white; font-size: 16px; position: absolute; top: 100px; left: 50%; 
-        transform: translateX(-50%); text-align: center; text-shadow: 2px 2px 4px black;
-        z-index: 1000; pointer-events: none;
-    `;
-    document.body.appendChild(flyStatusDiv);
-}
-
-function updateFlyStatus() {
-    const flyStatusDiv = document.getElementById('fly-status');
-    if (flyStatusDiv) {
-        flyStatusDiv.textContent = `Fly Mode: ${isFlying ? 'ON' : 'OFF'}`;
-        flyStatusDiv.style.color = isFlying ? '#00ff00' : 'white';
-    }
-}
-
-// Input system
-export function setupLevelInput() {
-    // Remove existing listeners first to prevent duplicates
-    document.removeEventListener("keydown", handleKeyDown);
-    document.removeEventListener("keyup", handleKeyUp);
-    document.removeEventListener("pointerlockchange", onPointerLockChange);
-    document.removeEventListener("mousemove", onMouseMove);
-    
-    // Add event listeners
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("keyup", handleKeyUp);
-    document.addEventListener("pointerlockchange", onPointerLockChange);
-    
-    // Pointer lock on click - remove existing listener first
-    renderer.domElement.removeEventListener("click", requestLock);
-    renderer.domElement.addEventListener("click", requestLock);
-    
-    // If already pointer locked, attach the mousemove listener immediately
-    if (document.pointerLockElement === renderer.domElement) {
-        document.addEventListener("mousemove", onMouseMove);
-    }
-    
-    // Store handlers for cleanup
-    scene.userData.keyDownHandler = handleKeyDown;
-    scene.userData.keyUpHandler = handleKeyUp;
-    scene.userData.pointerLockHandler = onPointerLockChange;
-    scene.userData.mouseMoveHandler = onMouseMove;
-    scene.userData.lockClickHandler = requestLock;
-}
-
-
-// Helper to request lock
-function requestLock() {
-    if (document.pointerLockElement !== renderer.domElement) {
-        renderer.domElement.requestPointerLock();
-    }
-}
-
-function handleKeyDown(e) {
-    if (e.code === "Space") {
-        spaceHeld = true;
-    } else if (e.code === "Escape") {
-        // Show pause menu using ESC key
-        if (window.showPauseMenu) {
-            window.showPauseMenu(1);
-        } else {
-            // Fallback to direct return if pause menu not available
-            returnToMainCallback();
-        } 
-    } else if (e.code === "KeyF" && !flyKeyLocked) {
-        // Toggle flying mode
-        toggleFlying();
-        flyKeyLocked = true;
-    } else {
-        keys[e.key.toLowerCase()] = true;
-    }
-}
-
-function handleKeyUp(e) {
-    if (e.code === "Space") {
-        spaceHeld = false;
-        spaceLocked = false;
-    } else if (e.code === "KeyF") {
-        flyKeyLocked = false;
-    } else {
-        keys[e.key.toLowerCase()] = false;
-    }
-}
-
-function onPointerLockChange() {
-    if (document.pointerLockElement === renderer.domElement) {
-        document.addEventListener("mousemove", onMouseMove);
-    } else {
-        document.removeEventListener("mousemove", onMouseMove);
-    }
-}
-
-function onMouseMove(e) {
-    yaw = THREE.MathUtils.lerp(yaw, yaw - e.movementX * MOUSE_SENS, 0.7);
-    pitch += -e.movementY * MOUSE_SENS;
-}
-
-// Flying system
-function toggleFlying() {
-    isFlying = !isFlying;
-
-    if (isFlying) {
-        velocityY = 0;
-        targetFlyHeight = player.position.y + 10; // go 10 units higher than current
-        isAscendingToFly = true;
-    } else {
-        velocityY = 0; // allow gravity to take over
-    }
-
-    updateFlyStatus();
-}
-
-// --- Update every frame ---
-function updatePigeon(delta) {
-    if (!pigeonLoaded || !mixer) return;
-
-    mixer.update(delta);
-
-    // Choose animation
-    if (isFlying && currentAction !== flapAction) {
-        playAnimation(flapAction);
-    } else if (!isFlying && player.position.y <= 1.2 && currentAction !== landingAction) {
-        playAnimation(landingAction);
-    } else if (!isFlying && player.position.y > 1.2 && currentAction !== takeoffAction) {
-        playAnimation(takeoffAction);
-    }
-}
-
-// --- Animation transition ---
-function playAnimation(action) {
-    if (!action || action === currentAction) return;
-    if (currentAction) currentAction.fadeOut(0.2);
-    action.reset().fadeIn(0.2).play();
-    currentAction = action;
-}
-
-
-// Player movement and physics
-// Extra globals for flight transition
-let isAscendingToFly = false;
-let targetFlyHeight = 0;
-
-
-let frameCount = 0;
-
-
-function updatePlayer() {
-    if (!player || !pigeonLoaded) return;
-    if (frameCount <= 10) {
-        console.log("Frame", frameCount, "Player pos:", player.position);
-    }
-    if (window.playerMarker) {
-        window.playerMarker.position.copy(player.position);
-    }
-    const _forward = new THREE.Vector3();
-    const _right = new THREE.Vector3();
-    const _moveDir = new THREE.Vector3();
-
-    // Calculate movement directions based on camera yaw
-    _forward.set(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
-    _right.crossVectors(_forward, new THREE.Vector3(0, 1, 0)).normalize();
-
-    player.rotation.y = yaw;
-
-    // Build move direction from inputs
-    _moveDir.set(0, 0, 0);
-    if (keys["w"] || keys["arrowup"]) _moveDir.add(_forward);
-    if (keys["s"] || keys["arrowdown"]) _moveDir.sub(_forward);
-    if (keys["d"] || keys["arrowright"]) _moveDir.add(_right);
-    if (keys["a"] || keys["arrowleft"]) _moveDir.sub(_right);
-    if (_moveDir.lengthSq() > 0) _moveDir.normalize();
-
-    const prevPos = player.position.clone();
-
-    // ----------------------------
-    // FLYING MODE
-    // ----------------------------
-    if (isFlying) {
-        const currentSpeed = FLY_SPEED;
-
-    // Smooth ascent when flight is toggled on
-    if (isAscendingToFly) {
-        if (player.position.y < targetFlyHeight) {
-            player.position.y += 0.2;
-        } else {
-            isAscendingToFly = false;
-        }
-    }
-
-    const direction = new THREE.Vector3();
-    camera.getWorldDirection(direction);
-    direction.normalize();
-
-    // If W pressed → move forward in camera direction
-    if (keys["w"] || keys["arrowup"]) {
-        player.position.addScaledVector(direction, currentSpeed);
-    }
-    // S moves backward
-    if (keys["s"] || keys["arrowdown"]) {
-        player.position.addScaledVector(direction, -currentSpeed);
-    }
-
-    // A / D strafing (uses camera right vector)
-    const right = new THREE.Vector3();
-    right.crossVectors(direction, new THREE.Vector3(0, 1, 0)).normalize();
-
-    if (keys["d"] || keys["arrowright"]) {
-        player.position.addScaledVector(right, currentSpeed);
-    }
-    if (keys["a"] || keys["arrowleft"]) {
-        player.position.addScaledVector(right, -currentSpeed);
-    }
-
-    // Space and Ctrl for up/down while flying
-    if (spaceHeld) player.position.y += currentSpeed;
-    if (keys["control"] || keys["c"]) player.position.y -= currentSpeed;
-
-    // Collision detection — prevent clipping
-    /*const playerBox = new THREE.Box3().setFromObject(player);
-    for (const box of collisionBoxes) {
-        if (playerBox.intersectsBox(box)) {
-            player.position.copy(prevPos);
-            break;
-        }
-    }*/
-
-    // --- AUTO EXIT FLY MODE IF PLAYER LANDS ON SURFACE ---
-
-// Calculate player bounding box once
-const playerBox = new THREE.Box3().setFromObject(player);
-
-// Player feet height (player is 1 high, so half = 0.5)
-const playerFeetY = player.position.y - 0.5;
-
-let landed = false;
-
-// Check rooftop landings — ONLY if feet are above the roof
-for (const box of collisionBoxes) {
-    if (playerBox.intersectsBox(box)) {
-        const roofHeight = box.max.y;
-
-        // ✅ Only land if the player is *on top* of the building, not into the side
-        if (playerFeetY <= roofHeight + 0.1 && playerFeetY >= roofHeight - 0.5) {
-            player.position.y = roofHeight + 0.5; // Place feet exactly on roof
-            landed = true;
-        } else {
-            // Side collision → push back horizontally
-            player.position.copy(prevPos);
-        }
-        break;
-    }
-}
-
-// Ground check (y <= 0.5 = touching grass)
-if (player.position.y <= 0.5) {
-    player.position.y = 0.5;
-    landed = true;
-}
-
-if (landed) {
-    isFlying = false;
-    velocityY = 0;
-    isAscendingToFly = false;
-    updateFlyStatus();
-}
-    
-
-    updateCamera();
-    if (!player)return;
-    } else {
-    const currentSpeed = speed;
-    const halfHeight = 0.5; // player height = 1, so half is 0.5
-
-    // Horizontal movement first
-    const prevXZ = prevPos.clone();
-    player.position.x += _moveDir.x * currentSpeed;
-    player.position.z += _moveDir.z * currentSpeed;
-
-    // Horizontal collisions (walls only)
-    let playerBox = new THREE.Box3().setFromObject(player);
-    for (const box of collisionBoxes) {
-        if (playerBox.intersectsBox(box)) {
-            const playerFeet = player.position.y - halfHeight;
-            const buildingTop = box.max.y;
-
-            if (playerFeet < buildingTop - 0.1) {
-                // We're hitting the building side → block movement
-                player.position.x = prevXZ.x;
-                player.position.z = prevXZ.z;
-            }
-            break;
-        }
-    }
-
-    // Apply gravity
-    velocityY += gravity;
-    player.position.y += velocityY;
-
-    // Vertical collisions (landing on roofs or ground)
-    playerBox.setFromObject(player);
-    let onGround = false;
-
-    for (const box of collisionBoxes) {
-        if (playerBox.intersectsBox(box)) {
-            if (velocityY <= 0) {
-                // Land on top surface
-                player.position.y = box.max.y + halfHeight;
-                velocityY = 0;
-                onGround = true;
-            } else {
-                // Hit ceiling while going up
-                player.position.y = prevPos.y;
-                velocityY = 0;
-            }
-            break;
-        }
-    }
-
-    // Ground plane check (y=0.5 is base level)
-    if (player.position.y <= halfHeight) {
-        player.position.y = halfHeight;
-        velocityY = 0;
-        onGround = true;
-    }
-
-    // Jump
-    if (onGround && spaceHeld && !spaceLocked) {
-        velocityY = jumpStrength;
-        spaceLocked = true;
-    }
-}
-
-
-    // Update camera after movement
-    updateCamera();
-}
-
-function updateCamera() {
-    if (!player) return;
-
-    // --- CAMERA OFFSETS ---
-    const distanceBehind = 50;   // how far the camera stays behind the player
-    const heightOffset = 2.5;   // height above the player
-    const smoothness = 0.1;     // how smoothly the camera follows
-
-    // --- Compute desired position ---
-    const targetPos = new THREE.Vector3(
-        player.position.x - Math.sin(yaw) * distanceBehind,
-        player.position.y + heightOffset,
-        player.position.z - Math.cos(yaw) * distanceBehind
-    );
-
-    // --- Smoothly interpolate to that position ---
-    camera.position.lerp(targetPos, smoothness);
-
-    // --- Look slightly ahead of the player ---
-    const lookTarget = new THREE.Vector3(
-        player.position.x + Math.sin(yaw) * 2,
-        player.position.y + 1.0, // aim slightly above center
-        player.position.z + Math.cos(yaw) * 2
-    );
-
-    camera.lookAt(lookTarget);
-}
-
-
-// Check for goal collision
-function checkGoal() {
-    if (!player || !pigeonLoaded) return;
-
-    const playerBox = new THREE.Box3().setFromObject(player);
-    const goal = scene.getObjectByName('goal');
-    
-    if (goal) {
-        const goalBox = new THREE.Box3().setFromObject(goal);
-        if (playerBox.intersectsBox(goalBox)) {
-            alert('Congratulations! You reached the goal!');
-            returnToMainCallback();
-        }
-    }
-}
-
-// Level update function called by main.js animation loop
-export function updateLevel() {
-    updatePlayer();
-    const delta = clock.getDelta(); 
-    updatePigeon(delta);
-    checkGoal();
-}
-
-// Cleanup function to be called by main.js
+/**
+ * Cleanup level - called by main.js when leaving level
+ */
 export function cleanupLevel() {
-    // Remove all event listeners and DOM elements
-    
-    // Remove level-specific UI elements (but preserve Story UI and Inventory UI)
+    gameLoopRunning = false;
+
+    // Remove level-specific UI elements
     const uiElements = document.querySelectorAll('.game-ui');
     uiElements.forEach(el => {
-        // Only remove elements that are not part of the main menu system
         const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
-        // Preserve Story UI and Inventory UI (they should persist)
         const isStoryUI = el.classList.contains('story-ui');
         const isInventoryUI = el.classList.contains('inventory-ui');
+        const isSubtitleUI = el.classList.contains('subtitle-display');
+        const isLoadingSpinner = el.classList.contains('loading-spinner');
         
-        if (!isMainMenuElement && !isStoryUI && !isInventoryUI) {
+        if (!isMainMenuElement && !isStoryUI && !isInventoryUI && !isSubtitleUI && !isLoadingSpinner) {
             el.remove();
         }
     });
-    
-    // Remove event listeners
-    document.removeEventListener("keydown", handleKeyDown);
-    document.removeEventListener("keyup", handleKeyUp);
-    document.removeEventListener("pointerlockchange", onPointerLockChange);
-    document.removeEventListener("mousemove", onMouseMove);
-    
-    // Remove click handler from canvas
-    if (renderer && renderer.domElement) {
-         renderer.domElement.removeEventListener("click", requestLock);
+
+    // Clean up Game instance
+    if (gameInstance) {
+        // Stop any ongoing timers
+        if (gameInstance.progressInterval) {
+            clearInterval(gameInstance.progressInterval);
+        }
+        
+        // Remove welcome screen if exists
+        if (gameInstance.welcomeScreen) {
+            gameInstance.welcomeScreen.remove();
+        }
+        
+        // Remove pause menu if exists
+        if (gameInstance.pauseMenuElement) {
+            gameInstance.pauseMenuElement.remove();
+        }
+        
+        // Remove UI elements
+        const elementsToRemove = [
+            'game-crosshair', 'game-score', 'speed-boost-ui', 'screen-effect', 
+            'minimap-canvas', 'game-timer', 'medal-display', 'persistent-controls',
+            'victory-message', 'welcome-screen', 'pause-menu', 'progress-container'
+        ];
+        elementsToRemove.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.remove();
+        });
+
+        // Stop music
+        if (gameInstance.music) {
+            gameInstance.music.stop();
+        }
+
+        // Stop all sounds
+        if (gameInstance.sounds) {
+            Object.values(gameInstance.sounds).forEach(sound => {
+                if (sound && sound.stop) sound.stop();
+            });
+        }
+
+        // Remove event listeners
+        document.removeEventListener('keydown', gameInstance._togglePause);
+        if (gameInstance.renderer && gameInstance.renderer.domElement) {
+            gameInstance.renderer.domElement.removeEventListener('click', gameInstance._requestLock);
+        }
+        document.removeEventListener('pointerlockchange', gameInstance._onPointerLockChange);
+        document.removeEventListener('mousemove', gameInstance._onMouseMove);
+
+        gameInstance = null;
     }
+
+    // Store references for potential restoration (currently keeping patches active)
+    // THREE.TextureLoader.prototype.load = originalTextureLoad;
+    // if (originalGLTFLoad && GLTFLoader) {
+    //     GLTFLoader.prototype.load = originalGLTFLoad;
+    // }
+
+    isInitialized = false;
     
-    // Clear collision data
-    collisionBoxes = [];
-    
-    // The main.js cleanup will stop the animation loop and clear the scene.
+    console.log('✅ Level 1 cleanup complete');
 }
