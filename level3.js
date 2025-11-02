@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as CANNON from 'cannon-es';
@@ -13,6 +14,7 @@ let platesOccupied = {
     plate11: false, 
     plate1: false
 };
+let dieSound = null;
 let plateTimers = {
     plate13: null,
     plate11: null,
@@ -185,6 +187,16 @@ function initWalkingSound() {
     }, undefined, (error) => {
         console.error('Error loading door open sound:', error);
     });
+    // Load die sound
+    audioLoader.load('./die.mp3', (buffer) => {
+        dieSound = new THREE.Audio(listener);
+        dieSound.setBuffer(buffer);
+        dieSound.setLoop(false); // No loop for effect sound
+        dieSound.setVolume(0.5); // Adjust volume as needed
+        console.log("Die sound loaded successfully");
+    }, undefined, (error) => {
+        console.error('Error loading die sound:', error);
+    });
 }
 
 // Add this function to handle walking sound state
@@ -275,6 +287,13 @@ function showDeathMessage() {
         #menu-death-btn:hover { transform: scale(1.05); box-shadow: 0 15px 40px rgba(0,0,0,0.6); }
     `;
     document.body.appendChild(deathDiv);
+    document.body.appendChild(deathDiv);
+
+    // Play die sound
+    if (dieSound && !dieSound.isPlaying) {
+        dieSound.play();
+        console.log("Die sound played");
+    }
 
     // 2. **RESTART BUTTON** → Reload level 3 (full reset!)
     document.getElementById('restart-death-btn').onclick = () => {
@@ -1236,7 +1255,7 @@ function addPlayer() {
     boxMesh = new THREE.Mesh(boxGeo, boxMat);
 
     // SPAWN ON PLATFORM
-    boxMesh.position.set(-9, 3, 48);  // Center of first green platform
+    boxMesh.position.set(-45, 3, 48);  // Center of first green platform
     
     
     // 🔥 ROTATE PLAYER MESH TO FACE POSITIVE Z
@@ -1928,6 +1947,12 @@ export function cleanupLevel() {
     }
     doorLockedSound = null;
 
+    // Stop and cleanup die sound
+    if (dieSound && dieSound.isPlaying) {
+        dieSound.stop();
+    }
+    dieSound = null;
+
     // Stop and cleanup door open sound
     if (doorOpenSound && doorOpenSound.isPlaying) {
         doorOpenSound.stop();
@@ -2617,38 +2642,43 @@ function loadNumberModels3() {
         );
     });
 }
-// Update the checkNumberPlates3 function with better debugging
 function checkNumberPlates3() {
     if (door9Openable) return;
     
-    console.log("Checking Door 9 rainbow puzzle...");
+    console.log("=== Checking Door 9 rainbow puzzle ===");
     
     const requiredPlates = ['one3', 'two3', 'three3', 'four3', 'five3', 'six3', 'seven3'];
     let correctCount = 0;
     
     requiredPlates.forEach(plateKey => {
         const plateData = getPlate3Data(plateKey);
-        if (!plateData) return;
+        if (!plateData) {
+            console.error(`No plate data for ${plateKey}`);
+            return;
+        }
         
         let correctCubeOnThisPlate = false;
         const requiredColor = getRequiredColorForPlate(plateKey);
         
         for (const box of movableBoxes) {
-            if (!box.userData.isRainbowCube) continue;
+            if (!box.userData.isRainbowCube) {
+                continue; // Skip non-rainbow cubes
+            }
             
             const boxPos = box.position;
             const body = box.userData.physicsBody;
             
-            // Check if cube is on the plate
+            // More forgiving detection
             const distanceXZ = Math.sqrt(
                 Math.pow(boxPos.x - plateData.position.x, 2) + 
                 Math.pow(boxPos.z - plateData.position.z, 2)
             );
             const heightDiff = Math.abs(boxPos.y - plateData.position.y);
             
-            if (distanceXZ < 1.5 && heightDiff < 1.5 && body.velocity.length() < 0.5) {
+            // Increased tolerance for testing
+            if (distanceXZ < 2.0 && heightDiff < 2.0 && body.velocity.length() < 1.0) {
                 const cubeColor = getCubeColor(box);
-                console.log(`Cube ${cubeColor} found on plate ${plateKey}, required: ${requiredColor}`);
+                console.log(`Found ${cubeColor} cube on plate ${plateKey} (required: ${requiredColor})`);
                 
                 if (cubeColor === requiredColor) {
                     correctCubeOnThisPlate = true;
@@ -2660,6 +2690,7 @@ function checkNumberPlates3() {
         // Timer logic
         if (correctCubeOnThisPlate) {
             if (!numberPlate3Timers[plateKey]) {
+                console.log(`Starting timer for plate ${plateKey}`);
                 numberPlate3Timers[plateKey] = setTimeout(() => {
                     numberPlates3Occupied[plateKey] = true;
                     console.log(`✅ CORRECT! Plate ${plateKey} has ${requiredColor} cube!`);
@@ -2684,16 +2715,17 @@ function checkNumberPlates3() {
     });
     
     console.log(`Door 9 progress: ${correctCount}/7 correct placements`);
+    console.log("=== End rainbow puzzle check ===");
 }
 function getPlate3Data(plateKey) {
     const platePositions = {
-        'one3': new THREE.Vector3(-48.9, 6, 44),
+        'one3': new THREE.Vector3(-48.9, 3, 44),     // Match loadNumberModels3 Y positions
         'two3': new THREE.Vector3(-38.6, 3, -30),
-        'three3': new THREE.Vector3(-43, 7, 48.9),
+        'three3': new THREE.Vector3(-43, 4, 48.9),
         'four3': new THREE.Vector3(-48.9, 2, -44),
         'five3': new THREE.Vector3(-38.6, 4, 0),
         'six3': new THREE.Vector3(-43, 1, -48.9),
-        'seven3': new THREE.Vector3(-38.6, 5, 30)
+        'seven3': new THREE.Vector3(-38.6, 2, 30)
     };
     
     return {
@@ -2719,9 +2751,18 @@ function getRequiredColorForPlate(plateKey) {
     return requiredColor;
 }
 
-// Fix the getCubeColor function to properly identify rainbow cube colors
 function getCubeColor(cubeMesh) {
-    const colorValue = cubeMesh.material.color.getHex();
+    // Try to get color from material
+    let colorValue;
+    
+    if (cubeMesh.material && cubeMesh.material.color) {
+        colorValue = cubeMesh.material.color.getHex();
+    } else {
+        // Fallback: check if it's one of our rainbow cubes by position or other property
+        console.warn("Could not get color from cube material:", cubeMesh);
+        return 'unknown';
+    }
+    
     const colorMap = {
         0xff0000: 'red',        // Red
         0xff7f00: 'orange',     // Orange  
