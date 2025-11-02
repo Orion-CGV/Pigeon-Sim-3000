@@ -8,6 +8,11 @@ body {
     font-family: 'Jersey 10', sans-serif;
 }
 
+/* Ensure all buttons use the correct font */
+button {
+    font-family: 'Jersey 10', sans-serif !important;
+}
+
 canvas { 
     display: block;
     position: fixed;
@@ -108,6 +113,7 @@ canvas {
     padding: 10px 20px;
     border-radius: 5px;
     cursor: pointer;
+    font-family: 'Jersey 10', sans-serif;
     font-size: 14px;
     opacity: 0;
     animation: fadeIn 0.5s ease-out 2s forwards;
@@ -124,6 +130,16 @@ canvas {
     margin-bottom: 1rem;
     opacity: 0;
     animation: arcadeGlow 2s ease-in-out 3s forwards;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.arcade-icon i[data-lucide] {
+    width: 2rem;
+    height: 2rem;
+    color: #00ff00;
+    filter: drop-shadow(0 0 8px rgba(0, 255, 0, 0.6));
 }
 
 /* Main Menu Styles */
@@ -181,6 +197,16 @@ canvas {
     font-size: 4rem;
     margin-bottom: 1rem;
     animation: arcadeFloat 3s ease-in-out infinite;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.arcade-icon-large i[data-lucide] {
+    width: 4rem;
+    height: 4rem;
+    color: #00ff00;
+    filter: drop-shadow(0 0 10px rgba(0, 255, 0, 0.6));
 }
 
 .menu-title {
@@ -215,8 +241,9 @@ canvas {
     border: 2px solid rgba(255, 255, 255, 0.2);
     border-radius: 10px;
     color: white;
-    font-size: 1.2rem;
-    font-weight: bold;
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 1.4rem;
+    font-weight: normal;
     cursor: pointer;
     transition: all 0.3s ease;
     backdrop-filter: blur(10px);
@@ -231,6 +258,98 @@ canvas {
 
 .button-icon {
     font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.button-icon i[data-lucide] {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: currentColor;
+    transition: all 0.3s ease;
+}
+
+.button-text {
+    color: white;
+}
+
+/* Color each menu button icon and text individually */
+.menu-button:nth-child(1) .button-icon i[data-lucide="play"] {
+    color: #00ff00 !important;
+    filter: drop-shadow(0 0 8px rgba(0, 255, 0, 0.5));
+}
+
+.menu-button:nth-child(1) .button-text {
+    color: #00ff00;
+}
+
+.menu-button:nth-child(2) .button-icon i[data-lucide="settings"] {
+    color: #64b5f6 !important;
+    filter: drop-shadow(0 0 8px rgba(100, 181, 246, 0.5));
+}
+
+.menu-button:nth-child(2) .button-text {
+    color: #64b5f6;
+}
+
+.menu-button:nth-child(3) .button-icon i[data-lucide="scroll-text"] {
+    color: #ba68c8 !important;
+    filter: drop-shadow(0 0 8px rgba(186, 104, 200, 0.5));
+}
+
+.menu-button:nth-child(3) .button-text {
+    color: #ba68c8;
+}
+
+.menu-button:nth-child(4) .button-icon i[data-lucide="help-circle"] {
+    color: #ffb74d !important;
+    filter: drop-shadow(0 0 8px rgba(255, 183, 77, 0.5));
+}
+
+.menu-button:nth-child(4) .button-text {
+    color: #ffb74d;
+}
+
+/* Enhanced icon and text colors on hover */
+.menu-button:hover:nth-child(1) .button-icon i[data-lucide="play"] {
+    color: #00ff88 !important;
+    filter: drop-shadow(0 0 12px rgba(0, 255, 136, 0.7));
+    transform: scale(1.1);
+}
+
+.menu-button:hover:nth-child(1) .button-text {
+    color: #00ff88;
+}
+
+.menu-button:hover:nth-child(2) .button-icon i[data-lucide="settings"] {
+    color: #90caf9 !important;
+    filter: drop-shadow(0 0 12px rgba(144, 202, 249, 0.7));
+    transform: scale(1.1);
+}
+
+.menu-button:hover:nth-child(2) .button-text {
+    color: #90caf9;
+}
+
+.menu-button:hover:nth-child(3) .button-icon i[data-lucide="scroll-text"] {
+    color: #ce93d8 !important;
+    filter: drop-shadow(0 0 12px rgba(206, 147, 216, 0.7));
+    transform: scale(1.1);
+}
+
+.menu-button:hover:nth-child(3) .button-text {
+    color: #ce93d8;
+}
+
+.menu-button:hover:nth-child(4) .button-icon i[data-lucide="help-circle"] {
+    color: #ffcc80 !important;
+    filter: drop-shadow(0 0 12px rgba(255, 204, 128, 0.7));
+    transform: scale(1.1);
+}
+
+.menu-button:hover:nth-child(4) .button-text {
+    color: #ffcc80;
 }
 
 .menu-footer {
@@ -240,6 +359,24 @@ canvas {
 .version-info {
     color: #888;
     font-size: 0.9rem;
+}
+
+.version-info i[data-lucide="heart"] {
+    color: #e91e63;
+    filter: drop-shadow(0 0 4px rgba(233, 30, 99, 0.6));
+    animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+    0%, 100% {
+        transform: scale(1);
+    }
+    10%, 30% {
+        transform: scale(1.1);
+    }
+    20%, 40% {
+        transform: scale(1);
+    }
 }
 
 /* Screen Headers */
@@ -264,6 +401,7 @@ canvas {
     border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 5px;
     color: white;
+    font-family: 'Jersey 10', sans-serif;
     cursor: pointer;
     transition: all 0.3s ease;
 }
@@ -320,6 +458,38 @@ canvas {
     font-size: 4rem;
     margin-bottom: 1.5rem;
     animation: iconFloat 3s ease-in-out infinite;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.play-icon i[data-lucide] {
+    width: 4rem;
+    height: 4rem;
+    color: currentColor;
+    transition: all 0.3s ease;
+}
+
+.play-icon i[data-lucide="home"] {
+    color: #ff6b6b;
+    filter: drop-shadow(0 0 10px rgba(255, 107, 107, 0.6));
+}
+
+.play-icon i[data-lucide="gamepad-2"] {
+    color: #4ecdc4;
+    filter: drop-shadow(0 0 10px rgba(78, 205, 196, 0.6));
+}
+
+.play-option-card:hover .play-icon i[data-lucide="home"] {
+    color: #ff8787;
+    filter: drop-shadow(0 0 15px rgba(255, 135, 135, 0.8));
+    transform: scale(1.1);
+}
+
+.play-option-card:hover .play-icon i[data-lucide="gamepad-2"] {
+    color: #6dd5d6;
+    filter: drop-shadow(0 0 15px rgba(109, 213, 214, 0.8));
+    transform: scale(1.1);
 }
 
 .play-title {
@@ -387,6 +557,49 @@ canvas {
 .level-icon {
     font-size: 3rem;
     margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.level-icon i[data-lucide] {
+    width: 3rem;
+    height: 3rem;
+    color: currentColor;
+    transition: all 0.3s ease;
+}
+
+.level-icon i[data-lucide="bird"] {
+    color: #64b5f6;
+    filter: drop-shadow(0 0 8px rgba(100, 181, 246, 0.6));
+}
+
+.level-icon i[data-lucide="car"] {
+    color: #ffb74d;
+    filter: drop-shadow(0 0 8px rgba(255, 183, 77, 0.6));
+}
+
+.level-icon i[data-lucide="box"] {
+    color: #ba68c8;
+    filter: drop-shadow(0 0 8px rgba(186, 104, 200, 0.6));
+}
+
+.level-card:hover .level-icon i[data-lucide="bird"] {
+    color: #90caf9;
+    filter: drop-shadow(0 0 12px rgba(144, 202, 249, 0.8));
+    transform: scale(1.1);
+}
+
+.level-card:hover .level-icon i[data-lucide="car"] {
+    color: #ffcc80;
+    filter: drop-shadow(0 0 12px rgba(255, 204, 128, 0.8));
+    transform: scale(1.1);
+}
+
+.level-card:hover .level-icon i[data-lucide="box"] {
+    color: #ce93d8;
+    filter: drop-shadow(0 0 12px rgba(206, 147, 216, 0.8));
+    transform: scale(1.1);
 }
 
 .level-title {
@@ -463,6 +676,7 @@ canvas {
     border: 1px solid rgba(0, 255, 0, 0.5);
     border-radius: 5px;
     color: #00ff00;
+    font-family: 'Jersey 10', sans-serif;
     cursor: pointer;
     transition: all 0.3s ease;
 }
@@ -521,6 +735,26 @@ canvas {
     font-size: 1.3rem;
 }
 
+.instruction-section h3 i[data-lucide="gamepad-2"] {
+    color: #4ecdc4;
+    filter: drop-shadow(0 0 6px rgba(78, 205, 196, 0.5));
+}
+
+.instruction-section h3 i[data-lucide="bird"] {
+    color: #64b5f6;
+    filter: drop-shadow(0 0 6px rgba(100, 181, 246, 0.5));
+}
+
+.instruction-section h3 i[data-lucide="car"] {
+    color: #ffb74d;
+    filter: drop-shadow(0 0 6px rgba(255, 183, 77, 0.5));
+}
+
+.instruction-section h3 i[data-lucide="box"] {
+    color: #ba68c8;
+    filter: drop-shadow(0 0 6px rgba(186, 104, 200, 0.5));
+}
+
 /* Pause Menu */
 #pause-menu {
     z-index: 1000 !important;
@@ -547,8 +781,9 @@ canvas {
     border-radius: 15px;
     padding: 1.5rem 2rem;
     color: white;
-    font-size: 1.2rem;
-    font-weight: bold;
+    font-family: 'Jersey 10', sans-serif;
+    font-size: 1.4rem;
+    font-weight: normal;
     cursor: pointer;
     transition: all 0.3s ease;
     backdrop-filter: blur(10px);
@@ -584,10 +819,95 @@ canvas {
 
 .pause-button .button-icon {
     font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pause-button .button-icon i[data-lucide] {
+    width: 1.5rem;
+    height: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.pause-button:nth-child(1) .button-icon i[data-lucide="play"] {
+    color: #00ff00 !important;
+    filter: drop-shadow(0 0 6px rgba(0, 255, 0, 0.5));
+}
+
+.pause-button:nth-child(1) .button-text {
+    color: #00ff00;
+}
+
+.pause-button:nth-child(2) .button-icon i[data-lucide="settings"] {
+    color: #64b5f6 !important;
+    filter: drop-shadow(0 0 6px rgba(100, 181, 246, 0.5));
+}
+
+.pause-button:nth-child(2) .button-text {
+    color: #64b5f6;
+}
+
+.pause-button:nth-child(3) .button-icon i[data-lucide="refresh-cw"] {
+    color: #ffb74d !important;
+    filter: drop-shadow(0 0 6px rgba(255, 183, 77, 0.5));
+}
+
+.pause-button:nth-child(3) .button-text {
+    color: #ffb74d;
+}
+
+.pause-button:nth-child(4) .button-icon i[data-lucide="home"] {
+    color: #ff6b6b !important;
+    filter: drop-shadow(0 0 6px rgba(255, 107, 107, 0.5));
+}
+
+.pause-button:nth-child(4) .button-text {
+    color: #ff6b6b;
+}
+
+.pause-button:hover:nth-child(1) .button-icon i[data-lucide="play"] {
+    color: #00ff88 !important;
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 10px rgba(0, 255, 136, 0.7));
+}
+
+.pause-button:hover:nth-child(2) .button-icon i[data-lucide="settings"] {
+    color: #90caf9 !important;
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 10px rgba(144, 202, 249, 0.7));
+}
+
+.pause-button:hover:nth-child(3) .button-icon i[data-lucide="refresh-cw"] {
+    color: #ffcc80 !important;
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 10px rgba(255, 204, 128, 0.7));
+}
+
+.pause-button:hover:nth-child(4) .button-icon i[data-lucide="home"] {
+    color: #ff8787 !important;
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 10px rgba(255, 135, 135, 0.7));
+}
+
+.pause-button:hover:nth-child(1) .button-text {
+    color: #00ff88;
+}
+
+.pause-button:hover:nth-child(2) .button-text {
+    color: #90caf9;
+}
+
+.pause-button:hover:nth-child(3) .button-text {
+    color: #ffcc80;
+}
+
+.pause-button:hover:nth-child(4) .button-text {
+    color: #ff8787;
 }
 
 .pause-button .button-text {
-    font-size: 1.1rem;
+    font-size: 1.3rem;
     letter-spacing: 1px;
 }
 
@@ -990,15 +1310,13 @@ canvas {
     text-shadow: 0 0 5px rgba(135, 206, 235, 0.5);
 }
 
-.skip-credits {
-    /* Remove absolute positioning since it's now inside credits-controls */
-}
 
 .skip-credits-button {
     background: rgba(0, 0, 0, 0.7);
     border: 2px solid rgba(255, 255, 255, 0.3);
     border-radius: 10px;
     color: white;
+    font-family: 'Jersey 10', sans-serif;
     padding: 15px 25px;
     cursor: pointer;
     font-size: 14px;

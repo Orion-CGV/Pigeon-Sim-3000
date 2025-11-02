@@ -16,6 +16,8 @@ export class InteractionSystem {
         this.interactionPrompt = null;
         this.crosshair = null;
         this.onInteractCallback = null; // Callback when interaction occurs
+        this.joystickSubtitleShown = false; // Track if the "no joysticks" subtitle has been shown
+        this.lockedMachineSubtitleShown = new Set(); // Track which locked machines have shown the "joysticks don't work" subtitle
     }
 
     /**
@@ -281,32 +283,33 @@ export class InteractionSystem {
                     const level = arcade.userData.level;
                     
                     if (storySystem && !storySystem.canAccessLevel(level)) {
-                        // Level is locked - show lock reason
-                        const lockReason = storySystem.getLevelLockReason(level);
-                        const colorName = this.getArcadeColorName(level);
-                        this.interactionPrompt.textContent = `🔒 ${colorName} machine locked`;
-                        if (lockReason) {
-                            // Create or update lock reason element
-                            if (!this.lockReasonElement) {
-                                this.lockReasonElement = document.createElement("div");
-                                this.lockReasonElement.className = "game-ui";
-                                this.lockReasonElement.style.cssText = `
-                                    position: absolute; top: 65%; left: 50%; transform: translate(-50%, -50%); 
-                                    color: #ffaa00; font-family: 'Jersey 10', sans-serif; font-size: 14px; 
-                                    text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; z-index: 10; 
-                                    text-align: center; opacity: 0; transition: opacity 0.3s ease;
-                                `;
-                                document.body.appendChild(this.lockReasonElement);
+                        // Check if joysticks have been collected
+                        const inventorySystem = this.scene.userData.inventorySystem || window.inventorySystem;
+                        const hasJoysticks = inventorySystem && inventorySystem.hasItem('Joystick');
+                        
+                        if (!hasJoysticks) {
+                            // Allow interaction even if level is locked, if joysticks haven't been collected
+                            const colorName = this.getArcadeColorName(level);
+                            this.interactionPrompt.textContent = `E to interact with ${colorName} machine`;
+                            this.interactionPrompt.style.opacity = "1";
+                            this.currentInteractable = arcade;
+                            this.scene.userData.currentInteractable = arcade;
+                            this.scene.userData.currentInteractableType = 'arcade';
+                            return;
+                        } else {
+                            // Level is locked but joysticks are collected - allow interaction to show subtitle
+                            const colorName = this.getArcadeColorName(level);
+                            this.interactionPrompt.textContent = `E to interact with ${colorName} machine`;
+                            this.interactionPrompt.style.opacity = "1";
+                            this.currentInteractable = arcade;
+                            this.scene.userData.currentInteractable = arcade;
+                            this.scene.userData.currentInteractableType = 'arcade';
+                            // Hide lock reason if visible
+                            if (this.lockReasonElement) {
+                                this.lockReasonElement.style.opacity = "0";
                             }
-                            this.lockReasonElement.textContent = lockReason;
-                            this.lockReasonElement.style.opacity = "1";
+                            return;
                         }
-                        this.interactionPrompt.style.opacity = "1";
-                        // Don't set as interactable if locked
-                        this.currentInteractable = null;
-                        this.scene.userData.currentInteractable = null;
-                        this.scene.userData.currentInteractableType = null;
-                        return;
                     } else {
                         // Hide lock reason if visible
                         if (this.lockReasonElement) {
@@ -404,10 +407,45 @@ export class InteractionSystem {
                 const storySystem = this.scene.userData.storySystem;
                 const level = this.currentInteractable.userData.level;
                 
+                // Check if joysticks have been collected
+                const inventorySystem = this.scene.userData.inventorySystem || window.inventorySystem;
+                const hasJoysticks = inventorySystem && inventorySystem.hasItem('Joystick');
+                
                 if (storySystem && !storySystem.canAccessLevel(level)) {
-                    // Level is locked - don't allow interaction
-                    console.log(`Level ${level} is locked. Requirements not met.`);
-                    return;
+                    // Level is locked - check if joysticks have been collected
+                    if (!hasJoysticks) {
+                        // Show subtitle about missing joysticks (only once)
+                        if (!this.joystickSubtitleShown) {
+                            const subtitleSystem = this.scene.userData.subtitleSystem || window.subtitleSystem;
+                            if (subtitleSystem) {
+                                subtitleSystem.show("These arcade machines don't have joysticks?", 4);
+                                this.joystickSubtitleShown = true;
+                            }
+                        }
+                        
+                        // Lock E key briefly to prevent spam
+                        this.eKeyLocked = true;
+                        setTimeout(() => {
+                            this.eKeyLocked = false;
+                        }, 500);
+                        return;
+                    } else {
+                        // Level is locked and joysticks have been collected - show subtitle about joysticks not working
+                        if (!this.lockedMachineSubtitleShown.has(level)) {
+                            const subtitleSystem = this.scene.userData.subtitleSystem || window.subtitleSystem;
+                            if (subtitleSystem) {
+                                subtitleSystem.show("The joysticks don't seem to work here yet", 4);
+                                this.lockedMachineSubtitleShown.add(level);
+                            }
+                        }
+                        
+                        // Lock E key briefly to prevent spam
+                        this.eKeyLocked = true;
+                        setTimeout(() => {
+                            this.eKeyLocked = false;
+                        }, 500);
+                        return;
+                    }
                 }
                 
                 // Lock E key to prevent rapid repeated interactions

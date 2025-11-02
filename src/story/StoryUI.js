@@ -45,7 +45,7 @@ export class StoryUI {
         
         // Create title
         const title = document.createElement("div");
-        title.textContent = "📖 STORY OBJECTIVES";
+        title.innerHTML = '<i data-lucide="book-open" style="display: inline-block; width: 20px; height: 20px; vertical-align: middle; color: #ffb74d; filter: drop-shadow(0 0 6px rgba(255, 183, 77, 0.6));"></i> STORY OBJECTIVES';
         title.style.cssText = `
             font-size: 20px;
             font-weight: normal;
@@ -111,7 +111,7 @@ export class StoryUI {
         
         // Add toggle button
         const toggleButton = document.createElement("button");
-        toggleButton.textContent = "📋";
+        toggleButton.innerHTML = '<i data-lucide="clipboard-list" style="color: #00ff00;"></i>';
         toggleButton.style.cssText = `
             position: absolute;
             top: 5px;
@@ -134,6 +134,11 @@ export class StoryUI {
         
         // Add to document
         document.body.appendChild(this.uiElement);
+        
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     }
     
     /**
@@ -237,8 +242,9 @@ export class StoryUI {
             opacity: ${objective.status === 'locked' ? '0.6' : '1'};
         `;
         
-        const statusIcon = objective.status === 'completed' ? '✅' : 
-                          objective.status === 'active' ? '🎯' : '🔒';
+        const statusIcon = objective.status === 'completed' ? '<i data-lucide="check-circle" style="display: inline-block; width: 16px; height: 16px; vertical-align: middle; color: #00ff00; filter: drop-shadow(0 0 4px rgba(0, 255, 0, 0.6));"></i>' : 
+                          objective.status === 'active' ? '<i data-lucide="target" style="display: inline-block; width: 16px; height: 16px; vertical-align: middle; color: #ffb74d; filter: drop-shadow(0 0 4px rgba(255, 183, 77, 0.6));"></i>' : 
+                          '<i data-lucide="lock" style="display: inline-block; width: 16px; height: 16px; vertical-align: middle; color: #9e9e9e; filter: drop-shadow(0 0 4px rgba(158, 158, 158, 0.4));"></i>';
         
         objElement.innerHTML = `
             <div style="font-weight: normal; margin-bottom: 3px;">
@@ -254,6 +260,11 @@ export class StoryUI {
         `;
         
         this.objectivesList.appendChild(objElement);
+        
+        // Initialize Lucide icons for the new element
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     }
     
     /**
