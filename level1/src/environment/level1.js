@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LOD } from 'three';
 import { createGroundCollider } from "../physics/collider.js";
 import * as BufferGeometryUtils from 'https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/utils/BufferGeometryUtils.js';
 import { createTreeModel, getTreeColliderSize } from '../models/treeModel.js';
@@ -75,51 +76,82 @@ export const playerStartPosition = { x: -10, y: 5, z: 5 };
 export async function createLevel(TEST_MODE = false) {  // ← ADD TEST_MODE param
     const scene = new THREE.Scene();
 
-    async function createBuildingMaterial() {
-        const textureLoader = new THREE.TextureLoader();
-        
-        try {
-            // Load all the PBR textures for your facade
-            const colorMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Color.jpg');
-            const normalMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_NormalGL.jpg');
-            const roughnessMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Roughness.jpg');
-            const metalnessMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Metalness.jpg');
-            const displacementMap = await textureLoader.loadAsync('./models/textures/Facade001_1K-JPG_Displacement.jpg');
+    // ─────────────────────────────────────────────────────────────────────────────
+//  BUILDING MATERIAL – RANDOM FACADE PER BUILDING
+// ─────────────────────────────────────────────────────────────────────────────
+async function createBuildingMaterial() {
+    const textureLoader = new THREE.TextureLoader();
 
-            // Configure texture settings
-            [colorMap, normalMap, roughnessMap, metalnessMap, displacementMap].forEach((texture, index) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                
-                // ONLY colorMap gets SRGB!
-                if (index === 0) {  // colorMap is first
-                    texture.colorSpace = THREE.SRGBColorSpace;
-                }
-                // Others default to NoColorSpace (correct for PBR)
-            });
+    // ---- 1. List every façade you own (add/remove as you add more) ----
+    const FACADES = [
+        '001',
+        '005',
+        '006',
+        // '007',   // <-- just add the number when you drop a new set in /textures/
+    ];
 
-            // Create PBR material
-            const buildingMat = new THREE.MeshStandardMaterial({
-                map: colorMap,
-                normalMap: normalMap,
-                roughnessMap: roughnessMap,
-                metalnessMap: metalnessMap,
-                displacementMap: displacementMap,
-                displacementScale: 0, // Adjust based on your displacement texture
-                metalness: 0.1, // Base metalness
-                roughness: 0.8, // Base roughness
-            });
+    // ---- 2. Pick ONE façade for THIS building (called each time) ----
+    const id = FACADES[Math.floor(Math.random() * FACADES.length)];
+    const base = `./models/textures/Facade${id}_1K-JPG_`;
 
-            return buildingMat;
-        } catch (error) {
-            console.warn('Failed to load facade textures, falling back to basic material:', error);
-            // Fallback to basic material
-            return new THREE.MeshStandardMaterial({ 
-                color: 0x444444, 
-                metalness: 0.3, 
-                roughness: 0.6 
-            });
-        } 
+    // ---- 3. Load the 5 PBR maps ------------------------------------------------
+    const [colorMap, normalMap, roughnessMap, metalnessMap, displacementMap] = await Promise.all(
+        [
+            `${base}Color.jpg`,
+            `${base}NormalGL.jpg`,
+            `${base}Roughness.jpg`,
+            `${base}Metalness.jpg`,
+            `${base}Displacement.jpg`,
+        ].map(url => textureLoader.loadAsync(url).catch(err => {
+            console.warn(`Texture missing: ${url}`, err);
+            return null;               // let the fallback handle it
+        }))
+    );
+
+    // ---- 4. Configure repeat / color-space ------------------------------------
+    const maps = [colorMap, normalMap, roughnessMap, metalnessMap, displacementMap];
+    maps.forEach((tex, i) => {
+        if (!tex) return;
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        if (i === 0) tex.colorSpace = THREE.SRGBColorSpace;   // only color map
+    });
+
+    // ---- 5. Build the material ------------------------------------------------
+    const buildingMat = new THREE.MeshStandardMaterial({
+        map:               colorMap,
+        normalMap:         normalMap,
+        roughnessMap:      roughnessMap,
+        metalnessMap:      metalnessMap,
+        displacementMap:   displacementMap,
+        displacementScale: 0,               // tweak if you want real displacement
+        metalness:         0.1,
+        roughness:         0.8,
+    });
+
+    // ---- 6. Fallback if anything failed ---------------------------------------
+    if (!colorMap) {
+        console.warn(`Facade ${id} failed – using generic material`);
+        return new THREE.MeshStandardMaterial({
+            color: 0x444444, metalness: 0.3, roughness: 0.6
+        });
+    }
+    return buildingMat;
+}
+
+// ---- CACHE LOW-DETAIL MATERIALS (simple color, no textures) ----
+    const lowDetailMaterials = new Map();  // Cache by facade ID
+
+    function getLowDetailMaterial(id) {
+        if (lowDetailMaterials.has(id)) return lowDetailMaterials.get(id);
+
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x555555,  // Gray fallback color
+            metalness: 0.1,
+            roughness: 0.9
+        });
+
+        lowDetailMaterials.set(id, mat);
+        return mat;
     }
 
 
@@ -202,43 +234,64 @@ export async function createLevel(TEST_MODE = false) {  // ← ADD TEST_MODE par
     const buildings = [];
     const offset = (layout.length / 2) * cellSize;
 
-    // Create building material (you might want to make this async)
-    const buildingMat = await createBuildingMaterial();
+// ─────────────────────────────────────────────────────────────────────────────
+//  BUILDING LOOP – WITH LOD PER BUILDING
+// ─────────────────────────────────────────────────────────────────────────────
+for (let z = 0; z < layout.length; z++) {
+    for (let x = 0; x < layout[z].length; x++) {
+        if (layout[z][x] !== 1) continue;
 
-    for (let z = 0; z < layout.length; z++) {
-        for (let x = 0; x < layout[z].length; x++) {
-            if (layout[z][x] === 1) {
-                const width = 40 + Math.random() * 10;
-                const height = 60 + Math.random() * 120;
-                const depth = 40 + Math.random() * 10;
-                const buildingGeo = new THREE.BoxGeometry(width, height, depth);
-                const building = new THREE.Mesh(buildingGeo, buildingMat);
+        const width  = 40 + Math.random() * 10;
+        const height = 60 + Math.random() * 120;
+        const depth  = 40 + Math.random() * 10;
 
-                building.position.set(x * cellSize - offset, height / 2, z * cellSize - offset);
-                building.castShadow = true; // Enable shadows for better visuals
-                building.receiveShadow = true;
-                scene.add(building);
+        // ---- HIGH-DETAIL (level 0) ----
+        const highMat = await createBuildingMaterial();
+        const highGeo = new THREE.BoxGeometry(width, height, depth);
+        const highMesh = new THREE.Mesh(highGeo, highMat);
 
-                // Calculate texture repetition based on building size
-                const repeatX = width / 10; // Adjust divisor to control texture density
-                const repeatY = height / 10;
-                
-                // Apply texture scaling to all material maps
-                if (buildingMat.map) buildingMat.map.repeat.set(repeatX, repeatY);
-                if (buildingMat.normalMap) buildingMat.normalMap.repeat.set(repeatX, repeatY);
-                if (buildingMat.roughnessMap) buildingMat.roughnessMap.repeat.set(repeatX, repeatY);
-                if (buildingMat.metalnessMap) buildingMat.metalnessMap.repeat.set(repeatX, repeatY);
-                if (buildingMat.displacementMap) buildingMat.displacementMap.repeat.set(repeatX, repeatY);
+        // Texture repeat for high-detail
+        const repeatX = width / 10;
+        const repeatY = height / 10;
+        [
+            highMat.map,
+            highMat.normalMap,
+            highMat.roughnessMap,
+            highMat.metalnessMap,
+            highMat.displacementMap,
+        ].forEach(tex => tex && tex.repeat.set(repeatX, repeatY));
 
-                building.updateMatrixWorld(); 
-                const buildingBox = new THREE.Box3().setFromObject(building);
+        highMesh.castShadow = highMesh.receiveShadow = true;
 
-                building.userData.collider = buildingBox;
-                building.userData.isBuilding = true;
-                buildings.push(building);
-            }
-        }
+        // ---- LOW-DETAIL (level 1) ----
+        const lowId = highMat.name || 'default';  // Use facade ID or default
+        const lowMat = getLowDetailMaterial(lowId);
+        const lowGeo = new THREE.BoxGeometry(width, height, depth);  // Same geo, no textures
+        const lowMesh = new THREE.Mesh(lowGeo, lowMat);
+        lowMesh.castShadow = lowMesh.receiveShadow = true;
+
+        // ---- CREATE LOD OBJECT ----
+        const lod = new LOD();
+        lod.addLevel(highMesh, 0);    // High at < 200 units
+        lod.addLevel(lowMesh, 150);   // Low at > 200 units
+
+        lod.position.set(
+            x * cellSize - offset,
+            height / 2,
+            z * cellSize - offset
+        );
+
+        scene.add(lod);
+
+        // ---- COLLIDER & USER-DATA (on LOD object) ----
+        lod.updateMatrixWorld();
+        const buildingBox = new THREE.Box3().setFromObject(lod);
+        lod.userData.collider = buildingBox;
+        lod.userData.isBuilding = true;
+        buildings.push(lod);  // Push LOD instead of mesh
     }
+}
+
 
 
     
@@ -319,7 +372,7 @@ export async function createLevel(TEST_MODE = false) {  // ← ADD TEST_MODE par
     });
     scene.add(roadGroup);
 
-// === SIDEWALKS AROUND BUILDINGS ===
+// === SIDEWALKS AROUND BUILDINGS (LOD-SAFE) ===
 const sidewalks = new THREE.Group();
 const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a });
 const sidewalkHeight = 0.4;
@@ -327,14 +380,18 @@ const sidewalkWidth = 4; // distance from building wall
 const sidewalkThickness = 5; // how wide the sidewalk strip is
 
 for (const building of buildings) {
-    const { x, z } = building.position;
+    // LOD has no .geometry → get size from collider (already computed)
+    const box = building.userData.collider;
+    if (!box) continue;
+
     const size = new THREE.Vector3();
-    building.geometry.computeBoundingBox();
-    building.geometry.boundingBox.getSize(size);
+    box.getSize(size);
 
     const halfW = size.x / 2;
     const halfD = size.z / 2;
-    const y = sidewalkHeight / 2; // slightly above ground
+    const x = building.position.x;
+    const z = building.position.z;
+    const y = sidewalkHeight / 2;
 
     // FRONT sidewalk
     const frontGeo = new THREE.BoxGeometry(size.x + sidewalkWidth * 2, sidewalkHeight, sidewalkThickness);

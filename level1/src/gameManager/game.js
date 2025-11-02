@@ -7,6 +7,7 @@ import { updateFlying } from "../physics/flight.js";
 import { getSpeedBoostState } from "../physics/flight.js";
 import { getWalkSpeedBoostState as getWalkBoostState } from "../physics/movement.js";
 import { enableCollisionDebug } from "../physics/movement.js";
+import { AudioListener, Audio, PositionalAudio } from 'three';   
 
 
 
@@ -25,6 +26,8 @@ export class Game {
         this.prevFlyToggle = false;
         this.flyState = { isAscendingToFly: false, targetFlyHeight: 0 };
         this.gameLoaded = false;
+        this.isPaused = false;  
+        this.pauseStartTime = 0;
 
         // Timer & Medals
         this.gameTime = 5 * 60;
@@ -38,6 +41,8 @@ export class Game {
         this.medalElement = null;
         this.controlsElement = null;
         this.loadProgressBar = null;
+
+        
 
         // Loading state
         this.loadingProgress = 0;
@@ -57,11 +62,13 @@ export class Game {
         this._requestLock = this._requestLock.bind(this);
         this._startGame = this._startGame.bind(this);
         this._updateLoadProgress = this._updateLoadProgress.bind(this);
+        this._togglePause = this._togglePause.bind(this);  // ← NEW: Pause toggle
 
         // Event listeners
         this.renderer.domElement.addEventListener('click', this._requestLock);
         document.addEventListener('pointerlockchange', this._onPointerLockChange);
-
+        document.addEventListener('keydown', this._togglePause);  // ← NEW: ESC listener
+        
         // Show welcome + start loading
         this._showWelcomeScreen();
         this._loadLevel();
@@ -106,6 +113,7 @@ export class Game {
     }
 }
 
+
     _updateLoadProgress() {
         if (!this.loadProgressBar) return;
 
@@ -127,109 +135,179 @@ export class Game {
         }
     }
 
-    _showWelcomeScreen() {
-        if (this.welcomeScreen) this.welcomeScreen.remove();
+_showWelcomeScreen() {
+    if (this.welcomeScreen) this.welcomeScreen.remove();
 
-        this.welcomeScreen = document.createElement('div');
-        this.welcomeScreen.id = 'welcome-screen';
-        this.welcomeScreen.style.cssText = `
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(135deg, #0c0c2f 0%, #1a0033 50%, #000 100%);
-            color: white; font-family: 'Arial Black', Arial, sans-serif;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 9999; text-align: center; padding: 40px; box-sizing: border-box;
-            box-shadow: inset 0 0 100px rgba(0,255,255,0.1);
-        `;
+    this.welcomeScreen = document.createElement('div');
+    this.welcomeScreen.id = 'welcome-screen';
+    this.welcomeScreen.style.cssText = `
+        position:fixed; inset:0;
+        background:linear-gradient(to bottom, #1b1f3b 0%, #0a0a1a 70%, #000 100%);
+        color:#fff; font-family:'Segoe UI','Poppins','Arial',sans-serif;
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        z-index:9999; text-align:center; overflow:hidden;
+        padding:40px; box-sizing:border-box;
+        animation:fadeIn 1.5s ease forwards;
+    `;
 
-        this.welcomeScreen.innerHTML = `
-            <div style="animation: glow 2s ease-in-out infinite alternate;">
-                <h1 style="
-                    font-size: clamp(48px, 8vw, 80px); margin: 0; 
-                    background: linear-gradient(45deg, #00ffff, #ff00ff, #ffff00);
-                    background-size: 300% 300%; -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent; background-clip: text;
-                    text-shadow: 0 0 40px #00ffff;
-                    filter: drop-shadow(0 0 20px #00ffff);
-                ">
-                    Pigeon Sim 3000
-                </h1>
-            </div>
-            <p style="
-                font-size: clamp(18px, 3vw, 28px); margin: 30px 0; 
-                color: #a0d8ff; text-shadow: 0 0 10px #00ffff;
-                max-width: 600px;
-            ">
-                Collect all glowing tokens before time runs out! Use flying and speed boosts to dominate.
-            </p>
+    // -----------------------------------------------------------------
+    // 1. Background skyline with glowing lights
+    // -----------------------------------------------------------------
+    const skylineHTML = `
+        <div style="
+            position:absolute; bottom:0; left:0; width:100%; height:220px;
+            background:linear-gradient(to top, rgba(0,0,0,0.9) 10%, transparent 100%);
+            mask-image:url('data:image/svg+xml;utf8,
+                <svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 1000 200\\">
+                    <path d=\\"M0,200 L0,130 L50,120 L80,90 L120,110 L160,60 L200,80 L240,100 
+                    L280,70 L320,130 L360,110 L400,150 L440,100 L480,130 L520,80 L560,120 
+                    L600,90 L640,100 L680,70 L720,140 L760,90 L800,120 L840,80 L880,110 
+                    L920,90 L960,130 L1000,100 L1000,200 Z\\" fill='white'/>
+                </svg>
+        </div>
+        <div style="
+            position:absolute; bottom:0; left:0; width:100%; height:100%;
+            background:radial-gradient(circle at 50% 70%, rgba(255,180,100,0.25) 0%, transparent 60%),
+                        radial-gradient(circle at 30% 80%, rgba(255,255,150,0.15) 0%, transparent 60%);
+            z-index:-1;
+        "></div>
+    `;
 
+    // -----------------------------------------------------------------
+    // 2. Title
+    // -----------------------------------------------------------------
+    const titleHTML = `
+        <div style="margin-bottom:30px; animation:fadeInUp 1.5s .3s forwards; opacity:0;">
+            <h1 style="
+                font-size:clamp(48px,8vw,90px);
+                margin:0;
+                background:linear-gradient(45deg,#b0e0ff,#ffffff,#d0f0ff);
+                background-size:300%; -webkit-background-clip:text;
+                background-clip:text; -webkit-text-fill-color:transparent;
+                text-shadow:0 0 20px rgba(255,255,255,.3);
+                animation:gradientShift 8s linear infinite;
+            ">Pigeon Sim 3000</h1>
+        </div>`;
+
+    // -----------------------------------------------------------------
+    // 3. Tagline
+    // -----------------------------------------------------------------
+    const taglineHTML = `
+        <p style="
+            font-size:clamp(18px,3vw,26px);
+            color:#cde9ff; text-shadow:0 0 10px rgba(100,180,255,0.3);
+            margin:20px 0 40px; max-width:700px;
+            opacity:0; animation:fadeInUp 1.5s .6s forwards;
+        ">
+            Glide through New York’s twilight skyline — every rooftop, every gust, every feather counts.
+            <br><strong>Take flight. Own the city.</strong>
+        </p>`;
+
+    // -----------------------------------------------------------------
+    // 4. Controls
+    // -----------------------------------------------------------------
+    const controlsHTML = `
+        <div style="
+            background:rgba(255,255,255,.05); backdrop-filter:blur(10px);
+            border:1px solid rgba(255,255,255,.15); border-radius:18px;
+            padding:22px; margin:20px 0; max-width:540px; width:90%;
+            box-shadow:0 8px 30px rgba(0,0,0,.4);
+            opacity:0; animation:fadeInUp 1.5s .9s forwards;
+        ">
+            <h3 style="color:#ffd700; margin:0 0 14px; font-size:22px;">Quick Controls</h3>
             <div style="
-                background: rgba(255,255,255,0.08); backdrop-filter: blur(10px);
-                padding: 25px; border-radius: 20px; margin: 20px; max-width: 500px;
-                border: 1px solid rgba(0,255,255,0.3);
+                display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+                gap:10px; font-size:16px; color:#e0f7ff;
             ">
-                <h3 style="color: #ffd700; margin: 0 0 15px 0; font-size: 22px;">
-                    🎮 QUICK START
-                </h3>
-                <div style="display: flex; justify-content: space-between; font-size: 16px;">
-                    <span>WASD</span><span>Move</span>
-                    <span>Mouse</span><span>Look</span>
-                    <span>F</span><span>Fly</span>
-                    <span>SPACE</span><span>Jump</span>
-
-                </div>
+                <div><kbd>WASD</kbd> Move</div>
+                <div><kbd>Mouse</kbd> Look</div>
+                <div><kbd>F</kbd> Fly</div>
+                <div><kbd>SPACE</kbd> Jump</div>
             </div>
+        </div>`;
 
-            <div id="progress-container" style="
-                margin: 40px 0; width: 400px; height: 20px;
-                background: rgba(0,0,0,0.5); border-radius: 10px;
-                border: 2px solid #00ffff; overflow: hidden;
-            ">
-                <div id="load-progress-bar" style="
-                    height: 100%; width: 0%; background: #666;
-                    transition: width 0.3s ease, background 0.5s;
-                    border-radius: 8px;
-                "></div>
-            </div>
+    // -----------------------------------------------------------------
+    // 5. Progress bar
+    // -----------------------------------------------------------------
+    const progressHTML = `
+        <div id="progress-container" style="
+            margin:40px 0; width:min(420px,80%); height:24px;
+            background:rgba(0,0,0,.4); border-radius:12px;
+            border:1px solid rgba(255,255,255,.2); overflow:hidden;
+            opacity:0; animation:fadeInUp 1.5s 1.2s forwards;
+        ">
+            <div id="load-progress-bar" style="
+                height:100%; width:0%;
+                background:linear-gradient(90deg,#00ccff,#00ffaa);
+                transition:width .3s ease;
+            "></div>
+        </div>`;
 
-            <button id="start-game-btn" style="
-                padding: 18px 50px; font-size: 24px; font-weight: bold;
-                background: linear-gradient(45deg, #00ff88, #00cc66);
-                color: black; border: none; border-radius: 50px;
-                cursor: pointer; box-shadow: 0 10px 30px rgba(0,255,136,0.4);
-                transition: all 0.3s; position: relative; overflow: hidden;
-                text-transform: uppercase; letter-spacing: 2px;
-            " disabled>
-                Loading Level...
-            </button>
+    // -----------------------------------------------------------------
+    // 6. Start button (responsive)
+    // -----------------------------------------------------------------
+    const buttonHTML = `
+        <button id="start-game-btn" style="
+            padding:clamp(12px,2vw,20px) clamp(36px,6vw,60px);
+            font-size:clamp(18px,2.5vw,26px); font-weight:600;
+            background:linear-gradient(45deg,#00ffaa,#00cc88);
+            color:#001; border:none; border-radius:50px;
+            cursor:pointer; box-shadow:0 10px 30px rgba(0,255,136,.5);
+            transition:transform .2s, box-shadow .2s;
+            text-transform:uppercase; letter-spacing:1.5px;
+            opacity:0; animation:fadeInUp 1.5s 1.5s forwards;
+            width:auto; max-width:90%;
+        " disabled>
+            Loading...
+        </button>`;
 
-            <style>
-                @keyframes glow {
-                    0% { filter: drop-shadow(0 0 20px #00ffff); }
-                    100% { filter: drop-shadow(0 0 40px #00ffff); }
-                }
-                #start-game-btn:not([disabled]):hover {
-                    transform: translateY(-3px) scale(1.05);
-                    box-shadow: 0 15px 40px rgba(0,255,136,0.6);
-                }
-                #start-game-btn:not([disabled]) {
-                    animation: pulse 2s infinite;
-                }
-                @keyframes pulse {
-                    0%, 100% { box-shadow: 0 10px 30px rgba(0,255,136,0.4); }
-                    50% { box-shadow: 0 10px 40px rgba(0,255,136,0.7); }
-                }
-            </style>
-        `;
+    // -----------------------------------------------------------------
+    // 7. Global CSS
+    // -----------------------------------------------------------------
+    const styleHTML = `
+        <style>
+            @keyframes fadeIn {from{opacity:0;} to{opacity:1;}}
+            @keyframes fadeInUp {from{opacity:0; transform:translateY(30px);} to{opacity:1; transform:translateY(0);}}
+            @keyframes gradientShift {0%{background-position:0% 50%;} 100%{background-position:100% 50%;}}
+            @keyframes buttonPulse {
+                0%,100% { box-shadow:0 10px 30px rgba(0,255,136,.5); }
+                50% { box-shadow:0 15px 40px rgba(0,255,136,.8); }
+            }
+            #start-game-btn:not([disabled]) {
+                animation:buttonPulse 2.5s infinite;
+            }
+            #start-game-btn:not([disabled]):hover {
+                transform:translateY(-3px) scale(1.05);
+                box-shadow:0 15px 45px rgba(0,255,136,.7);
+            }
+            #start-game-btn:not([disabled]):active {
+                transform:translateY(-1px) scale(1.02);
+            }
+            kbd {
+                background:#111; color:#00ffff;
+                padding:2px 6px; border-radius:4px;
+                font-family:monospace; font-size:14px;
+            }
+        </style>`;
 
-        document.body.appendChild(this.welcomeScreen);
+    // -----------------------------------------------------------------
+    // Assemble all parts
+    // -----------------------------------------------------------------
+    this.welcomeScreen.innerHTML =
+        skylineHTML + titleHTML + taglineHTML + controlsHTML + progressHTML + buttonHTML + styleHTML;
 
-        // Cache elements
-        this.loadProgressBar = document.getElementById('load-progress-bar');
-        document.getElementById('start-game-btn').addEventListener('click', this._startGame);
+    document.body.appendChild(this.welcomeScreen);
 
-        // Start progress updates
-        this.progressInterval = setInterval(this._updateLoadProgress, 50);
-    }
+    // Cache references
+    this.loadProgressBar = document.getElementById('load-progress-bar');
+    const startBtn = document.getElementById('start-game-btn');
+    startBtn.addEventListener('click', this._startGame);
+
+    // Fake loading animation
+    this.progressInterval = setInterval(this._updateLoadProgress, 50);
+}
+
+
 
     _startGame() {
         if (!this.gameLoaded) return;
@@ -280,8 +358,9 @@ export class Game {
             <div style="font-weight: bold; color: #00ffff; margin-bottom: 8px;">CONTROLS</div>
             <div>WASD: Move</div>
             <div>Mouse: Look</div>
-            <div>SPACE: Fly</div>
-            <div>SHIFT: Boost</div>
+            <div>F: Fly</div>
+            <div>SPACE: Jump <div>
+            <div>tip: toggle V<div>
         `;
         document.body.appendChild(this.controlsElement);
     }
@@ -373,6 +452,124 @@ export class Game {
         this.medalElement.style.background = color;
         this.medalElement.style.opacity = '1';
         this.medalElement.style.borderColor = color;
+    }
+
+    _togglePause(e) {
+        if (e.key !== 'Escape' || !this.gameLoaded || !this.timerRunning) return;
+        
+        e.preventDefault();
+        this.isPaused = !this.isPaused;
+        
+        if (this.isPaused) {
+            this._showPauseMenu();
+            // Pause timer
+            this.pauseStartTime = performance.now();
+            // Exit pointer lock
+            document.exitPointerLock();
+        } else {
+            this._hidePauseMenu();
+            // Resume timer (adjust gameStartTime)
+            const pauseDuration = (performance.now() - this.pauseStartTime) / 1000;
+            this.gameStartTime += pauseDuration * 1000;
+            // Re-lock pointer
+            this._requestLock();
+        }
+    }
+
+    // ← NEW: Show pause menu
+    _showPauseMenu() {
+        if (this.pauseMenuElement) return;
+
+        this.pauseMenuElement = document.createElement('div');
+        this.pauseMenuElement.id = 'pause-menu';
+        this.pauseMenuElement.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 30, 0.85); backdrop-filter: blur(5px);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10000; color: white; font-family: 'Arial Black', Arial;
+            text-align: center; cursor: pointer;
+        `;
+
+        this.pauseMenuElement.innerHTML = `
+            <div style="margin-bottom: 40px;">
+                <h1 style="
+                    font-size: 64px; margin: 0; color: #00ffff;
+                    text-shadow: 0 0 20px #00ffff; letter-spacing: 4px;
+                ">PAUSED</h1>
+                <p style="font-size: 20px; color: #a0d8ff; margin: 10px 0;">
+                    Items: ${this.score}/${this.totalCollectibles} | Time: ${this.timerElement?.textContent || '5:00'}
+                </p>
+            </div>
+            <div style="
+                background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
+                border-radius: 20px; padding: 30px; max-width: 400px;
+                border: 1px solid rgba(0,255,255,0.3);
+            ">
+                <button id="resume-btn" style="
+                    display: block; width: 200px; margin: 10px auto; padding: 15px;
+                    background: linear-gradient(45deg, #00ff88, #00cc66); color: black;
+                    border: none; border-radius: 10px; font-size: 18px; font-weight: bold;
+                    cursor: pointer; transition: all 0.3s;
+                ">Resume (ESC)</button>
+                <button id="restart-btn" style="
+                    display: block; width: 200px; margin: 10px auto; padding: 15px;
+                    background: linear-gradient(45deg, #ff6b6b, #ee5a52); color: white;
+                    border: none; border-radius: 10px; font-size: 18px; font-weight: bold;
+                    cursor: pointer; transition: all 0.3s;
+                ">Restart Level</button>
+                <button id="quit-btn" style="
+                    display: block; width: 200px; margin: 10px auto; padding: 15px;
+                    background: linear-gradient(45deg, #667eea, #764ba2); color: white;
+                    border: none; border-radius: 10px; font-size: 18px; font-weight: bold;
+                    cursor: pointer; transition: all 0.3s;
+                ">Quit to Menu</button>
+            </div>
+            <style>
+                #pause-menu button:hover {
+                    transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                }
+                #pause-menu h1 { animation: glow 2s ease-in-out infinite alternate; }
+                @keyframes glow { 0% { text-shadow: 0 0 20px #00ffff; } 100% { text-shadow: 0 0 30px #00ffff; } }
+            </style>
+        `;
+
+        document.body.appendChild(this.pauseMenuElement);
+
+        // Add event listeners
+        document.getElementById('resume-btn').addEventListener('click', this._togglePause);
+        document.getElementById('restart-btn').addEventListener('click', () => location.reload());
+        document.getElementById('quit-btn').addEventListener('click', () => {
+            this._showWelcomeScreen();
+            this._endGame();  // Clean up current game
+        });
+
+        // Block all input during pause
+        document.addEventListener('keydown', this._blockInput);
+        document.addEventListener('mousemove', this._blockMouse);
+    }
+
+    // ← NEW: Hide pause menu
+    _hidePauseMenu() {
+        if (!this.pauseMenuElement) return;
+
+        this.pauseMenuElement.remove();
+        this.pauseMenuElement = null;
+
+        // Re-enable input
+        document.removeEventListener('keydown', this._blockInput);
+        document.removeEventListener('mousemove', this._blockMouse);
+    }
+
+    // ← NEW: Block input during pause
+    _blockInput(e) {
+        e.preventDefault();
+        return false;
+    }
+
+    // ← NEW: Block mouse during pause
+    _blockMouse(e) {
+        e.preventDefault();
+        return false;
     }
 
     _endGame() {
