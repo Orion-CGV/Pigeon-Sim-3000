@@ -6,7 +6,7 @@ import * as CANNON from 'cannon-es';
 let scene, camera, renderer, labelRenderer;
 let world;
 let returnCallback;
-
+let rainbowCubes = [];
 let secondDoorOpenable = false;
 let platesOccupied = {
     plate13: false,
@@ -19,6 +19,68 @@ let plateTimers = {
     plate1: null
 };
 let firstDoorOpenable = false;
+let lavaTime = 0;
+const lavaMaterials = []; // Store lava materials for animation
+let floor4Mesh, floor8Mesh, floor9Mesh;
+let numberPlatesOccupied = {
+    four: false,
+    five: false,
+    six: false,
+    seven: false
+};
+let numberPlateTimers = {
+    four: null,
+    five: null,
+    six: null,
+    seven: null
+};
+let door7Openable = false;
+
+// Add new variables for door 8 plates
+let numberPlates2Occupied = {
+    four2: false,
+    five2: false,
+    one2: false
+};
+let numberPlate2Timers = {
+    four2: null,
+    five2: null,
+    one2: null
+};
+let door8Openable = false;
+
+// Add new variables for door 9 plates
+let numberPlates3Occupied = {
+    one3: false,
+    two3: false,
+    three3: false,
+    four3: false,
+    five3: false,
+    six3: false,
+    seven3: false
+};
+let numberPlate3Timers = {
+    one3: null,
+    two3: null,
+    three3: null,
+    four3: null,
+    five3: null,
+    six3: null,
+    seven3: null
+};
+let door9Openable = false;
+
+// Add color mapping for rainbow cubes
+const rainbowColorMapping = {
+    'violet': 'one3',
+    'indigo': 'two3', 
+    'blue': 'three3',
+    'green': 'four3',
+    'yellow': 'five3',
+    'orange': 'six3',
+    'red': 'seven3'
+};
+
 let cubeOnPlateTimer = null;
 
 // ADD THIS LINE - Define platePositions at module level
@@ -57,6 +119,7 @@ let doorPromptDiv = null;                  // UI element
 const raycaster = new THREE.Raycaster();  // reused for door & camera
 
 let player = null;                         // reference to the physics box mesh
+let gunModel = null;
 
 // ── BULLETS & MOVABLE CUBES ───────────────────────────────────────
 const BULLET_SPEED = 60;               // units/second
@@ -194,7 +257,7 @@ function checkGoalCondition() {
     if (!boxBody || goalReached) return;
     
     const playerPos = boxBody.position;
-    const goalPos = new CANNON.Vec3(-51.39, 6, 0.6997);
+    const goalPos = new CANNON.Vec3(-53, 6, 0.6997);
     const distance = playerPos.distanceTo(goalPos);
     
     if (distance < 2) {
@@ -327,6 +390,15 @@ function createPuzzleElements() {
     createMovableBox(new THREE.Vector3(14, 1, -30));
     createMovableBox(new THREE.Vector3( 20, 1, 0));
     createMovableBox(new THREE.Vector3( 19, 1, 10));
+    // hall 6
+    createMovableBox(new THREE.Vector3(-20, 1, -30));
+    createMovableBox(new THREE.Vector3( -20, 1, 0));
+    createMovableBox(new THREE.Vector3( -20, 1, -20));
+    createMovableBox(new THREE.Vector3(-20, 1, -10));
+    // hall 7
+    createMovableBox(new THREE.Vector3(-30, 1, -30));
+    createMovableBox(new THREE.Vector3( -30, 1, 0));
+    createMovableBox(new THREE.Vector3( -30, 1, -20));
 }
 
 export function initLevel(levelScene, levelCamera, levelRenderer, levelLabelRenderer, callback) {
@@ -448,15 +520,19 @@ floor3Mesh.userData.physicsBody = floor3Body;
 
 // Inside setupScene(), after the cyan platform creation
 // Create fourth platform mesh (magenta)
-const floor4Geo = new THREE.PlaneGeometry(12.5, 29.3); // Width=12.5, Depth=29.3
-const floor4Mat = new THREE.MeshBasicMaterial({
-    color: 0xff00ff, // Magenta gonna die if touched
-    side: THREE.DoubleSide
+// Create fourth platform mesh (lava)
+const floor4Geo = new THREE.PlaneGeometry(12.5, 29.3);
+const floor4Mat = new THREE.MeshStandardMaterial({
+    color: 0xff2200,
+    emissive: 0xff2200,
+    emissiveIntensity: 0.8,
+    roughness: 0.9,
+    metalness: 0.1
 });
-const floor4Mesh = new THREE.Mesh(floor4Geo, floor4Mat);
-floor4Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-floor4Mesh.position.set(31.25, -2, 15.35); // Center at (31.25, -2, 15.35)
-floor4Mesh.receiveShadow = true; // Match ground and platform settings
+floor4Mesh = new THREE.Mesh(floor4Geo, floor4Mat);
+floor4Mesh.rotation.x = -Math.PI / 2;
+floor4Mesh.position.set(31.25, -2, 15.35);
+floor4Mesh.receiveShadow = true;
 scene.add(floor4Mesh);
 
 // Create fourth physics platform body
@@ -550,16 +626,19 @@ floorBodies.push(floor7Body); // Add to floor bodies array
 // Store reference for synchronization
 floor7Mesh.userData.physicsBody = floor7Body;
 
-// Create eighth platform mesh (red)
-const floor8Geo = new THREE.PlaneGeometry(12.5, 75); // Width=12.5, Depth=75
-const floor8Mat = new THREE.MeshBasicMaterial({
-    color: 0xff0000, // Red gonna die if touch
-    side: THREE.DoubleSide
+// Create eighth platform mesh (lava)
+const floor8Geo = new THREE.PlaneGeometry(12.5, 75);
+const floor8Mat = new THREE.MeshStandardMaterial({
+    color: 0xff2200,
+    emissive: 0xff2200,
+    emissiveIntensity: 0.8,
+    roughness: 0.9,
+    metalness: 0.1
 });
-const floor8Mesh = new THREE.Mesh(floor8Geo, floor8Mat);
-floor8Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-floor8Mesh.position.set(6.25, -2, 0.2); // Center at (6.25, -2, 0.2)
-floor8Mesh.receiveShadow = true; // Match ground and platform settings
+floor8Mesh = new THREE.Mesh(floor8Geo, floor8Mat);
+floor8Mesh.rotation.x = -Math.PI / 2;
+floor8Mesh.position.set(6.25, -2, 0.2);
+floor8Mesh.receiveShadow = true;
 scene.add(floor8Mesh);
 
 // Create eighth physics platform body
@@ -577,15 +656,19 @@ floor8Mesh.userData.physicsBody = floor8Body;
 
 // Inside setupScene(), after the red platform creation
 // Create ninth platform mesh (lime)
-const floor9Geo = new THREE.PlaneGeometry(12.5, 93.865); // Width=12.5, Depth=93.865
-const floor9Mat = new THREE.MeshBasicMaterial({
-    color: 0x00ff00, // Lime gonna die
-    side: THREE.DoubleSide
+// Create ninth platform mesh (lava)
+const floor9Geo = new THREE.PlaneGeometry(12.5, 93.865);
+const floor9Mat = new THREE.MeshStandardMaterial({
+    color: 0xff2200,
+    emissive: 0xff2200,
+    emissiveIntensity: 0.8,
+    roughness: 0.9,
+    metalness: 0.1
 });
-const floor9Mesh = new THREE.Mesh(floor9Geo, floor9Mat);
-floor9Mesh.rotation.x = -Math.PI / 2; // Rotate to lie flat (like ground)
-floor9Mesh.position.set(-6.25, -2, -3.0675); // Center at (-6.25, -2, -3.0675)
-floor9Mesh.receiveShadow = true; // Match ground and platform settings
+floor9Mesh = new THREE.Mesh(floor9Geo, floor9Mat);
+floor9Mesh.rotation.x = -Math.PI / 2;
+floor9Mesh.position.set(-6.25, -2, -3.0675);
+floor9Mesh.receiveShadow = true;
 scene.add(floor9Mesh);
 
 // Create ninth physics platform body
@@ -1951,6 +2034,10 @@ floorBodies.push(floor20Body); // Add to floor bodies array
 // Store reference for synchronization
 floor20Mesh.userData.physicsBody = floor20Body;
 
+
+const lavaMats = updateDeadlyFloorsWithLava();
+    lavaMaterials.push(...lavaMats);
+
     // Define positions for the 13 models (you can tweak these coordinates)
     const modelPositions = [
         new THREE.Vector3(38.5, 5, 45),   // Model 1
@@ -2099,17 +2186,51 @@ floor20Mesh.userData.physicsBody = floor20Body;
         }
     });
 
+    // Add clock model
+const clockLoader = new GLTFLoader();
+clockLoader.load(
+    './clock.glb',
+    (gltf) => {
+        const clock = gltf.scene;
+        clock.position.set(-18.8, 5, 49.9);
+        
+        // Scale if needed (adjust as necessary)
+        clock.scale.set(1, 1, 1);
+        clock.rotation.y = Math.PI/2;
+        
+        // Enable shadows
+        clock.traverse(child => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+        
+        scene.add(clock);
+        console.log('clock.glb loaded at position (-18.8, 5, 49.9)');
+    },
+    undefined,
+    (error) => {
+        console.error('Error loading clock.glb:', error);
+    }
+);
+
 
 
     // Add some sample objects to test physics
     addPlayer();
     createBuilding();
     createPuzzleElements();
+    createRainbowCubes();
 
     createUI();                 // <── NEW
     requestPointerLock();
     initInput();
 initShooting();   // ← NEW
+loadSignModels();
+loadNumberModels();
+loadNumberModels2(); 
+loadNumberModels3();
 }
 function createUI() {
     // Title
@@ -2327,6 +2448,7 @@ function jump() {
     }
 }
 
+// Update the addPlayer function to include the gun
 function addPlayer() {
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const boxMat = new THREE.MeshStandardMaterial({ color: 0xff5555 });
@@ -2363,7 +2485,42 @@ function addPlayer() {
     pitch = 0;     // Reset pitch to level
     
     console.log("Player spawned facing positive Z direction");
+
+    // 🔥 ADD SCIFI GUN MODEL
+    loadGunModel();
 }
+
+// Add this new function to load and position the gun
+function loadGunModel() {
+    const loader = new GLTFLoader();
+    loader.load(
+        './scifi_gun.glb',
+        (gltf) => {
+            gunModel = gltf.scene;
+            
+            // Scale the gun to appropriate size
+            gunModel.scale.set(0.1, 0.1, 0.1);
+            
+            // Enable shadows for the gun
+            gunModel.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            
+            // Add the gun to the scene
+            scene.add(gunModel);
+            
+            console.log("Sci-fi gun loaded and positioned for first-person view");
+        },
+        undefined,
+        (error) => {
+            console.error('Failed to load scifi_gun.glb', error);
+        }
+    );
+}
+
 function checkBulletCollisions(bullet, i) {
     const bb = new THREE.Box3().setFromObject(bullet.mesh);
     for (const box of movableBoxes) {
@@ -2388,6 +2545,9 @@ function checkBulletCollisions(bullet, i) {
 export function updateLevel() {
     const delta = 1 / 60;
     world.step(delta);
+
+    // Animate lava
+    animateLava(delta);
     // ADD THIS LINE - Check for goal condition
     checkGoalCondition();
 
@@ -2620,37 +2780,76 @@ scene.traverse(obj => {
     // ── UI PROMPT ─────────────────────────────────────────────────────
     const targeted = getTargetedDoor();
 
-    // Update door prompt based on current state
     if (targeted) {
-        const doorIndex = doors.indexOf(targeted);
-    
-        if (doorIndex === 0) {
-            // First door logic
-            if (firstDoorOpenable) {
-                doorPromptDiv.textContent = 'Press E to open';
-                doorPromptDiv.style.display = 'block';
-            } else {
-                doorPromptDiv.textContent = 'Place cube on plate to unlock';
-                doorPromptDiv.style.display = 'block';
-            }
-        } else if (doorIndex === 1) {
-            // Second door logic
-            if (secondDoorOpenable) {
-                doorPromptDiv.textContent = 'Press E to open';
-                doorPromptDiv.style.display = 'block';
-            } else {
-                const occupiedCount = Object.values(platesOccupied).filter(Boolean).length;
-                doorPromptDiv.textContent = `Place cubes on plates (${occupiedCount}/3 occupied)`;
-                doorPromptDiv.style.display = 'block';
-            }
-        } else {
-            // Other doors (always openable)
+    const doorIndex = doors.indexOf(targeted);
+
+    if (doorIndex === 0) {
+        // First door logic
+        if (firstDoorOpenable) {
             doorPromptDiv.textContent = 'Press E to open';
             doorPromptDiv.style.display = 'block';
+        } else {
+            doorPromptDiv.textContent = 'Place cube on plate to unlock';
+            doorPromptDiv.style.display = 'block';
         }
+    } else if (doorIndex === 1) {
+        // Second door logic
+        if (secondDoorOpenable) {
+            doorPromptDiv.textContent = 'Press E to open';
+            doorPromptDiv.style.display = 'block';
+        } else {
+            const occupiedCount = Object.values(platesOccupied).filter(Boolean).length;
+            doorPromptDiv.textContent = `Place cubes on plates (${occupiedCount}/3 occupied)`;
+            doorPromptDiv.style.display = 'block';
+        }
+    } else if (doorIndex === 6) {
+        // Door 7 logic
+        if (door7Openable) {
+            doorPromptDiv.textContent = 'Press E to open';
+            doorPromptDiv.style.display = 'block';
+        } else {
+            const occupiedCount = Object.values(numberPlatesOccupied).filter(Boolean).length;
+            doorPromptDiv.textContent = `Place cubes on number plates (${occupiedCount}/4 occupied)`;
+            doorPromptDiv.style.display = 'block';
+        }
+    } else if (doorIndex === 7) {
+        // Door 8 logic
+        if (door8Openable) {
+            doorPromptDiv.textContent = 'Press E to open';
+            doorPromptDiv.style.display = 'block';
+        } else {
+            const occupiedCount = Object.values(numberPlates2Occupied).filter(Boolean).length;
+            doorPromptDiv.textContent = `Place cubes on plates 4, 5, and 1 (${occupiedCount}/3 occupied)`;
+            doorPromptDiv.style.display = 'block';
+        }
+    } 
+    // In the UI PROMPT section of updateLevel(), add this condition:
+ else if (doorIndex === 8) {
+    // Door 9 logic
+    if (door9Openable) {
+        doorPromptDiv.textContent = 'Press E to open';
+        doorPromptDiv.style.display = 'block';
     } else {
-        doorPromptDiv.style.display = 'none';
+        const occupiedCount = Object.values(numberPlates3Occupied).filter(Boolean).length;
+        doorPromptDiv.textContent = `Place rainbow cubes on correct number plates (${occupiedCount}/7 correct)`;
+        doorPromptDiv.style.display = 'block';
     }
+}
+    else {
+        // Other doors (always openable)
+        doorPromptDiv.textContent = 'Press E to open';
+        doorPromptDiv.style.display = 'block';
+    }
+} else {
+    doorPromptDiv.style.display = 'none';
+}
+
+// Add the number plate check to the updateLevel function
+// In the updateLevel function, add this after the other plate checks:
+// In updateLevel() function, add this after the other plate checks:
+checkNumberPlates();
+checkNumberPlates2();
+checkNumberPlates3(); // Add this line
 
     // ── CAMERA ───────────────────────────────────────────────────────
     updateCamera();
@@ -2685,7 +2884,8 @@ function createBuilding() {
                 new THREE.Vector3(0, 0.01, 47), // Door 4: Near goal
                 new THREE.Vector3(-12.59375, 5.01, -47.25), // Door 5: Near goal
                 new THREE.Vector3(-25, 0.01, 47), // Door 6: Near goal
-                new THREE.Vector3(-37.5, 0.01, -45.25) // Door 7: Near goal
+                new THREE.Vector3(-37.5, 0.01, -45.25), // Door 7: Near goal
+                new THREE.Vector3(-51.5, 5.01, 0.6997) // Door 8: goal
             ];
 
             doorPositions.forEach((position, index) => {
@@ -2697,7 +2897,7 @@ function createBuilding() {
                         door.name = `door_${index}`;
                         
                         // Apply scaling and rotation only to the second door (index 1)
-                        if (index === 1 || index === 2 || index === 3 || index === 4 || index === 5 || index === 6 || index === 7) {
+                        if (index === 1 || index === 2 || index === 3 || index === 4 || index === 5 || index === 6 || index === 7 || index === 8) {
                             // Scale by 2
                             door.scale.set(2, 2, 2);
                             
@@ -2865,12 +3065,22 @@ function getTargetedDoor() {
                 
                 // For first door (index 0), check if it's openable
                 if (doorIndex === 0 && !firstDoorOpenable) {
-                    return null; // First door not openable yet
+                    return null;
                 }
                 
                 // For second door (index 1), check if it's openable
                 if (doorIndex === 1 && !secondDoorOpenable) {
-                    return null; // Second door not openable yet
+                    return null;
+                }
+                
+                // For door 7 (index 6), check if it's openable
+                if (doorIndex === 6 && !door7Openable) {
+                    return null;
+                }
+                
+                // For door 8 (index 7), check if it's openable
+                if (doorIndex === 7 && !door8Openable) {
+                    return null;
                 }
                 
                 return door;
@@ -2959,11 +3169,25 @@ export function cleanupLevel() {
     console.log("Level 3 cleanup started");
     
     // Replace the UI removal block:
-document.querySelectorAll('.game-ui').forEach(el => {
-    if (el.id !== 'victory-message') {  // 🔥 Keep victory, remove ALL else (incl. death)
-        el.remove();
-    }
-});
+    document.querySelectorAll('.game-ui').forEach(el => {
+        if (el.id !== 'victory-message') {  // 🔥 Keep victory, remove ALL else (incl. death)
+            el.remove();
+        }
+    });
+// Clear lava materials
+    lavaMaterials.length = 0;
+    // Clear rainbow cubes
+    rainbowCubes.forEach(cube => {
+        if (cube.userData.physicsBody) {
+            world.removeBody(cube.userData.physicsBody);
+        }
+        scene.remove(cube);
+    });
+    rainbowCubes = [];
+    // Reset floor mesh references
+    floor4Mesh = null;
+    floor8Mesh = null;
+    floor9Mesh = null;
 
     // 2. Remove event listeners
     document.removeEventListener('pointerlockchange', onPointerLockChange);
@@ -2978,6 +3202,20 @@ document.querySelectorAll('.game-ui').forEach(el => {
         }
     });
     
+    Object.keys(numberPlateTimers).forEach(plateKey => {
+        if (numberPlateTimers[plateKey]) {
+            clearTimeout(numberPlateTimers[plateKey]);
+            numberPlateTimers[plateKey] = null;
+        }
+    });
+    
+    Object.keys(numberPlate2Timers).forEach(plateKey => {
+        if (numberPlate2Timers[plateKey]) {
+            clearTimeout(numberPlate2Timers[plateKey]);
+            numberPlate2Timers[plateKey] = null;
+        }
+    });
+    
     if (cubeOnPlateTimer) {
         clearTimeout(cubeOnPlateTimer);
         cubeOnPlateTimer = null;
@@ -2989,16 +3227,50 @@ document.querySelectorAll('.game-ui').forEach(el => {
             world.removeBody(body);
         }
     });
+    // In cleanupLevel(), add these reset lines:
+door9Openable = false;
+
+numberPlates3Occupied = {
+    one3: false,
+    two3: false,
+    three3: false,
+    four3: false,
+    five3: false,
+    six3: false,
+    seven3: false
+};
+
+Object.keys(numberPlate3Timers).forEach(plateKey => {
+    if (numberPlate3Timers[plateKey]) {
+        clearTimeout(numberPlate3Timers[plateKey]);
+        numberPlate3Timers[plateKey] = null;
+    }
+});
 
     // 5. Reset puzzle state
     secondDoorOpenable = false;
     firstDoorOpenable = false;
     goalReached = false;
+    door7Openable = false;
+    door8Openable = false; // 🔥 ADD THIS LINE
     
     platesOccupied = {
         plate13: false,
         plate11: false, 
         plate1: false
+    };
+    
+    numberPlatesOccupied = {
+        four: false,
+        five: false,
+        six: false,
+        seven: false
+    };
+
+    numberPlates2Occupied = { // 🔥 ADD THIS BLOCK
+        four2: false,
+        five2: false,
+        one2: false
     };
 
     doorBodies = [];
@@ -3066,6 +3338,22 @@ function updateCamera() {
     camera.rotation.order = 'YXZ';
     camera.rotation.y = yaw;    // This should be PI (180 degrees) initially
     camera.rotation.x = pitch;  // This should be 0 initially
+    
+    // 🔥 UPDATE GUN POSITION AND ROTATION TO FOLLOW CAMERA
+    if (gunModel) {
+        // Make the gun follow the camera exactly
+        gunModel.position.copy(camera.position);
+        gunModel.rotation.copy(camera.rotation);
+        
+        // Apply additional rotation to make the gun point forward
+        // Adjust these values based on how your gun model is oriented
+        gunModel.rotateY(Math.PI/2); // 180 degrees to face forward
+        
+        // Apply the offset to position it in front of the camera
+        const offset = new THREE.Vector3(0.3, -0.2, -0.5);
+        offset.applyQuaternion(camera.quaternion);
+        gunModel.position.add(offset);
+    }
 }
 
 // Make functions available for the main game loop
@@ -3081,4 +3369,807 @@ function checkSecondDoorUnlock() {
         // For example, change the color of the second door or add a sound
     }
 }
+// Add this function to load and place the sign models
+function loadSignModels() {
+    const signPositions = [
+        { model: 'sixSign', position: new THREE.Vector3(31.25, 5, -49.9) },
+        { model: 'sevenSign', position: new THREE.Vector3(18.5, 5, 49.9) },
+        { model: 'fourSign', position: new THREE.Vector3(6.25, 5, -49.9) },
+        { model: 'fiveSign', position: new THREE.Vector3(-6.25, 5, 49.9) }
+    ];
 
+    signPositions.forEach(signData => {
+        const loader = new GLTFLoader();
+        loader.load(
+            `./${signData.model}.glb`,
+            (gltf) => {
+                const sign = gltf.scene;
+                sign.position.copy(signData.position);
+                
+                // Scale the sign appropriately (adjust as needed)
+                sign.scale.set(1, 1, 1);
+                
+                // Rotate signs to face the appropriate direction
+                if (signData.model === 'sixSign' || signData.model === 'fourSign') {
+                    // Signs at negative Z positions - face positive Z
+                    sign.rotation.y = -Math.PI/2;
+                } else if (signData.model === 'sevenSign' || signData.model === 'fiveSign') {
+                    // Signs at positive Z positions - face negative Z
+                    sign.rotation.y = Math.PI/2;
+                }
+                
+                // Enable shadows
+                sign.traverse(child => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                scene.add(sign);
+                console.log(`${signData.model}.glb loaded at position:`, signData.position);
+            },
+            undefined,
+            (error) => {
+                console.error(`Error loading ${signData.model}.glb:`, error);
+            }
+        );
+    });
+}
+
+// Add this function to load and place the number models
+function loadNumberModels() {
+    const numberPositions = [
+        { model: 'one', position: new THREE.Vector3(-24, 7, 42), plateKey: 'one' },
+        { model: 'two', position: new THREE.Vector3(-24, 7, 39), plateKey: 'two' },
+        { model: 'three', position: new THREE.Vector3(-24, 7, 36), plateKey: 'three' },
+        { model: 'four', position: new THREE.Vector3(-24, 4, 42), plateKey: 'four' },
+        { model: 'five', position: new THREE.Vector3(-24, 4, 39), plateKey: 'five' },
+        { model: 'six', position: new THREE.Vector3(-24, 4, 36), plateKey: 'six' },
+        { model: 'seven', position: new THREE.Vector3(-24, 1, 42), plateKey: 'seven' },
+        { model: 'eight', position: new THREE.Vector3(-24, 1, 39), plateKey: 'eight' },
+        { model: 'nine', position: new THREE.Vector3(-24, 1, 36), plateKey: 'nine' }
+    ];
+
+    numberPositions.forEach(numberData => {
+        const loader = new GLTFLoader();
+        loader.load(
+            `./${numberData.model}.glb`,
+            (gltf) => {
+                const number = gltf.scene;
+                number.position.copy(numberData.position);
+                
+                // Scale the number models appropriately (adjust as needed)
+                number.scale.set(2, 2, 2);
+                
+                // Rotate numbers to face positive Z direction (towards the center)
+                number.rotation.y = Math.PI/2;
+                
+                // Enable shadows
+                number.traverse(child => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                scene.add(number);
+
+                // Create physics body for the number
+                const plate = new CANNON.Body({
+                    shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.1)),
+                    mass: 0
+                });
+                plate.position.copy(numberData.position);
+                plate.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+                world.addBody(plate);
+                
+                // Store plate data for detection
+                plate.userData.isNumberPlate = true;
+                plate.userData.plateKey = numberData.plateKey;
+                plate.userData.platePosition = numberData.position.clone();
+                
+                console.log(`${numberData.model}.glb loaded at position:`, numberData.position);
+            },
+            undefined,
+            (error) => {
+                console.error(`Error loading ${numberData.model}.glb:`, error);
+            }
+        );
+    });
+}
+
+function checkNumberPlates() {
+    if (door7Openable) return; // Skip if door is already openable
+    
+    // Reset all number plate status first
+    let anyPlateChanged = false;
+    
+    // Check each required number plate (four, five, six, seven)
+    const requiredPlates = ['four', 'five', 'six', 'seven'];
+    
+    requiredPlates.forEach(plateKey => {
+        const plateData = getPlateData(plateKey);
+        if (!plateData) return;
+        
+        let cubeOnThisPlate = false;
+        
+        for (const box of movableBoxes) {
+            const boxPos = box.position;
+            const body = box.userData.physicsBody;
+            
+            // Check if cube is on the plate
+            const distanceXZ = Math.sqrt(
+                Math.pow(boxPos.x - plateData.position.x, 2) + 
+                Math.pow(boxPos.z - plateData.position.z, 2)
+            );
+            const heightDiff = Math.abs(boxPos.y - plateData.position.y);
+            
+            // Check if cube is centered on plate and at rest
+            if (distanceXZ < 1.5 && heightDiff < 1.5 && body.velocity.length() < 0.5) {
+                cubeOnThisPlate = true;
+                break;
+            }
+        }
+        
+        // Handle plate timer logic
+        if (cubeOnThisPlate) {
+            if (!numberPlateTimers[plateKey]) {
+                // Start timer when cube first lands on plate
+                numberPlateTimers[plateKey] = setTimeout(() => {
+                    numberPlatesOccupied[plateKey] = true;
+                    console.log(`✅ Number Plate ${plateKey} is now occupied!`);
+                    numberPlateTimers[plateKey] = null;
+                    checkDoor7Unlock();
+                }, 2000);
+            }
+        } else {
+            // Reset timer if cube leaves plate
+            if (numberPlateTimers[plateKey]) {
+                clearTimeout(numberPlateTimers[plateKey]);
+                numberPlateTimers[plateKey] = null;
+                console.log(`⏱️ Timer reset for number plate ${plateKey}`);
+            }
+            // Reset plate status if cube leaves
+            if (numberPlatesOccupied[plateKey]) {
+                numberPlatesOccupied[plateKey] = false;
+                console.log(`❌ Number Plate ${plateKey} is no longer occupied`);
+                door7Openable = false; // Door locks if any plate becomes unoccupied
+            }
+        }
+    });
+}
+
+function getPlateData(plateKey) {
+    const platePositions = {
+        'one': new THREE.Vector3(-24, 7, 42),
+        'two': new THREE.Vector3(-24, 7, 39),
+        'three': new THREE.Vector3(-24, 7, 36),
+        'four': new THREE.Vector3(-24, 4, 42),
+        'five': new THREE.Vector3(-24, 4, 39),
+        'six': new THREE.Vector3(-24, 4, 36),
+        'seven': new THREE.Vector3(-24, 1, 42),
+        'eight': new THREE.Vector3(-24, 1, 39),
+        'nine': new THREE.Vector3(-24, 1, 36)
+    };
+    
+    return {
+        position: platePositions[plateKey],
+        key: plateKey
+    };
+}
+
+function checkDoor7Unlock() {
+    const allRequiredPlatesOccupied = numberPlatesOccupied.four && 
+                                    numberPlatesOccupied.five && 
+                                    numberPlatesOccupied.six && 
+                                    numberPlatesOccupied.seven;
+    
+    if (allRequiredPlatesOccupied && !door7Openable) {
+        door7Openable = true;
+        console.log("🎉 DOOR 7 UNLOCKED! Plates 4, 5, 6, and 7 are occupied!");
+        
+        // Visual feedback - you can add some effect here
+        // For example, change the color of door 7 or add a sound
+    }
+}
+// Add this function to load the number models at the new positions
+function loadNumberModels2() {
+    const numberPositions2 = [
+        { model: 'one', position: new THREE.Vector3(-36.5, 7, -31), plateKey: 'one2' },
+        { model: 'two', position: new THREE.Vector3(-36.5, 7, -34), plateKey: 'two2' },
+        { model: 'three', position: new THREE.Vector3(-36.5, 7, -37), plateKey: 'three2' },
+        { model: 'four', position: new THREE.Vector3(-36.5, 4, -31), plateKey: 'four2' },
+        { model: 'five', position: new THREE.Vector3(-36.5, 4, -34), plateKey: 'five2' },
+        { model: 'six', position: new THREE.Vector3(-36.5, 4, -37), plateKey: 'six2' },
+        { model: 'seven', position: new THREE.Vector3(-36.5, 1, -31), plateKey: 'seven2' },
+        { model: 'eight', position: new THREE.Vector3(-36.5, 1, -34), plateKey: 'eight2' },
+        { model: 'nine', position: new THREE.Vector3(-36.5, 1, -37), plateKey: 'nine2' }
+    ];
+
+    numberPositions2.forEach(numberData => {
+        const loader = new GLTFLoader();
+        loader.load(
+            `./${numberData.model}.glb`,
+            (gltf) => {
+                const number = gltf.scene;
+                number.position.copy(numberData.position);
+                
+                // Scale the number models appropriately (adjust as needed)
+                number.scale.set(2, 2, 2);
+                
+                // Rotate numbers to face positive Z direction (towards the center)
+                number.rotation.y = Math.PI/2;
+                
+                // Enable shadows
+                number.traverse(child => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                scene.add(number);
+
+                // Create physics body for the number
+                const plate = new CANNON.Body({
+                    shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.1)),
+                    mass: 0
+                });
+                plate.position.copy(numberData.position);
+                plate.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+                world.addBody(plate);
+                
+                // Store plate data for detection
+                plate.userData.isNumberPlate = true;
+                plate.userData.plateKey = numberData.plateKey;
+                plate.userData.platePosition = numberData.position.clone();
+                
+                console.log(`${numberData.model}.glb loaded at position:`, numberData.position);
+            },
+            undefined,
+            (error) => {
+                console.error(`Error loading ${numberData.model}.glb:`, error);
+            }
+        );
+    });
+}
+function checkNumberPlates2() {
+    if (door8Openable) return; // Skip if door is already openable
+    
+    // Reset all number plate status first
+    let anyPlateChanged = false;
+    
+    // Check each required number plate (four2, five2, one2)
+    const requiredPlates = ['four2', 'five2', 'one2'];
+    
+    requiredPlates.forEach(plateKey => {
+        const plateData = getPlate2Data(plateKey);
+        if (!plateData) return;
+        
+        let cubeOnThisPlate = false;
+        
+        for (const box of movableBoxes) {
+            const boxPos = box.position;
+            const body = box.userData.physicsBody;
+            
+            // Check if cube is on the plate
+            const distanceXZ = Math.sqrt(
+                Math.pow(boxPos.x - plateData.position.x, 2) + 
+                Math.pow(boxPos.z - plateData.position.z, 2)
+            );
+            const heightDiff = Math.abs(boxPos.y - plateData.position.y);
+            
+            // Check if cube is centered on plate and at rest
+            if (distanceXZ < 1.5 && heightDiff < 1.5 && body.velocity.length() < 0.5) {
+                cubeOnThisPlate = true;
+                break;
+            }
+        }
+        
+        // Handle plate timer logic
+        if (cubeOnThisPlate) {
+            if (!numberPlate2Timers[plateKey]) {
+                // Start timer when cube first lands on plate
+                numberPlate2Timers[plateKey] = setTimeout(() => {
+                    numberPlates2Occupied[plateKey] = true;
+                    console.log(`✅ Number Plate ${plateKey} is now occupied!`);
+                    numberPlate2Timers[plateKey] = null;
+                    checkDoor8Unlock();
+                }, 2000);
+            }
+        } else {
+            // Reset timer if cube leaves plate
+            if (numberPlate2Timers[plateKey]) {
+                clearTimeout(numberPlate2Timers[plateKey]);
+                numberPlate2Timers[plateKey] = null;
+                console.log(`⏱️ Timer reset for number plate ${plateKey}`);
+            }
+            // Reset plate status if cube leaves
+            if (numberPlates2Occupied[plateKey]) {
+                numberPlates2Occupied[plateKey] = false;
+                console.log(`❌ Number Plate ${plateKey} is no longer occupied`);
+                door8Openable = false; // Door locks if any plate becomes unoccupied
+            }
+        }
+    });
+}
+
+function getPlate2Data(plateKey) {
+    const platePositions = {
+        'one2': new THREE.Vector3(-36.5, 7, -31),
+        'two2': new THREE.Vector3(-36.5, 7, -34),
+        'three2': new THREE.Vector3(-36.5, 7, -37),
+        'four2': new THREE.Vector3(-36.5, 4, -31),
+        'five2': new THREE.Vector3(-36.5, 4, -34),
+        'six2': new THREE.Vector3(-36.5, 4, -37),
+        'seven2': new THREE.Vector3(-36.5, 1, -31),
+        'eight2': new THREE.Vector3(-36.5, 1, -34),
+        'nine2': new THREE.Vector3(-36.5, 1, -37)
+    };
+    
+    return {
+        position: platePositions[plateKey],
+        key: plateKey
+    };
+}
+
+function checkDoor8Unlock() {
+    const allRequiredPlatesOccupied = numberPlates2Occupied.four2 && 
+                                    numberPlates2Occupied.five2 && 
+                                    numberPlates2Occupied.one2;
+    
+    if (allRequiredPlatesOccupied && !door8Openable) {
+        door8Openable = true;
+        console.log("🎉 DOOR 8 UNLOCKED! Plates 4, 5, and 1 are occupied!");
+        
+        // Visual feedback - you can add some effect here
+        // For example, change the color of door 8 or add a sound
+    }
+}
+
+function createRainbowCubes() {
+    const rainbowColors = [
+        0xff0000, // Red
+        0xff7f00, // Orange
+        0xffff00, // Yellow
+        0x00ff00, // Green
+        0x0000ff, // Blue
+        0x4b0082, // Indigo
+        0x8b00ff  // Violet
+    ];
+
+    const cubePositions = [
+        new THREE.Vector3(-40, 1,-20),   // Red
+        new THREE.Vector3(-40, 1, -10),   // Orange
+        new THREE.Vector3(-40, 1, 0),   // Yellow
+        new THREE.Vector3(-40, 1, 10),   // Green
+        new THREE.Vector3(-40, 1, 20),   // Blue
+        new THREE.Vector3(-40, 1, 30),   // Indigo
+        new THREE.Vector3(-40, 1, 40)    // Violet
+    ];
+
+    rainbowColors.forEach((color, index) => {
+        // Create visual cube
+        const cubeGeometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+        const cubeMaterial = new THREE.MeshStandardMaterial({ color: color });
+        const cubeMesh = new THREE.Mesh(cubeGeometry, cubeMaterial);
+        cubeMesh.position.copy(cubePositions[index]);
+        cubeMesh.castShadow = true;
+        cubeMesh.receiveShadow = true;
+        cubeMesh.userData.isMovable = true;
+        cubeMesh.userData.isRainbowCube = true;
+        
+        scene.add(cubeMesh);
+        movableBoxes.push(cubeMesh);
+
+        // Create physics body
+        const cubeBody = new CANNON.Body({
+            mass: 200,
+            shape: new CANNON.Box(new CANNON.Vec3(1.5 / 2, 1.5 / 2, 1.5 / 2)),
+            linearDamping: 0.9,
+            angularDamping: 0.9,
+            material: world.materials.cube
+        });
+        cubeBody.position.copy(cubePositions[index]);
+        world.addBody(cubeBody);
+
+        // Link mesh and physics body
+        cubeMesh.userData.physicsBody = cubeBody;
+        cubeBody.userData = cubeBody.userData || {};
+        cubeBody.userData.mesh = cubeMesh;
+
+        rainbowCubes.push(cubeMesh);
+        
+        console.log(`Rainbow cube ${index + 1} (${getColorName(color)}) created at:`, cubePositions[index]);
+    });
+}
+
+// Helper function to get color name
+function getColorName(color) {
+    const colorMap = {
+        0xff0000: 'Red',
+        0xff7f00: 'Orange', 
+        0xffff00: 'Yellow',
+        0x00ff00: 'Green',
+        0x0000ff: 'Blue',
+        0x4b0082: 'Indigo',
+        0x8b00ff: 'Violet'
+    };
+    return colorMap[color] || 'Unknown';
+}
+// Add this function to load the third set of number models
+function loadNumberModels3() {
+    const numberPositions3 = [
+        { model: 'one', position: new THREE.Vector3(-50, 6, 44), plateKey: 'one3' },
+        { model: 'two', position: new THREE.Vector3(-37.5, 3, -30), plateKey: 'two3' },
+        { model: 'three', position: new THREE.Vector3(-43, 7, 50), plateKey: 'three3' },
+        { model: 'four', position: new THREE.Vector3(-50, 2, -44), plateKey: 'four3' },
+        { model: 'five', position: new THREE.Vector3(-37.5, 4, 0), plateKey: 'five3' },
+        { model: 'six', position: new THREE.Vector3(-43, 1, -50), plateKey: 'six3' },
+        { model: 'seven', position: new THREE.Vector3(-37.5, 5, 30), plateKey: 'seven3' }
+    ];
+
+    numberPositions3.forEach(numberData => {
+        const loader = new GLTFLoader();
+        loader.load(
+            `./${numberData.model}.glb`,
+            (gltf) => {
+                const number = gltf.scene;
+                number.position.copy(numberData.position);
+                
+                // Scale the number models appropriately (same as others)
+                number.scale.set(2, 2, 2);
+                
+                // Rotate numbers to face appropriate directions based on position
+                // You can adjust these rotations as needed for visibility
+                if (numberData.position.z > 0) {
+                    number.rotation.y = Math.PI/2; // Face negative Z
+                } else {
+                    number.rotation.y = -Math.PI/2; // Face positive Z
+                }
+                
+                // Enable shadows
+                number.traverse(child => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                scene.add(number);
+
+                // Create physics body for the number
+                const plate = new CANNON.Body({
+                    shape: new CANNON.Box(new CANNON.Vec3(1, 1, 0.1)),
+                    mass: 0
+                });
+                plate.position.copy(numberData.position);
+                plate.quaternion.setFromEuler(-Math.PI/2, 0, 0);
+                world.addBody(plate);
+                
+                // Store plate data for detection
+                plate.userData.isNumberPlate = true;
+                plate.userData.plateKey = numberData.plateKey;
+                plate.userData.platePosition = numberData.position.clone();
+                
+                console.log(`${numberData.model}.glb loaded at position:`, numberData.position);
+            },
+            undefined,
+            (error) => {
+                console.error(`Error loading ${numberData.model}.glb:`, error);
+            }
+        );
+    });
+}
+function checkNumberPlates3() {
+    if (door9Openable) return; // Skip if door is already openable
+    
+    // Reset all number plate status first
+    let anyPlateChanged = false;
+    
+    // Check each required number plate with color-specific conditions
+    const requiredPlates = ['one3', 'two3', 'three3', 'four3', 'five3', 'six3', 'seven3'];
+    
+    requiredPlates.forEach(plateKey => {
+        const plateData = getPlate3Data(plateKey);
+        if (!plateData) return;
+        
+        let correctCubeOnThisPlate = false;
+        const requiredColor = getRequiredColorForPlate(plateKey);
+        
+        for (const box of movableBoxes) {
+            // Only check rainbow cubes for this puzzle
+            if (!box.userData.isRainbowCube) continue;
+            
+            const boxPos = box.position;
+            const body = box.userData.physicsBody;
+            
+            // Check if cube is on the plate
+            const distanceXZ = Math.sqrt(
+                Math.pow(boxPos.x - plateData.position.x, 2) + 
+                Math.pow(boxPos.z - plateData.position.z, 2)
+            );
+            const heightDiff = Math.abs(boxPos.y - plateData.position.y);
+            
+            // Check if cube is centered on plate and at rest
+            if (distanceXZ < 1.5 && heightDiff < 1.5 && body.velocity.length() < 0.5) {
+                // Check if this is the correct color cube for this plate
+                const cubeColor = getCubeColor(box);
+                if (cubeColor === requiredColor) {
+                    correctCubeOnThisPlate = true;
+                    break;
+                }
+            }
+        }
+        
+        // Handle plate timer logic
+        if (correctCubeOnThisPlate) {
+            if (!numberPlate3Timers[plateKey]) {
+                // Start timer when correct cube first lands on plate
+                numberPlate3Timers[plateKey] = setTimeout(() => {
+                    numberPlates3Occupied[plateKey] = true;
+                    console.log(`✅ Number Plate ${plateKey} has correct ${requiredColor} cube!`);
+                    numberPlate3Timers[plateKey] = null;
+                    checkDoor9Unlock();
+                }, 2000);
+            }
+        } else {
+            // Reset timer if correct cube leaves plate
+            if (numberPlate3Timers[plateKey]) {
+                clearTimeout(numberPlate3Timers[plateKey]);
+                numberPlate3Timers[plateKey] = null;
+                console.log(`⏱️ Timer reset for number plate ${plateKey} (requires ${requiredColor})`);
+            }
+            // Reset plate status if correct cube leaves
+            if (numberPlates3Occupied[plateKey]) {
+                numberPlates3Occupied[plateKey] = false;
+                console.log(`❌ Number Plate ${plateKey} no longer has correct ${requiredColor} cube`);
+                door9Openable = false; // Door locks if any plate loses its correct cube
+            }
+        }
+    });
+}
+function getPlate3Data(plateKey) {
+    const platePositions = {
+        'one3': new THREE.Vector3(-50, 6, 44),
+        'two3': new THREE.Vector3(-37.5, 3, -30),
+        'three3': new THREE.Vector3(-43, 7, 50),
+        'four3': new THREE.Vector3(-50, 2, -44),
+        'five3': new THREE.Vector3(-37.5, 4, 0),
+        'six3': new THREE.Vector3(-43, 1, -50),
+        'seven3': new THREE.Vector3(-37.5, 5, 30)
+    };
+    
+    return {
+        position: platePositions[plateKey],
+        key: plateKey
+    };
+}
+
+function getRequiredColorForPlate(plateKey) {
+    const colorMapping = {
+        'one3': 'violet',
+        'two3': 'indigo',
+        'three3': 'blue',
+        'four3': 'green',
+        'five3': 'yellow',
+        'six3': 'orange',
+        'seven3': 'red'
+    };
+    return colorMapping[plateKey];
+}
+
+function getCubeColor(cubeMesh) {
+    const colorValue = cubeMesh.material.color.getHex();
+    const colorMap = {
+        0xff0000: 'red',
+        0xff7f00: 'orange', 
+        0xffff00: 'yellow',
+        0x00ff00: 'green',
+        0x0000ff: 'blue',
+        0x4b0082: 'indigo',
+        0x8b00ff: 'violet'
+    };
+    return colorMap[colorValue] || 'unknown';
+}
+function checkDoor9Unlock() {
+    const allRequiredPlatesOccupied = numberPlates3Occupied.one3 && 
+                                    numberPlates3Occupied.two3 && 
+                                    numberPlates3Occupied.three3 && 
+                                    numberPlates3Occupied.four3 && 
+                                    numberPlates3Occupied.five3 && 
+                                    numberPlates3Occupied.six3 && 
+                                    numberPlates3Occupied.seven3;
+    
+    if (allRequiredPlatesOccupied && !door9Openable) {
+        door9Openable = true;
+        console.log("🎉 DOOR 9 UNLOCKED! All rainbow cubes are on their correct number plates!");
+        
+        // Visual feedback - you can add some effect here
+    }
+}
+// Add this function to create lava materials
+function createLavaMaterial() {
+    // Create a canvas for generating chunky lava texture
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 256; // Smaller canvas for chunkier look
+    canvas.height = 256;
+    
+    // Fill with base dark red color
+    ctx.fillStyle = '#8b0000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Create chunky lava blobs
+    const blobSize = 20; // Size of lava blobs
+    const intensityVariation = 0.6; // How much brightness varies
+    
+    for (let x = 0; x < canvas.width; x += blobSize) {
+        for (let y = 0; y < canvas.height; y += blobSize) {
+            // Random offset for more organic look
+            const offsetX = Math.random() * blobSize * 0.5;
+            const offsetY = Math.random() * blobSize * 0.5;
+            
+            const actualX = x + offsetX;
+            const actualY = y + offsetY;
+            
+            // Random size for each blob
+            const size = blobSize * (0.7 + Math.random() * 0.6);
+            
+            // Create gradient for each blob
+            const gradient = ctx.createRadialGradient(
+                actualX, actualY, 0,
+                actualX, actualY, size
+            );
+            
+            // Bright center with dark edges
+            const brightness = 0.7 + Math.random() * intensityVariation;
+            gradient.addColorStop(0, `hsl(0, 100%, ${brightness * 100}%)`);
+            gradient.addColorStop(0.3, `hsl(10, 100%, ${brightness * 70}%)`);
+            gradient.addColorStop(1, 'rgba(139, 0, 0, 0.3)');
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(actualX, actualY, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    
+    // Add some bright hot spots
+    const hotSpotCount = 15;
+    for (let i = 0; i < hotSpotCount; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        const size = blobSize * (0.3 + Math.random() * 0.4);
+        
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+        gradient.addColorStop(0, 'hsl(60, 100%, 90%)'); // Bright yellow-white center
+        gradient.addColorStop(0.5, 'hsl(30, 100%, 70%)'); // Orange middle
+        gradient.addColorStop(1, 'rgba(255, 100, 0, 0)'); // Fade out
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 2); // Fewer repeats for larger, chunkier patterns
+    
+    // Create material with more roughness for chunkier look
+    const material = new THREE.MeshStandardMaterial({
+        map: texture,
+        emissive: new THREE.Color(0xff4400), // Brighter emissive
+        emissiveIntensity: 1.2, // Higher intensity
+        roughness: 0.95, // More rough for less reflection
+        metalness: 0.05, // Less metallic
+        emissiveMap: texture // Use the same texture for emission
+    });
+    
+    return { material, texture, canvas, ctx };
+}
+function updateDeadlyFloorsWithLava() {
+    // Store lava materials for animation
+    const lavaMaterials = [];
+    
+    // Check if floor meshes exist before updating them
+    if (floor4Mesh) {
+        const floor4Lava = createLavaMaterial();
+        floor4Mesh.material = floor4Lava.material;
+        lavaMaterials.push(floor4Lava);
+    }
+    
+    if (floor8Mesh) {
+        const floor8Lava = createLavaMaterial();
+        floor8Mesh.material = floor8Lava.material;
+        lavaMaterials.push(floor8Lava);
+    }
+    
+    if (floor9Mesh) {
+        const floor9Lava = createLavaMaterial();
+        floor9Mesh.material = floor9Lava.material;
+        lavaMaterials.push(floor9Lava);
+    }
+    
+    return lavaMaterials;
+}
+function animateLava(delta) {
+    lavaTime += delta * 1.5; // Slightly slower animation for chunkier look
+    
+    lavaMaterials.forEach((lava, index) => {
+        if (!lava.texture) return;
+        
+        // Slower, more dramatic movement for chunkier lava
+        lava.texture.offset.x = Math.sin(lavaTime * 0.3 + index) * 0.2;
+        lava.texture.offset.y = Math.cos(lavaTime * 0.2 + index) * 0.15;
+        
+        // More dramatic pulsing
+        const pulse = Math.sin(lavaTime * 2 + index) * 0.3 + 1.0;
+        lava.material.emissiveIntensity = pulse;
+        
+        // Less frequent updates for chunkier look
+        if (Math.random() < 0.008) { // Reduced frequency
+            const ctx = lava.ctx;
+            
+            // Clear and redraw with slight variations
+            ctx.fillStyle = '#8b0000';
+            ctx.fillRect(0, 0, lava.canvas.width, lava.canvas.height);
+            
+            // Redraw lava blobs with slight position shifts
+            const blobSize = 20;
+            const shiftX = (Math.random() - 0.5) * 5; // Small position shift
+            const shiftY = (Math.random() - 0.5) * 5;
+            
+            for (let x = 0; x < lava.canvas.width; x += blobSize) {
+                for (let y = 0; y < lava.canvas.height; y += blobSize) {
+                    const offsetX = Math.random() * blobSize * 0.5 + shiftX;
+                    const offsetY = Math.random() * blobSize * 0.5 + shiftY;
+                    
+                    const actualX = x + offsetX;
+                    const actualY = y + offsetY;
+                    const size = blobSize * (0.7 + Math.random() * 0.6);
+                    
+                    const gradient = ctx.createRadialGradient(
+                        actualX, actualY, 0,
+                        actualX, actualY, size
+                    );
+                    
+                    const brightness = 0.7 + Math.random() * 0.6;
+                    gradient.addColorStop(0, `hsl(${Math.random() * 10}, 100%, ${brightness * 100}%)`);
+                    gradient.addColorStop(0.3, `hsl(${10 + Math.random() * 10}, 100%, ${brightness * 70}%)`);
+                    gradient.addColorStop(1, 'rgba(139, 0, 0, 0.3)');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(actualX, actualY, size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            // Update hot spots occasionally
+            if (Math.random() < 0.3) {
+                const hotSpotCount = 8 + Math.floor(Math.random() * 8);
+                for (let i = 0; i < hotSpotCount; i++) {
+                    const x = Math.random() * lava.canvas.width;
+                    const y = Math.random() * lava.canvas.height;
+                    const size = blobSize * (0.2 + Math.random() * 0.5);
+                    
+                    const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+                    gradient.addColorStop(0, `hsl(${50 + Math.random() * 20}, 100%, 85%)`);
+                    gradient.addColorStop(0.7, `hsl(${30 + Math.random() * 20}, 100%, 60%)`);
+                    gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(x, y, size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            lava.texture.needsUpdate = true;
+        }
+    });
+}
