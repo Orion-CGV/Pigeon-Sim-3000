@@ -566,11 +566,11 @@ function makeParkingLot(worldX, worldZ, width, depth) {
         }
     });
 
-        console.log('🧭 PLACING TOKENS IN OPEN SPACES...');
+    console.log('🧭 PLACING TOKENS CLOSER TO PLAYER...');
     
     const collectibles = [];
     const TOKEN_SCALE_FACTOR = 4.0;
-    const totalTokens = 7; // Total tokens to place
+    const totalTokens = 2; // Increased total tokens
 
     const tokenTypes = [
         { 
@@ -631,31 +631,57 @@ function makeParkingLot(worldX, worldZ, width, depth) {
         }
     ];
 
-    // === FIND OPEN SPACES FOR TOKEN PLACEMENT ===
-    function findOpenSpaces(layout, cellSize, offset) {
+    // === FIND OPEN SPACES NEAR PLAYER ===
+    function findOpenSpacesNearPlayer(layout, cellSize, offset, playerPos, searchRadius = 200) {
         const openSpaces = [];
+        const playerGridX = Math.floor((playerPos.x + offset) / cellSize);
+        const playerGridZ = Math.floor((playerPos.z + offset) / cellSize);
         
-        for (let z = 0; z < layout.length; z++) {
-            for (let x = 0; x < layout[z].length; x++) {
+        // Search area around player
+        const searchRange = Math.floor(searchRadius / cellSize);
+        
+        for (let z = Math.max(0, playerGridZ - searchRange); z <= Math.min(layout.length - 1, playerGridZ + searchRange); z++) {
+            for (let x = Math.max(0, playerGridX - searchRange); x <= Math.min(layout[0].length - 1, playerGridX + searchRange); x++) {
                 // Only place tokens in non-building areas (roads, parks, parking lots)
                 if (layout[z][x] !== 1) {
                     const worldX = x * cellSize - offset;
                     const worldZ = z * cellSize - offset;
                     
-                    // Add some randomness within the cell
-                    const randomX = worldX + (Math.random() - 0.5) * cellSize * 0.8;
-                    const randomZ = worldZ + (Math.random() - 0.5) * cellSize * 0.8;
+                    // Calculate distance from player
+                    const distance = Math.sqrt(
+                        Math.pow(worldX - playerPos.x, 2) + 
+                        Math.pow(worldZ - playerPos.z, 2)
+                    );
                     
-                    openSpaces.push({
-                        x: randomX,
-                        z: randomZ,
-                        gridX: x,
-                        gridZ: z,
-                        type: layout[z][x] // 2=road, 3=park, 4=parking lot
-                    });
+                    // Only include spaces within search radius but not too close (15-150 units)
+                    if (distance >= 15 && distance <= searchRadius) {
+                        // Add some randomness within the cell
+                        const randomX = worldX + (Math.random() - 0.5) * cellSize * 0.6;
+                        const randomZ = worldZ + (Math.random() - 0.5) * cellSize * 0.6;
+                        
+                        // Recalculate distance with random position
+                        const finalDistance = Math.sqrt(
+                            Math.pow(randomX - playerPos.x, 2) + 
+                            Math.pow(randomZ - playerPos.z, 2)
+                        );
+                        
+                        if (finalDistance >= 15 && finalDistance <= searchRadius) {
+                            openSpaces.push({
+                                x: randomX,
+                                z: randomZ,
+                                gridX: x,
+                                gridZ: z,
+                                type: layout[z][x], // 2=road, 3=park, 4=parking lot
+                                distance: finalDistance
+                            });
+                        }
+                    }
                 }
             }
         }
+        
+        // Sort by distance (closest first)
+        openSpaces.sort((a, b) => a.distance - b.distance);
         
         return openSpaces;
     }
@@ -723,15 +749,17 @@ function makeParkingLot(worldX, worldZ, width, depth) {
         return height;
     }
 
-    // === PLACE TOKENS IN OPEN SPACES ===
-    const openSpaces = findOpenSpaces(layout, cellSize, offset);
+    // === PLACE TOKENS NEAR PLAYER ===
+    const searchRadius = 150; // Search within 150 units of player
+    const openSpaces = findOpenSpacesNearPlayer(layout, cellSize, offset, playerStartPosition, searchRadius);
     let tokensPlaced = 0;
-    const maxAttempts = totalTokens * 3; // Prevent infinite loop
+    const maxAttempts = totalTokens * 5; // More attempts for better placement
     
-    console.log(`Found ${openSpaces.length} potential open spaces for tokens`);
+    console.log(`Found ${openSpaces.length} potential open spaces near player (15-${searchRadius} units away)`);
 
-    for (let attempt = 0; attempt < maxAttempts && tokensPlaced < totalTokens; attempt++) {
-        const space = openSpaces[Math.floor(Math.random() * openSpaces.length)];
+    // Prioritize closer spaces first
+    for (let i = 0; i < openSpaces.length && tokensPlaced < totalTokens; i++) {
+        const space = openSpaces[i];
         const tokenType = tokenTypes[Math.floor(Math.random() * tokenTypes.length)];
         
         // Get surface height
@@ -767,7 +795,8 @@ function makeParkingLot(worldX, worldZ, width, depth) {
                 showOnMinimap: true,
                 surfaceType: surfaceType,
                 collectionRadius: 3.0,
-                minimapColor: tokenType.color || 0xffff00
+                minimapColor: tokenType.color || 0xffff00,
+                distanceFromPlayer: space.distance
             };
             
             // Add random rotation
@@ -781,42 +810,111 @@ function makeParkingLot(worldX, worldZ, width, depth) {
             collectibles.push(token);
             tokensPlaced++;
             
-            console.log(`  🥐 Token ${tokensPlaced}: ${tokenType.name} at (${space.x.toFixed(1)}, ${tokenHeight.toFixed(1)}, ${space.z.toFixed(1)}) on ${surfaceType}`);
+            console.log(`  🥐 Token ${tokensPlaced}: ${tokenType.name} at ${space.distance.toFixed(1)} units from player on ${surfaceType}`);
+            
+            // Skip some spaces to spread out tokens
+            if (tokensPlaced < totalTokens) {
+                i += Math.floor(Math.random() * 3); // Skip 0-2 spaces
+            }
         }
     }
 
-    console.log(`✅ Successfully placed ${tokensPlaced}/${totalTokens} tokens in open spaces!`);
+    // If we didn't place enough tokens, try random positions in the remaining open spaces
+    if (tokensPlaced < totalTokens) {
+        console.log(`🔍 Need more tokens, searching remaining ${openSpaces.length - tokensPlaced} spaces...`);
+        
+        for (let i = tokensPlaced; i < openSpaces.length && tokensPlaced < totalTokens; i++) {
+            const randomIndex = Math.floor(Math.random() * openSpaces.length);
+            const space = openSpaces[randomIndex];
+            const tokenType = tokenTypes[Math.floor(Math.random() * tokenTypes.length)];
+            
+            const surfaceHeight = getSurfaceHeight(space.x, space.z);
+            const tokenHeight = surfaceHeight + 0.3;
+            
+            if (isPositionClear(space.x, tokenHeight, space.z)) {
+                const token = tokenType.createModel();
+                
+                token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
+                token.position.set(space.x, tokenHeight, space.z);
+                token.updateMatrix();
+                token.updateMatrixWorld(true);
+                
+                let surfaceType = 'ground';
+                switch (space.type) {
+                    case 2: surfaceType = 'road'; break;
+                    case 3: surfaceType = 'park'; break;
+                    case 4: surfaceType = 'parking_lot'; break;
+                }
+                
+                token.userData = {
+                    type: tokenType.name,
+                    collected: false,
+                    value: 1,
+                    showOnMinimap: true,
+                    surfaceType: surfaceType,
+                    collectionRadius: 3.0,
+                    minimapColor: tokenType.color || 0xffff00,
+                    distanceFromPlayer: space.distance
+                };
+                
+                token.rotation.set(
+                    Math.random() * Math.PI * 0.1,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI * 0.1
+                );
+                
+                scene.add(token);
+                collectibles.push(token);
+                tokensPlaced++;
+                
+                console.log(`  🥐 Additional token ${tokensPlaced}: ${tokenType.name} at ${space.distance.toFixed(1)} units`);
+            }
+        }
+    }
 
-    // Place a few tokens near player start for easy finding
-    console.log('🎯 Placing starter tokens near player...');
-    const playerStartTokens = [
-        { x: playerStartPosition.x + 2, z: playerStartPosition.z + 2, type: 'Bread Crumb' },
-        { x: playerStartPosition.x - 2, z: playerStartPosition.z + 2, type: 'French Fry' },
-        { x: playerStartPosition.x, z: playerStartPosition.z + 4, type: 'Pizza Crust' }
-    ];
+    console.log(`✅ Successfully placed ${tokensPlaced}/${totalTokens} tokens near player (15-${searchRadius} units away)!`);
 
-    playerStartTokens.forEach((pos, i) => {
-        const tokenType = tokenTypes.find(t => t.name === pos.type) || tokenTypes[0];
-        const token = tokenType.createModel();
+    // Place a couple of "discovery" tokens slightly closer but not too close
+    console.log('🎯 Placing discovery tokens...');
+    const discoveryDistances = [8, 12, 18, 25, 35];
+    const discoveryAngles = [0, Math.PI/2, Math.PI, 3*Math.PI/2, Math.PI/4];
+    
+    discoveryDistances.forEach((distance, i) => {
+        if (tokensPlaced >= totalTokens) return;
         
-        token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
-        token.position.set(pos.x, 0.5, pos.z);
-        token.updateMatrix();
-        token.updateMatrixWorld(true);
+        const angle = discoveryAngles[i % discoveryAngles.length];
+        const x = playerStartPosition.x + Math.cos(angle) * distance;
+        const z = playerStartPosition.z + Math.sin(angle) * distance;
         
-        token.userData = {
-            type: tokenType.name,
-            collected: false,
-            value: 1,
-            showOnMinimap: true,
-            surfaceType: 'starter',
-            collectionRadius: 3.0,
-            minimapColor: tokenType.color || 0xffff00
-        };
+        const tokenType = tokenTypes[i % tokenTypes.length];
+        const surfaceHeight = getSurfaceHeight(x, z);
+        const tokenHeight = surfaceHeight + 0.3;
         
-        scene.add(token);
-        collectibles.push(token);
-        console.log(`  🎯 Starter token ${i+1}: ${pos.type} near player`);
+        if (isPositionClear(x, tokenHeight, z)) {
+            const token = tokenType.createModel();
+            
+            token.scale.set(TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR, TOKEN_SCALE_FACTOR);
+            token.position.set(x, tokenHeight, z);
+            token.updateMatrix();
+            token.updateMatrixWorld(true);
+            
+            token.userData = {
+                type: tokenType.name,
+                collected: false,
+                value: 1,
+                showOnMinimap: true,
+                surfaceType: 'discovery',
+                collectionRadius: 3.0,
+                minimapColor: tokenType.color || 0xffff00,
+                distanceFromPlayer: distance
+            };
+            
+            scene.add(token);
+            collectibles.push(token);
+            tokensPlaced++;
+            
+            console.log(`  🔍 Discovery token: ${tokenType.name} at ${distance} units from player`);
+        }
     });
     // Set up token positions for minimap
     scene.userData.tokenPositions = collectibles.map(token => ({
