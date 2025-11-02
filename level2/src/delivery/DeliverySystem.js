@@ -431,7 +431,7 @@ export class DeliverySystem {
                     this.updateZoneColor(this.activeDeliveryZone, 0xffff00);
                 }
                 if (this.uiSystem) {
-                    this.uiSystem.updateDeliveryStatus('Delivered! 🎉', '#00ff00');
+                    this.uiSystem.updateDeliveryStatus('Delivered!', '#00ff00');
                 }
                 
                 // Play completion sound effect
@@ -613,7 +613,7 @@ export class DeliverySystem {
         popup.className = 'completion-popup';
         popup.innerHTML = `
             <div class="completion-content">
-                <h1 class="completion-title">🎉 DELIVERY COMPLETE! 🎉</h1>
+                <h1 class="completion-title"><i data-lucide="sparkles" style="display: inline-block; width: 32px; height: 32px; vertical-align: middle; color: #ffd700; filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.8)); animation: sparkle 1s ease-in-out infinite;"></i> DELIVERY COMPLETE! <i data-lucide="sparkles" style="display: inline-block; width: 32px; height: 32px; vertical-align: middle; color: #ffd700; filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.8)); animation: sparkle 1s ease-in-out infinite 0.5s;"></i></h1>
                 
                 <div class="completion-time">
                     <div class="stat-label">Time</div>
@@ -642,6 +642,11 @@ export class DeliverySystem {
         `;
         
         document.body.appendChild(popup);
+        
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
         
         // Set up return button (only if not in Story Mode)
         if (!this.isInStoryMode) {

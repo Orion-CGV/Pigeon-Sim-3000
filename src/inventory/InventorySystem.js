@@ -182,8 +182,9 @@ export class InventorySystem {
                 `;
             } else {
                 itemContent = `
-                    <div style="font-weight: normal;">
-                        ✅ ${item.name}${countText}
+                    <div style="font-weight: normal; display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="check" style="display: inline-block; width: 16px; height: 16px; color: #00ff00; filter: drop-shadow(0 0 4px rgba(0, 255, 0, 0.6));"></i>
+                        <span>${item.name}${countText}</span>
                     </div>
                 `;
             }
@@ -191,6 +192,11 @@ export class InventorySystem {
             itemElement.innerHTML = itemContent;
             this.itemsList.appendChild(itemElement);
         });
+        
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     }
 
     /**

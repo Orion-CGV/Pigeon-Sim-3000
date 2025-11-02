@@ -212,8 +212,11 @@ function setupLevel() {
         if (!window.audioManager.soundEffects['carEngine']) {
             window.audioManager.registerSoundEffect('carEngine', 'assets/audio/cars/Car2_Engine_Loop.ogg', 0.01);
         }
-        if (!window.audioManager.soundEffects['pop']) {
-            window.audioManager.registerSoundEffect('pop', 'assets/audio/effects/pop.wav', 0.5);
+        if (!window.audioManager.soundEffects['thud']) {
+            window.audioManager.registerSoundEffect('thud', 'assets/audio/effects/thud.wav', 0.5);
+        }
+        if (!window.audioManager.soundEffects['boost']) {
+            window.audioManager.registerSoundEffect('boost', 'assets/audio/effects/swoosh.wav', 0.5);
         }
         
         // Start car engine sound (looping)
@@ -607,9 +610,9 @@ function setupCollisionListeners() {
                 color = 0xff6600;
             }
             
-            // Play pop sound effect for collision
+            // Play thud sound effect for collision
             if (window.audioManager) {
-                window.audioManager.playSoundEffect('pop');
+                window.audioManager.playSoundEffect('thud');
             }
             
             // Record collision for scoring (with debounce to prevent double-counting)
@@ -749,6 +752,10 @@ export function updateLevel() {
         // Trigger boost activation effect when boost starts
         if (isBoosting && !wasBoostingLastFrame) {
             effectsSystem.triggerBoostActivation(carWrapper.position, carWrapper.quaternion);
+            // Play boost sound effect
+            if (window.audioManager) {
+                window.audioManager.playSoundEffect('boost');
+            }
         }
         
         wasBoostingLastFrame = isBoosting;
