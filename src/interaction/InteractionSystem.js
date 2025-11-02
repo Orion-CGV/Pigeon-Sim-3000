@@ -30,7 +30,7 @@ export class InteractionSystem {
         // Style the prompt with CSS text for better performance
         this.interactionPrompt.style.cssText = `
             position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); 
-            color: white; font-family: Arial, sans-serif; font-size: 20px; font-weight: bold; 
+            color: white; font-family: 'Jersey 10', sans-serif; font-size: 20px; font-weight: bold; 
             text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; z-index: 10; 
             text-align: center; opacity: 0; transition: opacity 0.3s ease;
         `;
@@ -274,7 +274,7 @@ export class InteractionSystem {
                                 this.lockReasonElement.className = "game-ui";
                                 this.lockReasonElement.style.cssText = `
                                     position: absolute; top: 65%; left: 50%; transform: translate(-50%, -50%); 
-                                    color: #ffaa00; font-family: Arial, sans-serif; font-size: 14px; 
+                                    color: #ffaa00; font-family: 'Jersey 10', sans-serif; font-size: 14px; 
                                     text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; z-index: 10; 
                                     text-align: center; opacity: 0; transition: opacity 0.3s ease;
                                 `;
@@ -439,6 +439,14 @@ export class InteractionSystem {
         }
         this.currentInteractable = null;
         this.eKeyLocked = false;
+    }
+    
+    /**
+     * Gets the current interactable object
+     * @returns {THREE.Object3D|null} Current interactable object
+     */
+    getCurrentInteractable() {
+        return this.currentInteractable;
     }
 }
 

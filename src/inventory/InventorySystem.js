@@ -56,10 +56,11 @@ export class InventorySystem {
             left: 20px;
             background: rgba(0, 0, 0, 0.8);
             color: white;
-            font-family: 'Press Start 2P', cursive;
-            padding: 15px;
+            font-family: 'Jersey 10', sans-serif;
+            font-weight: normal;
+            padding: 20px;
             border-radius: 8px;
-            min-width: 200px;
+            min-width: 280px;
             z-index: 100;
             box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
             border: 1px solid #0f0;
@@ -71,7 +72,8 @@ export class InventorySystem {
         title.style.cssText = `
             color: #00ff00;
             margin: 0 0 10px 0;
-            font-size: 16px;
+            font-size: 22px;
+            font-weight: normal;
             text-align: center;
             border-bottom: 1px solid rgba(0, 255, 0, 0.3);
             padding-bottom: 8px;
@@ -142,7 +144,8 @@ export class InventorySystem {
             emptyMsg.textContent = "Empty";
             emptyMsg.style.cssText = `
                 color: #aaa;
-                font-size: 12px;
+                font-size: 18px;
+                font-weight: normal;
                 text-align: center;
                 padding: 10px;
             `;
@@ -153,11 +156,12 @@ export class InventorySystem {
         this.items.forEach(item => {
             const itemElement = document.createElement("div");
             itemElement.style.cssText = `
-                padding: 8px;
+                padding: 10px;
                 border-radius: 5px;
                 background: rgba(0, 255, 0, 0.1);
                 border-left: 3px solid #00ff00;
-                font-size: 12px;
+                font-size: 18px;
+                font-weight: normal;
                 display: flex;
                 align-items: center;
                 gap: 10px;
@@ -171,14 +175,14 @@ export class InventorySystem {
                 itemContent = `
                     <img src="./assets/images/joysticks.png" 
                          alt="${item.name}" 
-                         style="width: 40px; height: 40px; object-fit: contain; image-rendering: pixelated;">
-                    <div style="font-weight: bold; flex: 1;">
+                         style="width: 50px; height: 50px; object-fit: contain; image-rendering: pixelated;">
+                    <div style="font-weight: normal; flex: 1;">
                         ${item.name}${countText}
                     </div>
                 `;
             } else {
                 itemContent = `
-                    <div style="font-weight: bold;">
+                    <div style="font-weight: normal;">
                         ✅ ${item.name}${countText}
                     </div>
                 `;

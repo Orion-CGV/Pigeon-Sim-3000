@@ -97,7 +97,7 @@ export class FailureSystem {
             justify-content: center;
             align-items: center;
             z-index: 10000;
-            font-family: 'Press Start 2P', cursive;
+            font-family: 'Jersey 10', sans-serif;
             color: white;
             opacity: 0;
             transition: opacity 0.3s ease-in-out;
@@ -122,7 +122,7 @@ export class FailureSystem {
                 <button 
                     id="failure-restart-btn" 
                     style="
-                        font-family: 'Press Start 2P', cursive;
+                        font-family: 'Jersey 10', sans-serif;
                         font-size: 1.2em;
                         padding: 15px 30px;
                         background: #ff4444;

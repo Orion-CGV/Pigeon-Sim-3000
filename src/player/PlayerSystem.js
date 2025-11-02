@@ -78,6 +78,11 @@ export class PlayerSystem {
         this.scene = scene;
         this.camera = camera;
         this.clock = clock;
+        
+        // Footstep audio state
+        this.wasMoving = false;
+        this.footstepInterval = 0.4; // Play footstep every 0.4 seconds when walking (one step per interval)
+        this.footstepTimer = 0;
     }
 
     /**
@@ -372,6 +377,9 @@ export class PlayerSystem {
 
         // Play appropriate animation
         this.playAnimation(playerState);
+        
+        // Handle footstep sounds
+        this.updateFootsteps(isMoving, delta);
 
         // Store previous position for collision detection
         const prevPos = player.position.clone();
@@ -556,5 +564,42 @@ export class PlayerSystem {
      */
     resetPhysics() {
         // Physics reset (if needed in future)
+    }
+    
+    /**
+     * Updates footstep sound effects based on movement
+     * Plays footstep at intervals when walking, creating a continuous stepping effect
+     * @param {boolean} isMoving - Whether player is currently moving
+     * @param {number} delta - Time delta since last frame
+     */
+    updateFootsteps(isMoving, delta) {
+        // Only update footsteps if audio manager exists
+        if (!window.audioManager) {
+            return;
+        }
+        
+        if (isMoving) {
+            // Player is moving - play footsteps at intervals
+            if (!this.wasMoving) {
+                // Just started moving - play first footstep immediately and reset timer
+                window.audioManager.playSoundEffect('footstep', { loop: false });
+                this.footstepTimer = 0;
+            } else {
+                // Continuously walking - update timer and play footstep at intervals
+                this.footstepTimer += delta;
+                if (this.footstepTimer >= this.footstepInterval) {
+                    // Play footstep sound (one step)
+                    window.audioManager.playSoundEffect('footstep', { loop: false });
+                    this.footstepTimer = 0; // Reset timer for next step
+                }
+            }
+            this.wasMoving = true;
+        } else {
+            // Player stopped - reset footstep state
+            if (this.wasMoving) {
+                this.footstepTimer = 0;
+                this.wasMoving = false;
+            }
+        }
     }
 }

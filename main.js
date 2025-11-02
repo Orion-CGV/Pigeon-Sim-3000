@@ -2,8 +2,6 @@
 import * as THREE from 'three';
 // Import CSS2D renderer for HTML labels that stay facing the camera
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-// Import stats utility
-import { ensureStats, getStats } from './src/utils/stats.js';
 // Import player system
 import { PlayerSystem } from './src/player/PlayerSystem.js';
 // Import environment loader
@@ -32,6 +30,14 @@ import { SecondChestInteractionSystem } from './src/interaction/SecondChestInter
 import { InventorySystem } from './src/inventory/InventorySystem.js';
 // Import mirror system
 import { MirrorSystem } from './src/environment/MirrorSystem.js';
+// Import audio manager
+import { AudioManager } from './src/audio/AudioManager.js';
+// Import warp effect system
+import { WarpEffectSystem } from './src/effects/WarpEffectSystem.js';
+// Import subtitle system
+import { SubtitleSystem } from './src/ui/SubtitleSystem.js';
+// Import loading spinner
+import { LoadingSpinner } from './src/ui/LoadingSpinner.js';
 
 // ---------- Scene / Camera / Renderer ----------
 // Global variables to store our 3D environment components
@@ -84,6 +90,21 @@ let treasureInteractionSystem = null; // Treasure interaction system instance
 
 // ---------- Second Chest Interaction System ----------
 let secondChestInteractionSystem = null; // Second chest interaction system instance
+
+// ---------- Audio Manager ----------
+let audioManager = null; // Audio manager instance
+
+// ---------- Warp Effect System ----------
+let warpEffectSystem = null; // Warp effect system instance
+
+// ---------- Subtitle System ----------
+let subtitleSystem = null; // Subtitle system instance
+
+// ---------- Loading Spinner ----------
+let loadingSpinner = null; // Loading spinner instance
+
+// ---------- Intro Animation ----------
+let hasPlayedIntroAnimation = false; // Track if intro animation has played
 
 // ---------- Loading State ----------
 let isPlayerLoaded = false; // Track if player has finished loading
@@ -156,8 +177,6 @@ function initMainMenu() {
         renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
         // Add the renderer's canvas element to the webpage
         document.body.appendChild(renderer.domElement);
-        // Ensure stats HUD is created
-        ensureStats();
     }
     // Check if CSS label renderer doesn't exist yet
     if (!labelRenderer) {
@@ -188,8 +207,6 @@ function initMainMenu() {
     gameLoopActive = true;
     // Set animation loop to our animate function
     renderer.setAnimationLoop(animate);
-    // Make sure stats HUD exists and is visible
-    ensureStats();
 
     // ---------- Lighting ----------
     // Initialize lighting system
@@ -207,6 +224,18 @@ function initMainMenu() {
     // Reset loading state
     isPlayerLoaded = false;
     isEnvironmentLoaded = false;
+    
+    // ---------- Loading Spinner ----------
+    // Initialize loading spinner
+    if (!loadingSpinner) {
+        loadingSpinner = new LoadingSpinner();
+        loadingSpinner.init();
+    }
+    // Expose loading spinner globally
+    window.loadingSpinner = loadingSpinner;
+    
+    // Show loading spinner when starting to load models
+    loadingSpinner.show();
     
     // Load player with callback
     playerSystem.loadPlayer(() => {
@@ -294,6 +323,11 @@ function initMainMenu() {
         storyUI.show(); // Ensure it's visible when returning from a level
     }
     
+    // ---------- Warp Effect System ----------
+    // Initialize warp effect system
+    warpEffectSystem = new WarpEffectSystem(scene, camera, playerSystem);
+    warpEffectSystem.init();
+    
     // ---------- Interaction System ----------
     // Initialize interaction system
     interactionSystem = new InteractionSystem(scene, camera);
@@ -301,7 +335,19 @@ function initMainMenu() {
     
     // Set callback for when player interacts with an arcade machine
     interactionSystem.setOnInteract((level) => {
-        loadLevel(level);
+        // Get the arcade object for warp target
+        const arcadeObject = interactionSystem.getCurrentInteractable();
+        
+        // Start warp animation, then load level when complete
+        if (warpEffectSystem && !warpEffectSystem.isWarpActive()) {
+            warpEffectSystem.startWarp(() => {
+                // Warp complete - now load the level
+                loadLevel(level);
+            }, arcadeObject);
+        } else {
+            // Fallback: load immediately if warp system not available
+            loadLevel(level);
+        }
     });
     
     // ---------- Inventory System ----------
@@ -448,11 +494,42 @@ function initMainMenu() {
     });
     
     // ---------- Settings Menu System ----------
-    settingsMenu = new SettingsMenu();
-    settingsMenu.init();
+    // Only create new settings menu if one doesn't exist
+    // (It may have been initialized early for HTML main menu access)
+    if (!settingsMenu) {
+        settingsMenu = new SettingsMenu();
+        settingsMenu.init();
+    } else {
+        // Re-initialize to ensure handlers are set up
+        settingsMenu.init();
+    }
     
     // Expose settings menu globally for menu.js access
     window.settingsMenu = settingsMenu;
+    
+    // ---------- Audio Manager ----------
+    // Only create new audio manager if one doesn't exist
+    // (It may have been initialized early for direct level loading)
+    if (!audioManager) {
+        audioManager = new AudioManager();
+        audioManager.init(settingsMenu);
+    } else {
+        // Re-initialize to ensure handlers are set up
+        audioManager.init(settingsMenu);
+    }
+    
+    // Register music tracks (idempotent - won't re-register if already registered)
+    audioManager.registerMusic('basement', 'assets/audio/music/Fabian Measures - Did you know_ (Curiouser and curiouser).mp3', true);
+    audioManager.registerMusic('mainmenu', 'assets/audio/music/SalmonLikeTheFish - Glacier.mp3', true);
+    audioManager.registerMusic('credits', 'assets/audio/music/Grzegorz Rusin - The end.mp3', true);
+    
+    // Register sound effects (idempotent - won't re-register if already registered)
+    audioManager.registerSoundEffect('chestOpen', 'assets/audio/effects/ChestOpen.mp3', 0.5);
+    audioManager.registerSoundEffect('footstep', 'assets/audio/effects/footstep.wav', 0.1);
+    audioManager.registerSoundEffect('warp', 'assets/audio/effects/warp.wav', 0.3);
+    
+    // Expose audio manager globally
+    window.audioManager = audioManager;
     
     // Set callback for returning from settings
     settingsMenu.setOnReturn((context) => {
@@ -551,6 +628,27 @@ function initMainMenu() {
     // ---------- Camera ----------
     // Position camera above and behind player
     camera.position.set(0, 5, 10);
+    
+    // ---------- Music ----------
+    // Stop ALL music first to prevent any overlap (especially mainmenu music)
+    // Then start playing basement music on loop
+    if (audioManager) {
+        // Stop all music (including mainmenu) to ensure clean state before entering basement
+        audioManager.stopMusic();
+        // Small delay to ensure stop completes before starting new music
+        setTimeout(() => {
+            audioManager.playMusic('basement');
+        }, 100);
+    }
+    
+    // ---------- Subtitle System ----------
+    // Initialize subtitle system
+    if (!subtitleSystem) {
+        subtitleSystem = new SubtitleSystem();
+        subtitleSystem.init();
+    }
+    // Expose subtitle system globally for easy access from anywhere
+    window.subtitleSystem = subtitleSystem;
 }
 
 /**
@@ -560,15 +658,122 @@ function checkIfEverythingLoaded() {
     if (isPlayerLoaded && isEnvironmentLoaded) {
         // Everything is loaded, player can now move
         scene.userData.gameReady = true;
+        
+        // Hide loading spinner before playing intro animation
+        if (loadingSpinner) {
+            loadingSpinner.hide();
+        }
+        
+        // Play intro animation on first spawn in basement
+        if (!hasPlayedIntroAnimation && isInStoryMode) {
+            // Small delay to ensure spinner fade-out completes
+            setTimeout(() => {
+                playIntroAnimation();
+                hasPlayedIntroAnimation = true;
+            }, 300);
+        }
     }
+}
+
+/**
+ * Plays the intro camera animation when first spawning in the basement
+ * Camera spins around the character showing the basement behind him
+ */
+function playIntroAnimation() {
+    const player = scene.getObjectByName('player');
+    if (!player || !camera || typeof gsap === 'undefined') {
+        console.warn('⚠️ Cannot play intro animation - missing player, camera, or GSAP');
+        return;
+    }
+    
+    // Lock player during animation so they don't move
+    scene.userData.playerLocked = true;
+    scene.userData.lockedPlayerPosition = player.position.clone();
+    
+    // Temporarily disable pointer lock to prevent camera control during animation
+    if (document.pointerLockElement) {
+        document.exitPointerLock();
+    }
+    
+    // Show subtitle
+    if (window.subtitleSystem) {
+        console.log('📝 Showing subtitle via subtitleSystem...');
+        window.subtitleSystem.show("So this is where grandpa hid his treasure?", 7);
+    } else {
+        console.warn('⚠️ window.subtitleSystem is not available for intro animation');
+    }
+    
+    // Store initial camera position (normal starting position)
+    const startCameraPos = new THREE.Vector3(0, 5, 10);
+    const playerPos = player.position.clone();
+    playerPos.y += 1.5; // Look at player's head height
+    
+    // Set initial camera position
+    camera.position.copy(startCameraPos);
+    camera.lookAt(playerPos);
+    
+    // Animation parameters
+    const animationDuration = 4; // 4 seconds
+    const orbitRadius = 4; // Distance from player
+    const orbitHeight = 5; // Height of camera
+    
+    // Calculate start angle from initial camera position
+    const startAngle = Math.atan2(startCameraPos.x - playerPos.x, startCameraPos.z - playerPos.z);
+    
+    // Create animation object to track angle
+    const animObj = { angle: 0 };
+    
+    // Create animation timeline
+    const tl = gsap.timeline({
+        onComplete: () => {
+            // Ensure camera ends at the correct starting position
+            camera.position.copy(startCameraPos);
+            camera.lookAt(playerPos);
+            
+            // Unlock player after animation
+            scene.userData.playerLocked = false;
+            scene.userData.lockedPlayerPosition = null;
+            
+            console.log('✅ Intro animation complete');
+        }
+    });
+    
+    // Animate camera orbiting around player (360 degrees)
+    tl.to(animObj, {
+        duration: animationDuration,
+        angle: Math.PI * 2, // Full 360 degree rotation
+        ease: "power2.inOut",
+        onUpdate: function() {
+            const currentAngle = startAngle + animObj.angle;
+            // Calculate camera position in orbit around player
+            camera.position.x = playerPos.x + Math.sin(currentAngle) * orbitRadius;
+            camera.position.z = playerPos.z + Math.cos(currentAngle) * orbitRadius;
+            camera.position.y = orbitHeight;
+            // Always look at player
+            camera.lookAt(playerPos);
+        }
+    });
+    
+    console.log('🎬 Starting intro camera animation');
 }
 
 // ---------- Level Management ----------
 let currentLevelModule = null; // Store reference to the level module for cleanup
 let currentLevelReturnCallback = null; // Store return callback for cheat key
 
+
 // Loads a specific level by number (1, 2, or 3)
 function loadLevel(levelNumber) {
+    // Stop ALL music when entering a level (basement and mainmenu)
+    if (audioManager) {
+        audioManager.stopMusic();
+    }
+    
+    // Hide inventory when entering a level
+    if (inventorySystem) {
+        inventorySystem.hide();
+    }
+    
     // Initialize pause menu if it doesn't exist (needed when loading from main menu, not Story Mode)
     if (!pauseMenu) {
         console.log('📋 Initializing pause menu for level...');
@@ -674,8 +879,6 @@ function loadLevel(levelNumber) {
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         // Add renderer canvas to document
         document.body.appendChild(renderer.domElement);
-        // Ensure stats HUD exists
-        ensureStats();
     }
     if (!labelRenderer) {
         // Create new CSS2D renderer if it doesn't exist
@@ -709,8 +912,6 @@ function loadLevel(levelNumber) {
         labelRenderer.domElement.style.display = 'block';
     }
     
-    // Ensure stats HUD exists and is visible in levels too
-    ensureStats();
 
     // 7. Dynamically import the level module (separate JavaScript file)
     import(`./level${levelNumber}.js`)
@@ -767,6 +968,11 @@ function loadLevel(levelNumber) {
 
 // Returns player from level back to main menu
 function returnToMainMenu() {
+    // Stop all music (we're leaving Story Mode)
+    if (audioManager) {
+        audioManager.stopMusic();
+    }
+    
     // Clean up the current level
     cleanupCurrentLevel();
     // Update game state to main menu
@@ -787,7 +993,7 @@ function returnToMainMenu() {
     // Check if main menu elements exist
     const mainMenu = document.getElementById('main-menu');
     
-    // Show main menu
+    // Show main menu (will play main menu music)
     if (window.showMainMenu) {
         // Call global function to show main menu
         window.showMainMenu();
@@ -814,6 +1020,7 @@ function returnToMainMenuFromStory() {
     
     // Re-initialize everything from scratch to avoid state issues
     // Story system and UI will be preserved and reused by initMainMenu
+    // Music will be started by initMainMenu
     initMainMenu();
 }
 
@@ -840,6 +1047,11 @@ function cleanupCurrentLevel() {
     if (interactionSystem) {
         interactionSystem.cleanup();
         interactionSystem = null;
+    }
+    
+    // Hide any visible subtitles when leaving level
+    if (window.subtitleSystem) {
+        window.subtitleSystem.hide();
     }
 
     // 1. Call level-specific cleanup (if it exists)
@@ -944,21 +1156,28 @@ function cleanupCurrentLevel() {
     }
     
     // 6. Clear any level-specific UI elements with class 'game-ui'
-    // BUT preserve Story UI and Inventory UI (they should persist in Story Mode)
+    // BUT preserve Story UI, Inventory UI, Subtitle UI, and Loading Spinner (they should persist in Story Mode)
     const uiElements = document.querySelectorAll('.game-ui');
     // Loop through all game UI elements
     uiElements.forEach(el => {
         // Check if element is part of main menu (not level-specific)
         const isMainMenuElement = el.closest('#main-menu, #play-submenu, #level-select, #settings, #credits, #instructions, #pause-menu');
-        // Preserve Story UI and Inventory UI (they have special classes and should persist)
+        // Preserve Story UI, Inventory UI, Subtitle UI, and Loading Spinner (they have special classes and should persist)
         const isStoryUI = el.classList.contains('story-ui');
         const isInventoryUI = el.classList.contains('inventory-ui');
+        const isSubtitleUI = el.classList.contains('subtitle-display');
+        const isLoadingSpinner = el.classList.contains('loading-spinner');
         
-        if (!isMainMenuElement && !isStoryUI && !isInventoryUI) {
+        if (!isMainMenuElement && !isStoryUI && !isInventoryUI && !isSubtitleUI && !isLoadingSpinner) {
             // Remove level-specific UI elements only
             el.remove();
         }
     });
+    
+    // Hide loading spinner if it's visible when leaving level
+    if (loadingSpinner) {
+        loadingSpinner.hide();
+    }
 }
 
 // ---------- Input System ----------
@@ -1022,10 +1241,6 @@ function onWindowResize() {
 
 // ---------- Animation Loop ----------
 function animate() {
-    // Begin stats measurement
-    const stats = getStats();
-    if (stats) stats.begin();
-    
     // Check if game loop is active and game is not paused
     if (gameLoopActive && (!pauseMenu || !pauseMenu.isPaused())) {
         // Update main menu specific logic
@@ -1088,8 +1303,6 @@ function animate() {
             labelRenderer.render(scene, camera);
         }
     }
-    // End stats measurement
-    if (stats) stats.end();
 }
 
 // ---------- Pause System ----------
@@ -1146,3 +1359,39 @@ Object.defineProperty(window, 'currentLevel', {
 // ---------- Initialize Game ----------
 // The menu.js will handle the intro screen and main menu
 // This file focuses on the 3D game logic
+
+// Initialize settings menu early so it's available from HTML main menu
+// This will be re-initialized in initMainMenu() for full functionality
+if (!window.settingsMenu) {
+    settingsMenu = new SettingsMenu();
+    settingsMenu.init();
+    window.settingsMenu = settingsMenu;
+}
+
+// Initialize audio manager early so it's available when loading levels directly from main menu
+// This will be re-initialized in initMainMenu() for full functionality
+if (!window.audioManager) {
+    audioManager = new AudioManager();
+    audioManager.init(settingsMenu);
+    // Register main menu and credits music early so they can play when needed
+    audioManager.registerMusic('mainmenu', 'assets/audio/music/SalmonLikeTheFish - Glacier.mp3', true);
+    audioManager.registerMusic('credits', 'assets/audio/music/Grzegorz Rusin - The end.mp3', true);
+    window.audioManager = audioManager;
+    console.log('✅ AudioManager initialized early');
+}
+
+// Initialize subtitle system early so it's available from anywhere
+if (!window.subtitleSystem) {
+    subtitleSystem = new SubtitleSystem();
+    subtitleSystem.init();
+    window.subtitleSystem = subtitleSystem;
+    console.log('✅ SubtitleSystem initialized early');
+}
+
+// Initialize loading spinner early so it's available from anywhere
+if (!window.loadingSpinner) {
+    loadingSpinner = new LoadingSpinner();
+    loadingSpinner.init();
+    window.loadingSpinner = loadingSpinner;
+    console.log('✅ LoadingSpinner initialized early');
+}

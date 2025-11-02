@@ -390,6 +390,11 @@ export class DeliverySystem {
                     this.deliveryState = 'has_package';
                     this.pickupTimer = 0;
                     
+                    // Play completion sound effect for pickup
+                    if (window.audioManager) {
+                        window.audioManager.playSoundEffect('complete');
+                    }
+                    
                     // Hide pickup zone and show delivery zone
                     if (this.activePickupZone) this.activePickupZone.visible = false;
                     if (this.activeDeliveryZone) this.activeDeliveryZone.visible = true;
@@ -429,6 +434,11 @@ export class DeliverySystem {
                     this.uiSystem.updateDeliveryStatus('Delivered! 🎉', '#00ff00');
                 }
                 
+                // Play completion sound effect
+                if (window.audioManager) {
+                    window.audioManager.playSoundEffect('complete');
+                }
+                
                 // Transition to next game state after 2 seconds
                 setTimeout(() => {
                     if (this.gameState === 'first_delivery') {
@@ -457,6 +467,11 @@ export class DeliverySystem {
                 }
                 
                 if (this.refuelTimer >= this.refuelRequired) {
+                    // Play completion sound effect for refuel
+                    if (window.audioManager) {
+                        window.audioManager.playSoundEffect('complete');
+                    }
+                    
                     // Refuel complete - transition to night and second pickup
                     this.transitionToNight();
                 }
@@ -571,13 +586,18 @@ export class DeliverySystem {
         
         // Call completion callback if set
         if (this.onCompleteCallback && typeof this.onCompleteCallback === 'function') {
-            console.log('✅ Completion callback is set, will call after 3 seconds (or user clicks button)');
-            // Delay callback to allow completion UI to show
-            // User can click button to return immediately
-            this.completionTimeout = setTimeout(() => {
-                console.log('⏰ Auto-returning to hub after completion screen...');
-                this.onCompleteCallback();
-            }, 3000); // 3 seconds to see completion screen
+            if (this.isInStoryMode) {
+                // Story Mode: Delay callback to allow completion UI to show
+                console.log('✅ Completion callback is set, will call after 3 seconds (or user clicks button)');
+                this.completionTimeout = setTimeout(() => {
+                    console.log('⏰ Auto-returning to hub after completion screen...');
+                    this.onCompleteCallback();
+                }, 3000); // 3 seconds to see completion screen
+            } else {
+                // Main Menu: Wait for user to click button (no auto-return)
+                console.log('✅ Completion callback is set, waiting for user to click Return to Main Menu button');
+                // Don't set timeout - user must click button to return
+            }
         } else {
             console.warn('⚠️ No completion callback set! Level will not return automatically.');
         }

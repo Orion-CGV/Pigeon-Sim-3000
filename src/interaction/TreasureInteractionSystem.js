@@ -197,7 +197,7 @@ export class TreasureInteractionSystem {
             left: 50%;
             transform: translateX(-50%);
             color: #00ff00;
-            font-family: 'Press Start 2P', cursive;
+            font-family: 'Jersey 10', sans-serif;
             font-size: 16px;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 1);
             pointer-events: none;
@@ -370,6 +370,9 @@ export class TreasureInteractionSystem {
         const originalRotationY = this.treasureLid.rotation.y;
         const targetRotationY = originalRotationY - (Math.PI / 2); // -90 degrees in radians (rotate around Y axis)
         
+        // Play chest open sound
+        this.playChestSound();
+        
         gsap.to(this.treasureLid.rotation, {
             y: targetRotationY,
             duration: 1.5,
@@ -457,6 +460,9 @@ export class TreasureInteractionSystem {
         
         const treasureOpened = this.scene.userData.treasureOpened || false;
         if (treasureOpened && this.treasureLid) {
+            // Play chest close sound
+            this.playChestSound();
+            
             // Get the original rotation (before it was opened)
             // The lid was rotated -90 degrees, so we need to add +90 to close it
             const currentRotationY = this.treasureLid.rotation.y;
@@ -531,6 +537,15 @@ export class TreasureInteractionSystem {
                 console.log('Exited viewing mode');
             }
         });
+    }
+    
+    /**
+     * Plays the chest open/close sound effect
+     */
+    playChestSound() {
+        if (window.audioManager) {
+            window.audioManager.playSoundEffect('chestOpen');
+        }
     }
     
     /**

@@ -50,7 +50,7 @@ export class UISystem {
         this.minimapCamera = null;
         this.minimapOverlayCtx = null;
         this.mapScale = 100; // World units to show on map
-        this.mapSize = 200; // Canvas size
+        this.mapSize = 240; // Canvas size
     }
     
     /**
@@ -371,7 +371,7 @@ export class UISystem {
             ctx.fillStyle = '#ffffff';
             ctx.strokeStyle = '#000000';
             ctx.lineWidth = 3;
-            ctx.font = 'bold 11px Arial';
+            ctx.font = 'bold 11px "Jersey 10", sans-serif';
             ctx.textAlign = 'center';
             const distText = Math.floor(distance) + 'm';
             ctx.strokeText(distText, clampedX, clampedY - 12);

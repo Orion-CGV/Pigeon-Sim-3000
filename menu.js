@@ -11,6 +11,15 @@ window.showMainMenu = function() {
         mainMenu.classList.remove('hidden');
         currentMenuScreen = 'main';
         createMenuParticles();
+        
+        // Play main menu music
+        if (window.audioManager) {
+            // Register main menu music if not already registered
+            if (!window.audioManager.musicTracks['mainmenu']) {
+                window.audioManager.registerMusic('mainmenu', 'assets/audio/music/SalmonLikeTheFish - Glacier.mp3', true);
+            }
+            window.audioManager.playMusic('mainmenu');
+        }
     }
 };
 
@@ -65,6 +74,22 @@ window.showCinematicCredits = function() {
         currentMenuScreen = 'cinematic-credits';
         window.creditsStartTime = Date.now(); // Track start time
         
+        // Stop all other music (especially mainmenu) and play credits music
+        if (window.audioManager) {
+            // Explicitly stop mainmenu music first to ensure it stops
+            window.audioManager.stopMusic('mainmenu');
+            // Stop all music to ensure clean state
+            window.audioManager.stopMusic();
+            // Register credits music if not already registered
+            if (!window.audioManager.musicTracks['credits']) {
+                window.audioManager.registerMusic('credits', 'assets/audio/music/Grzegorz Rusin - The end.mp3', true);
+            }
+            // Small delay to ensure mainmenu music fully stops before playing credits music
+            setTimeout(() => {
+                window.audioManager.playMusic('credits');
+            }, 100);
+        }
+        
         // Initialize speed display
         const speedSlider = document.getElementById('credits-speed-slider');
         if (speedSlider) {
@@ -96,6 +121,10 @@ function startCinematicCredits() {
         // Auto-return to main menu after credits finish
         creditsTimeout = setTimeout(() => {
             if (currentMenuScreen === 'cinematic-credits') {
+                // Stop credits music before skipping
+                if (window.audioManager) {
+                    window.audioManager.stopMusic('credits');
+                }
                 skipCinematicCredits();
             }
         }, currentCreditsSpeed * 1000); // Convert seconds to milliseconds
@@ -154,6 +183,10 @@ window.updateCreditsSpeed = function(speed) {
             
             creditsTimeout = setTimeout(() => {
                 if (currentMenuScreen === 'cinematic-credits') {
+                    // Stop credits music before skipping
+                    if (window.audioManager) {
+                        window.audioManager.stopMusic('credits');
+                    }
                     skipCinematicCredits();
                 }
             }, remainingTime * 1000);
@@ -169,6 +202,11 @@ window.skipCinematicCredits = function() {
         if (creditsTimeout) {
             clearTimeout(creditsTimeout);
             creditsTimeout = null;
+        }
+        
+        // Stop credits music
+        if (window.audioManager) {
+            window.audioManager.stopMusic('credits');
         }
         
         cinematicCredits.classList.add('hidden');
@@ -193,6 +231,11 @@ window.showInstructions = function() {
 // -------------------------------------------------------------------
 window.startStoryMode = function () {
     hideAllMenuScreens();
+    
+    // Stop any playing music when cutscene starts
+    if (window.audioManager) {
+        window.audioManager.stopMusic();
+    }
 
     const screen   = document.getElementById('story-cutscene');
     const video    = document.getElementById('cutscene-video');
@@ -321,6 +364,11 @@ window.startStoryMode = function () {
             document.removeEventListener('keydown', document._cutsceneKeyHandler);
             document._cutsceneKeyHandler = null;
         }
+        // Stop all music before starting 3D hub world (basement music will start in initMainMenu)
+        if (window.audioManager) {
+            window.audioManager.stopMusic();
+        }
+        
         // → start the 3D hub world
         window.initMainMenu?.();
     };

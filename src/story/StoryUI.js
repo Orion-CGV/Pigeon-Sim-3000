@@ -33,8 +33,9 @@ export class StoryUI {
             border-radius: 10px;
             padding: 15px;
             color: white;
-            font-family: Arial, sans-serif;
-            font-size: 14px;
+            font-family: 'Jersey 10', sans-serif;
+            font-size: 18px;
+            font-weight: normal;
             z-index: 100;
             max-height: 400px;
             overflow-y: auto;
@@ -46,8 +47,8 @@ export class StoryUI {
         const title = document.createElement("div");
         title.textContent = "📖 STORY OBJECTIVES";
         title.style.cssText = `
-            font-size: 16px;
-            font-weight: bold;
+            font-size: 20px;
+            font-weight: normal;
             margin-bottom: 10px;
             color: #00ff00;
             text-align: center;
@@ -65,7 +66,7 @@ export class StoryUI {
         const progressLabel = document.createElement("div");
         progressLabel.textContent = "Progress:";
         progressLabel.style.cssText = `
-            font-size: 12px;
+            font-size: 16px;
             margin-bottom: 5px;
             color: #aaa;
         `;
@@ -90,8 +91,8 @@ export class StoryUI {
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
-            font-weight: bold;
+            font-size: 14px;
+            font-weight: normal;
             color: #000;
         `;
         progressBarBg.appendChild(this.progressBar);
@@ -167,8 +168,8 @@ export class StoryUI {
             const activeHeader = document.createElement("div");
             activeHeader.textContent = "ACTIVE:";
             activeHeader.style.cssText = `
-                font-size: 12px;
-                font-weight: bold;
+                font-size: 16px;
+                font-weight: normal;
                 color: #00ff00;
                 margin-top: 5px;
                 margin-bottom: 5px;
@@ -186,8 +187,8 @@ export class StoryUI {
             const completedHeader = document.createElement("div");
             completedHeader.textContent = "COMPLETED:";
             completedHeader.style.cssText = `
-                font-size: 12px;
-                font-weight: bold;
+                font-size: 16px;
+                font-weight: normal;
                 color: #aaa;
                 margin-top: 10px;
                 margin-bottom: 5px;
@@ -205,8 +206,8 @@ export class StoryUI {
             const lockedHeader = document.createElement("div");
             lockedHeader.textContent = "LOCKED:";
             lockedHeader.style.cssText = `
-                font-size: 12px;
-                font-weight: bold;
+                font-size: 16px;
+                font-weight: normal;
                 color: #666;
                 margin-top: 10px;
                 margin-bottom: 5px;
@@ -240,11 +241,11 @@ export class StoryUI {
                           objective.status === 'active' ? '🎯' : '🔒';
         
         objElement.innerHTML = `
-            <div style="font-weight: bold; margin-bottom: 3px;">
+            <div style="font-weight: normal; margin-bottom: 3px;">
                 ${statusIcon} ${objective.description}
             </div>
             ${objective.status === 'locked' && objective.requirements.length > 0 ? 
-                `<div style="font-size: 11px; color: #aaa; margin-top: 3px;">
+                `<div style="font-size: 14px; color: #aaa; margin-top: 3px;">
                     Requires: ${objective.requirements.map(req => {
                         const reqObj = this.storySystem.getAllObjectives().find(o => o.id === req);
                         return reqObj ? reqObj.description : req;

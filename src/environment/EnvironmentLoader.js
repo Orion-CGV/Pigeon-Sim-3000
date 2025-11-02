@@ -573,7 +573,7 @@ export class EnvironmentLoader {
                         console.log('📍 Treasure position:', treasurePos);
                         console.log('📍 Treasure local position:', treasureObject.position);
                         // Add visual highlight to treasure
-                        this.createTreasureHighlight(treasureObject);
+                        // this.createTreasureHighlight(treasureObject); // Hidden for first treasure
                     }
                     if (treasureLidObject) {
                         console.log('✅ Treasure lid found in basement');
@@ -736,7 +736,7 @@ export class EnvironmentLoader {
                             textDiv.className = 'arcade-label';
                             textDiv.textContent = config.label;
                             textDiv.style.color = 'white';
-                            textDiv.style.fontFamily = 'Arial, sans-serif';
+                            textDiv.style.fontFamily = "'Jersey 10', sans-serif";
                             textDiv.style.fontSize = '16px';
                             textDiv.style.fontWeight = 'bold';
                             textDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';

@@ -59,6 +59,11 @@ let wasBoostingLastFrame = false;
 let gameRestartSystem = null;
 let failureSystem = null;
 
+// Resize handler
+let resizeHandler = null;
+
+// Music will be handled by AudioManager (accessible via window.audioManager)
+
 export function initLevel(sceneRef, cameraRef, rendererRef, labelRendererRef, callback) {
     if (!sceneRef || !cameraRef || !rendererRef || !labelRendererRef) {
         console.error('Missing required references!');
@@ -192,8 +197,71 @@ function setupLevel() {
     environmentSystem = new EnvironmentSystem(scene, world);
     environmentSystem.setOnModelLoadedCallback(onEnvironmentModelLoaded);
     
+    // Start level 2 music via AudioManager
+    if (window.audioManager) {
+        // Register level 2 music if not already registered (mono: true to play same in both ears)
+        if (!window.audioManager.musicTracks['level2']) {
+            window.audioManager.registerMusic('level2', 'assets/audio/music/The Sluts With Nuts - Mike and Ron Jam.mp3', true, true);
+        }
+        window.audioManager.playMusic('level2');
+        
+        // Register sound effects for Level 2 if not already registered
+        if (!window.audioManager.soundEffects['complete']) {
+            window.audioManager.registerSoundEffect('complete', 'assets/audio/effects/Complete.wav', 0.3);
+        }
+        if (!window.audioManager.soundEffects['carEngine']) {
+            window.audioManager.registerSoundEffect('carEngine', 'assets/audio/cars/Car2_Engine_Loop.ogg', 0.01);
+        }
+        if (!window.audioManager.soundEffects['pop']) {
+            window.audioManager.registerSoundEffect('pop', 'assets/audio/effects/pop.wav', 0.5);
+        }
+        
+        // Start car engine sound (looping)
+        window.audioManager.playSoundEffect('carEngine', { loop: true });
+    }
+    
     // Load the car model
     environmentSystem.loadModel('./level2/Car.glb');
+    
+    // Set up window resize handler
+    setupResizeHandler();
+}
+
+/**
+ * Sets up window resize handler for Level 2
+ */
+function setupResizeHandler() {
+    // Remove existing handler if any
+    if (resizeHandler) {
+        window.removeEventListener('resize', resizeHandler);
+    }
+    
+    // Create new resize handler
+    resizeHandler = () => {
+        if (!renderer || !camera || !labelRenderer) return;
+        
+        // Update camera aspect ratio
+        if (camera.isPerspectiveCamera) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
+        
+        // Update renderer size
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // Update label renderer size
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // Update camera system if available
+        if (cameraSystem && cameraSystem.handleResize) {
+            cameraSystem.handleResize();
+        }
+    };
+    
+    // Add event listener
+    window.addEventListener('resize', resizeHandler);
+    
+    console.log('✅ Level 2 resize handler set up');
 }
 
 /**
@@ -245,8 +313,8 @@ function showLevel2UI() {
         keybindsDisplay.id = 'keybinds-display';
         keybindsDisplay.className = 'game-ui';
         keybindsDisplay.innerHTML = `
-            <div style="font-family: 'Press Start 2P', cursive; font-size: 10px; color: #fff; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;">
-                <div style="font-size: 12px; margin-bottom: 8px; color: #00ff00;">KEYBINDS</div>
+            <div style="font-family: 'Jersey 10', sans-serif; font-size: 14px; font-weight: normal; color: #fff; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;">
+                <div style="font-size: 16px; font-weight: normal; margin-bottom: 8px; color: #00ff00;">KEYBINDS</div>
                 <div>W/S: Accelerate/Reverse</div>
                 <div>A/D: Steer</div>
                 <div>Space: Boost</div>
@@ -277,13 +345,13 @@ function showLevel2UI() {
         
         const minimapCanvas = document.createElement('canvas');
         minimapCanvas.id = 'minimap';
-        minimapCanvas.width = 200;
-        minimapCanvas.height = 200;
+        minimapCanvas.width = 240;
+        minimapCanvas.height = 240;
         
         const minimapOverlay = document.createElement('canvas');
         minimapOverlay.id = 'minimap-overlay';
-        minimapOverlay.width = 200;
-        minimapOverlay.height = 200;
+        minimapOverlay.width = 240;
+        minimapOverlay.height = 240;
         
         minimapContainer.appendChild(minimapCanvas);
         minimapContainer.appendChild(minimapOverlay);
@@ -537,6 +605,11 @@ function setupCollisionListeners() {
                 color = 0xff0000;
             } else if (speed > 5) {
                 color = 0xff6600;
+            }
+            
+            // Play pop sound effect for collision
+            if (window.audioManager) {
+                window.audioManager.playSoundEffect('pop');
             }
             
             // Record collision for scoring (with debounce to prevent double-counting)
@@ -802,4 +875,18 @@ export function cleanupLevel() {
     
     // Reset boost tracking
     wasBoostingLastFrame = false;
+    
+    // Stop level 2 music and car engine sound via AudioManager
+    if (window.audioManager) {
+        window.audioManager.stopMusic('level2');
+        window.audioManager.stopSoundEffect('carEngine');
+    }
+    
+    // Remove resize handler
+    if (resizeHandler) {
+        window.removeEventListener('resize', resizeHandler);
+        resizeHandler = null;
+        console.log('✅ Level 2 resize handler removed');
+    }
 }
+
