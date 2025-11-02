@@ -31,7 +31,7 @@ export function updateFlying(player, camera, scene, delta, state = {}) {
             player.position.y += ascendSpeed * frameScale;
             
             // Check collision during ascent
-            if (checkBuildingCollision(player, scene)) {
+            if (checkCollision(player, scene)) {
                 player.position.copy(originalPosition);
                 state.isAscendingToFly = false; // Stop ascent if we hit something
             }
@@ -55,44 +55,12 @@ export function updateFlying(player, camera, scene, delta, state = {}) {
     const moveRight = input.right * currentSpeed * frameScale;
     const moveVertical = input.up * currentSpeed * frameScale;
 
-    // Apply horizontal movement first
-    player.position.addScaledVector(direction, moveForward);
-    player.position.addScaledVector(right, moveRight);
+    // Apply horizontal movement with incremental collision checking
+    applyMovementWithCollision(player, direction, moveForward, scene);
+    applyMovementWithCollision(player, right, moveRight, scene);
 
-    // Check building collisions for horizontal movement
-    if (checkBuildingCollision(player, scene)) {
-        // Revert horizontal movement if collision detected
-        player.position.copy(originalPosition);
-        
-        // Try moving in just one direction (sliding along walls)
-        const tempPos = originalPosition.clone();
-        tempPos.addScaledVector(direction, moveForward);
-        player.position.copy(tempPos);
-        
-        if (checkBuildingCollision(player, scene)) {
-            player.position.copy(originalPosition);
-            
-            tempPos.copy(originalPosition);
-            tempPos.addScaledVector(right, moveRight);
-            player.position.copy(tempPos);
-            
-            if (checkBuildingCollision(player, scene)) {
-                player.position.copy(originalPosition);
-            }
-        }
-    }
-
-    // Store position before vertical movement
-    const positionBeforeVertical = player.position.clone();
-
-    // Apply vertical movement
-    player.position.y += moveVertical;
-
-    // Check building collisions for vertical movement
-    if (checkBuildingCollision(player, scene)) {
-        // Revert vertical movement if collision detected
-        player.position.copy(positionBeforeVertical);
-    }
+    // Apply vertical movement with incremental collision checking
+    applyVerticalMovementWithCollision(player, moveVertical, scene);
 
     // Ground landing detection (use ground collider if available)
     const groundCollider = scene && scene.userData && scene.userData.groundCollider;
@@ -107,6 +75,60 @@ export function updateFlying(player, camera, scene, delta, state = {}) {
     }
 
     return false;
+}
+
+// NEW: Apply movement incrementally with collision checking (same as walking)
+function applyMovementWithCollision(player, direction, distance, scene) {
+    if (distance === 0) return;
+
+    const originalPosition = player.position.clone();
+    const stepSize = 0.1; // Smaller steps for more precise collision detection
+    const steps = Math.ceil(Math.abs(distance) / stepSize);
+    const stepDistance = distance / steps;
+
+    for (let i = 0; i < steps; i++) {
+        player.position.addScaledVector(direction, stepDistance);
+        
+        if (checkCollision(player, scene)) {
+            // Collision detected, revert to previous position
+            player.position.addScaledVector(direction, -stepDistance);
+            
+            // Try smaller adjustment to slide along surfaces
+            const smallStep = stepDistance * 0.1;
+            player.position.addScaledVector(direction, smallStep);
+            if (checkCollision(player, scene)) {
+                player.position.addScaledVector(direction, -smallStep);
+            }
+            break;
+        }
+    }
+}
+
+// NEW: Apply vertical movement with incremental collision checking
+function applyVerticalMovementWithCollision(player, distance, scene) {
+    if (distance === 0) return;
+
+    const stepSize = 0.1; // Smaller steps for more precise collision detection
+    const steps = Math.ceil(Math.abs(distance) / stepSize);
+    const stepDistance = distance / steps;
+    const upVector = new THREE.Vector3(0, 1, 0);
+
+    for (let i = 0; i < steps; i++) {
+        player.position.addScaledVector(upVector, stepDistance);
+        
+        if (checkCollision(player, scene)) {
+            // Collision detected, revert to previous position
+            player.position.addScaledVector(upVector, -stepDistance);
+            
+            // Try smaller adjustment
+            const smallStep = stepDistance * 0.1;
+            player.position.addScaledVector(upVector, smallStep);
+            if (checkCollision(player, scene)) {
+                player.position.addScaledVector(upVector, -smallStep);
+            }
+            break;
+        }
+    }
 }
 
 function updateSpeedBoost(delta, forwardInput) {
@@ -137,12 +159,13 @@ function updateSpeedBoost(delta, forwardInput) {
     }
 }
 
-function checkBuildingCollision(player, scene) {
-    if (!scene.userData || !scene.userData.buildings) {
+// UPDATED: Now checks all collision objects with correct property names
+function checkCollision(player, scene) {
+    if (!scene.userData) {
         return false;
     }
 
-    // Create a bounding box that represents the player's collision volume
+    // Create player bounding box (same as walking)
     const playerWidth = 0.8;
     const playerHeight = 1.0;
     const playerDepth = 0.8;
@@ -153,10 +176,66 @@ function checkBuildingCollision(player, scene) {
         new THREE.Vector3(playerWidth, playerHeight, playerDepth)
     );
 
-    // Check collision with each building
-    for (const building of scene.userData.buildings) {
-        if (building.userData.collider && building.userData.collider.intersectsBox(playerBox)) {
-            return true;
+    // Check collision with buildings
+    if (scene.userData.buildings) {
+        for (const building of scene.userData.buildings) {
+            if (building.userData.collider && building.userData.collider.intersectsBox(playerBox)) {
+                return true;
+            }
+        }
+    }
+
+    // FIXED: Check collision with trees - use correct property name
+    if (scene.userData.treeColliders) {
+        for (const treeCollider of scene.userData.treeColliders) {
+            if (treeCollider.intersectsBox(playerBox)) {
+                return true;
+            }
+        }
+    }
+
+    // FIXED: Check collision with benches - use correct property name
+    if (scene.userData.benchColliders) {
+        for (const benchCollider of scene.userData.benchColliders) {
+            if (benchCollider.intersectsBox(playerBox)) {
+                return true;
+            }
+        }
+    }
+
+    // FIXED: Check collision with cars - use correct property name
+    if (scene.userData.carColliders) {
+        for (const carCollider of scene.userData.carColliders) {
+            if (carCollider.intersectsBox(playerBox)) {
+                return true;
+            }
+        }
+    }
+
+    // Check collision with parks (if they have colliders)
+    if (scene.userData.parks) {
+        for (const park of scene.userData.parks) {
+            if (park.userData && park.userData.collider && park.userData.collider.intersectsBox(playerBox)) {
+                return true;
+            }
+        }
+    }
+
+    // Check collision with parking lots (if they have colliders)
+    if (scene.userData.parkingLots) {
+        for (const parkingLot of scene.userData.parkingLots) {
+            if (parkingLot.userData && parkingLot.userData.collider && parkingLot.userData.collider.intersectsBox(playerBox)) {
+                return true;
+            }
+        }
+    }
+
+    // Check collision with sidewalks (if they have colliders)
+    if (scene.userData.sidewalks) {
+        for (const sidewalk of scene.userData.sidewalks) {
+            if (sidewalk.userData && sidewalk.userData.collider && sidewalk.userData.collider.intersectsBox(playerBox)) {
+                return true;
+            }
         }
     }
 

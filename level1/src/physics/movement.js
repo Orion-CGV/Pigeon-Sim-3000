@@ -50,7 +50,7 @@ export function updateWalking(player, camera, scene, delta) {
     player.position.addScaledVector(right, moveRight);
 
     // Check building collisions for horizontal movement
-    if (checkBuildingCollision(player, scene)) {
+    if (checkCollision(player, scene)) {
         // Revert horizontal movement if collision detected
         player.position.copy(originalPosition);
         
@@ -59,14 +59,14 @@ export function updateWalking(player, camera, scene, delta) {
         tempPos.addScaledVector(forward, moveForward);
         player.position.copy(tempPos);
         
-        if (checkBuildingCollision(player, scene)) {
+        if (checkCollision(player, scene)) {
             player.position.copy(originalPosition);
             
             tempPos.copy(originalPosition);
             tempPos.addScaledVector(right, moveRight);
             player.position.copy(tempPos);
             
-            if (checkBuildingCollision(player, scene)) {
+            if (checkCollision(player, scene)) {
                 player.position.copy(originalPosition);
             }
         }
@@ -84,7 +84,7 @@ export function updateWalking(player, camera, scene, delta) {
     player.position.y += velocityY * frameScale;
 
     // Check building collisions for vertical movement
-    if (checkBuildingCollision(player, scene)) {
+    if (checkCollision(player, scene)) {
         // If we hit a building while moving up (jumping), stop upward movement
         if (velocityY > 0) {
             player.position.copy(verticalPosition);
@@ -103,7 +103,7 @@ export function updateWalking(player, camera, scene, delta) {
     const groundY = groundCollider ? groundCollider.getHeightAt(player.position.x, player.position.z) : 0;
     
     // Only check ground collision if we're not colliding with a building
-    if (!checkBuildingCollision(player, scene) && player.position.y <= groundY + halfHeight) {
+    if (!checkCollision(player, scene) && player.position.y <= groundY + halfHeight) {
         player.position.y = groundY + halfHeight;
         velocityY = 0;
         onGround = true;
@@ -147,18 +147,49 @@ function updateWalkSpeedBoost(delta, forwardInput) {
     }
 }
 
-function checkBuildingCollision(player, scene) {
-    if (!scene.userData || !scene.userData.buildings) {
+// UPDATED: Now checks all collision objects, not just buildings
+// UPDATED: Now checks all collision objects including trees, benches, and cars
+function checkCollision(player, scene) {
+    if (!scene.userData) {
         return false;
     }
 
-    // Create a more accurate player bounding box
+    // Create player bounding box
     const playerBox = getPlayerBoundingBox(player);
 
-    // Check collision with each building
-    for (const building of scene.userData.buildings) {
-        if (building.userData.collider && building.userData.collider.intersectsBox(playerBox)) {
-            return true;
+    // Check collision with buildings
+    if (scene.userData.buildings) {
+        for (const building of scene.userData.buildings) {
+            if (building.userData.collider && building.userData.collider.intersectsBox(playerBox)) {
+                return true;
+            }
+        }
+    }
+
+    // FIXED: Check collision with trees
+    if (scene.userData.treeColliders) {
+        for (const treeCollider of scene.userData.treeColliders) {
+            if (treeCollider.intersectsBox(playerBox)) {
+                return true;
+            }
+        }
+    }
+
+    // FIXED: Check collision with benches
+    if (scene.userData.benchColliders) {
+        for (const benchCollider of scene.userData.benchColliders) {
+            if (benchCollider.intersectsBox(playerBox)) {
+                return true;
+            }
+        }
+    }
+
+    // FIXED: Check collision with cars
+    if (scene.userData.carColliders) {
+        for (const carCollider of scene.userData.carColliders) {
+            if (carCollider.intersectsBox(playerBox)) {
+                return true;
+            }
         }
     }
 
@@ -212,8 +243,9 @@ export function resetWalkSpeedBoost() {
 }
 
 // Debug function to visualize collision boxes
+// Updated debug function to visualize all collision boxes including trees, benches, and cars
 export function enableCollisionDebug(scene, enabled = true) {
-    if (!scene.userData || !scene.userData.buildings) return;
+    if (!scene.userData) return;
 
     // Remove existing debug helpers
     if (scene.userData.collisionHelpers) {
@@ -222,13 +254,45 @@ export function enableCollisionDebug(scene, enabled = true) {
 
     if (enabled) {
         scene.userData.collisionHelpers = [];
-        scene.userData.buildings.forEach(building => {
-            if (building.userData.collider) {
-                const boxHelper = new THREE.Box3Helper(building.userData.collider, 0xff0000); // Red for visibility
+        
+        // Debug buildings (red)
+        if (scene.userData.buildings) {
+            scene.userData.buildings.forEach(building => {
+                if (building.userData.collider) {
+                    const boxHelper = new THREE.Box3Helper(building.userData.collider, 0xff0000);
+                    scene.userData.collisionHelpers.push(boxHelper);
+                    scene.add(boxHelper);
+                }
+            });
+        }
+        
+        // FIXED: Debug trees (light green)
+        if (scene.userData.treeColliders) {
+            scene.userData.treeColliders.forEach(treeCollider => {
+                const boxHelper = new THREE.Box3Helper(treeCollider, 0x90ee90);
                 scene.userData.collisionHelpers.push(boxHelper);
                 scene.add(boxHelper);
-            }
-        });
+            });
+        }
+        
+        // FIXED: Debug benches (brown)
+        if (scene.userData.benchColliders) {
+            scene.userData.benchColliders.forEach(benchCollider => {
+                const boxHelper = new THREE.Box3Helper(benchCollider, 0x8b4513);
+                scene.userData.collisionHelpers.push(boxHelper);
+                scene.add(boxHelper);
+            });
+        }
+        
+        // FIXED: Debug cars (dark red)
+        if (scene.userData.carColliders) {
+            scene.userData.carColliders.forEach(carCollider => {
+                const boxHelper = new THREE.Box3Helper(carCollider, 0x8b0000);
+                scene.userData.collisionHelpers.push(boxHelper);
+                scene.add(boxHelper);
+            });
+        }
+        
         console.log(`Enabled collision debug for ${scene.userData.collisionHelpers.length} objects`);
     }
 }

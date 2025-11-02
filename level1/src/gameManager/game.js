@@ -1,22 +1,20 @@
-import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
-import { createLevel } from "../environment/level1.js";
+import * as THREE from 'three';
+import { createLevel, playerStartPosition } from "../environment/level1.js";
 import { createPlayer, updatePlayer } from "../models/player.js";
 import { setupInput, input } from "../input/inputHandler.js";
 import { updateWalking } from "../physics/movement.js";
 import { updateFlying } from "../physics/flight.js";
 import { getSpeedBoostState } from "../physics/flight.js";
 import { getWalkSpeedBoostState as getWalkBoostState } from "../physics/movement.js";
+import { enableCollisionDebug } from "../physics/movement.js";
+
 
 
 export class Game {
     constructor(renderer) {
         this.renderer = renderer;
-        const { scene, camera } = createLevel();
-        this.scene = scene;
-        this.camera = camera;
-
-        this.player = createPlayer();
-        this.scene.add(this.player);
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 4000);
 
         setupInput();
 
@@ -68,6 +66,51 @@ export class Game {
 
         // Show welcome -> tutorial -> then start the game
         this._showWelcomeScreen();
+        this.init();
+    }
+
+    async init() {
+        try {
+            // Load the level
+            const { scene: levelScene, camera: levelCamera } = await createLevel();
+            
+            
+            // Add level scene to main scene
+            this.scene = levelScene;
+            this.camera = levelCamera;
+            
+            // Create player
+            this.player = createPlayer();
+            this.scene.add(this.player);
+
+            this.player.position.set(
+                playerStartPosition.x, 
+                playerStartPosition.y, 
+                playerStartPosition.z
+            );
+
+            // Set total collectibles after level is loaded
+            this.totalCollectibles = this.scene.userData.collectibles ? this.scene.userData.collectibles.length : 0;
+
+            // Enable collision visualization (remove this line after debugging)
+            enableCollisionDebug(this.scene, true);
+
+            // Create UI elements
+            this._createCrosshair();
+            this._createCrosshair3D();
+            this._createScoreUI();
+            this._createSpeedBoostUI();
+            this._createScreenEffect();
+
+            // Initialize minimap
+            this._initMinimap();
+            
+            this.lastTime = performance.now();
+            this.loop();
+            
+        } catch (error) {
+            console.error('Failed to create level:', error);
+        }
     }
 
     // ADDED: Create speed boost UI elements
@@ -186,7 +229,32 @@ export class Game {
         }
     }
 
-    // ... REST OF YOUR EXISTING METHODS REMAIN UNCHANGED ...
+    
+    /*// ... REST OF YOUR EXISTING METHODS REMAIN UNCHANGED ...
+   _checkWorldBounds() {
+    const worldHalfSize = (25 * 50) / 2; // Based on your level size
+    this.player.position.x = THREE.MathUtils.clamp(this.player.position.x, -worldHalfSize, worldHalfSize);
+    this.player.position.z = THREE.MathUtils.clamp(this.player.position.z, -worldHalfSize, worldHalfSize);
+}
+
+// Optional: Add cleanup method
+destroy() {
+    // Clean up event listeners
+    if (this.renderer && this.renderer.domElement) {
+        this.renderer.domElement.removeEventListener('click', this._requestLock);
+    }
+    document.removeEventListener('pointerlockchange', this._onPointerLockChange);
+    document.removeEventListener('mousemove', this._onMouseMove);
+    
+    // Clean up UI elements
+    const elements = ['game-crosshair', 'game-score', 'speed-boost-ui', 'screen-effect', 'minimap-canvas'];
+    elements.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.remove();
+    });
+}
+    */
+   
     _requestLock() {
         if (this.renderer && this.renderer.domElement && document.pointerLockElement !== this.renderer.domElement) {
             this.renderer.domElement.requestPointerLock();
@@ -811,11 +879,14 @@ _updateCamera() {
     this.camera.lookAt(lookAtPoint);
 }
 
-    loop = () => {
+  
+
+    loop = () =>{
         if (this.gameOver) {
             // stop requesting new frames when game is over
             return;
         }
+        requestAnimationFrame(this.loop);
 
         const now = performance.now();
         const delta = (now - this.lastTime) / 1000;
